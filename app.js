@@ -35,7 +35,8 @@
 
     if (debugLog) {
       const row = document.createElement('div');
-      row.textContent = `${payload.event} · src=${payload.src}${payload.value ? ` · ${payload.value}` : ''}`;
+      const detail = payload.payment_type || payload.payer_type || payload.exchange_status || '';
+      row.textContent = `${payload.event} · src=${payload.src}${detail ? ` · ${detail}` : ''}`;
       debugLog.prepend(row);
     }
   }
@@ -58,7 +59,7 @@
       const field = button.dataset.field;
       const value = button.dataset.value;
       state[field] = value;
-      emit(`${field}_select`, { value });
+      emit(`${field}_select`, { [field]: value });
 
       if (field === 'payment_type') showStep(2);
       if (field === 'payer_type') showStep(3);
@@ -66,7 +67,8 @@
         if (value === 'No exchange') {
           emit('new_to_exchange_identified', {
             payment_type: state.payment_type,
-            payer_type: state.payer_type
+            payer_type: state.payer_type,
+            exchange_status: state.exchange_status
           });
           showResult('resultNew');
         } else {
