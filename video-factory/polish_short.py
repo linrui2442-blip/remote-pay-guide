@@ -28,6 +28,25 @@ def _centered_multiline(draw: ImageDraw.ImageDraw, box, text: str, font, fill, s
     )
 
 
+def _video_duration(path: Path) -> float:
+    proc = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return float(proc.stdout.strip())
+
+
 def build_hook(path: Path, font_path: Path, message: str) -> None:
     image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -44,7 +63,7 @@ def build_hook(path: Path, font_path: Path, message: str) -> None:
     image.save(path)
 
 
-def build_cta(path: Path, font_path: Path) -> None:
+def build_cta(path: Path, font_path: Path, headline: str, action: str) -> None:
     image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     box = (90, 720, 990, 1190)
@@ -52,14 +71,14 @@ def build_cta(path: Path, font_path: Path) -> None:
     _centered_multiline(
         draw,
         (130, 765, 950, 860),
-        "FIRST TIME RECEIVING STABLECOIN?",
+        headline,
         _font(font_path, 38),
         (190, 205, 235, 255),
     )
     _centered_multiline(
         draw,
         (130, 865, 950, 1090),
-        "Beginner guide\nin profile",
+        action,
         _font(font_path, 64),
         (255, 255, 255, 255),
         spacing=12,
@@ -74,8 +93,10 @@ def main() -> None:
     parser.add_argument("--font", required=True)
     parser.add_argument("--hook", default="Can I pay you in USDT?")
     parser.add_argument("--hook-end", type=float, default=3.8)
-    parser.add_argument("--cta-start", type=float, default=23.0)
-    parser.add_argument("--cta-end", type=float, default=27.0)
+    parser.add_argument("--cta-start", type=float)
+    parser.add_argument("--cta-end", type=float)
+    parser.add_argument("--cta-headline", default="FIRST TIME RECEIVING STABLECOIN?")
+    parser.add_argument("--cta-action", default="Beginner guide\nin profile")
     args = parser.parse_args()
 
     input_video = Path(args.input).resolve()
@@ -83,16 +104,23 @@ def main() -> None:
     font_path = Path(args.font).resolve()
     output_video.parent.mkdir(parents=True, exist_ok=True)
 
+    duration = _video_duration(input_video)
+    hook_end = min(max(0.1, args.hook_end), duration)
+    cta_end = args.cta_end if args.cta_end is not None else max(0.1, duration - 0.05)
+    cta_end = min(max(0.1, cta_end), duration)
+    cta_start = args.cta_start if args.cta_start is not None else max(hook_end + 0.2, cta_end - 4.0)
+    cta_start = min(max(0.0, cta_start), cta_end)
+
     work = output_video.parent / ".polish"
     work.mkdir(parents=True, exist_ok=True)
     hook_png = work / "hook.png"
     cta_png = work / "cta.png"
     build_hook(hook_png, font_path, args.hook)
-    build_cta(cta_png, font_path)
+    build_cta(cta_png, font_path, args.cta_headline, args.cta_action)
 
     filter_complex = (
-        f"[0:v][1:v]overlay=0:0:enable='between(t,0,{args.hook_end})'[v1];"
-        f"[v1][2:v]overlay=0:0:enable='between(t,{args.cta_start},{args.cta_end})'[vout]"
+        f"[0:v][1:v]overlay=0:0:enable='between(t,0,{hook_end})'[v1];"
+        f"[v1][2:v]overlay=0:0:enable='between(t,{cta_start},{cta_end})'[vout]"
     )
     subprocess.run(
         [
