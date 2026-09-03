@@ -56,7 +56,7 @@ def section_number(content_id: str) -> str:
     match = re.fullmatch(r"short(\d+)", content_id)
     if not match:
         raise SystemExit(f"Unsupported content id: {content_id}")
-    return str(int(match.group(1)))
+    return match.group(1)
 
 
 def parse_posting_pack(path: Path, content_id: str) -> dict[str, Any]:
