@@ -21,6 +21,8 @@ Remote Pay Guide remains responsible for the acquisition-specific content, visua
 
 `tasks-launch01.jsonl` contains 10 ready-to-render tasks (`short01` through `short10` in source order).
 
+`tasks-short01.jsonl` is the single-video quality-gate manifest used before scaling to the full batch.
+
 Each task already provides both:
 
 - `video_script`
@@ -28,14 +30,33 @@ Each task already provides both:
 
 Therefore the basic render path does **not** need an LLM to write the script or generate search terms. Pexels still requires a free API key. The selected Edge voice is `en-US-JennyNeural-Female`.
 
+## Fastest proof: GitHub Actions
+
+The repository contains `.github/workflows/render-short01.yml`.
+
+It performs the proof render in GitHub Actions instead of requiring a local MoneyPrinterTurbo installation:
+
+1. Add a repository Actions secret named `PEXELS_API_KEY`.
+2. Open **Actions → Render short01 proof → Run workflow**.
+3. The workflow clones a pinned MoneyPrinterTurbo revision, installs its locked environment, injects the Pexels key without printing it, renders `tasks-short01.jsonl`, and uploads a `short01-proof` artifact.
+4. Download the artifact and review the MP4 against the quality gate below.
+
+The workflow deliberately uses only one short. Do not spend compute on the full 10 until the visual quality is acceptable.
+
 ## Windows proof-of-render
 
 1. Clone MoneyPrinterTurbo.
 2. Install its documented dependencies / `uv` environment.
 3. Copy `config.example.toml` to `config.toml` if the project has not done so automatically.
 4. Add a Pexels API key under `pexels_api_keys`.
-5. Copy `tasks-launch01.jsonl` into the MoneyPrinterTurbo working directory (or pass its absolute path).
+5. Copy `tasks-short01.jsonl` into the MoneyPrinterTurbo working directory (or pass its absolute path).
 6. Run:
+
+```bash
+uv run python cli.py --batch-file ./tasks-short01.jsonl --stop-at video
+```
+
+After short01 passes the quality gate, render all ten with:
 
 ```bash
 uv run python cli.py --batch-file ./tasks-launch01.jsonl --stop-at video
@@ -53,6 +74,7 @@ MoneyPrinterTurbo accepts JSON arrays or JSONL manifests and currently supports 
 - English Edge TTS: Jenny
 - voice rate: 1.08
 - burned subtitles: enabled
+- English subtitle font for proof: `BeVietnamPro-Bold.ttf`
 - background music: disabled for the first quality test
 
 BGM stays off initially so we can judge narration, subtitle timing and visual relevance without masking problems.
