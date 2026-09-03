@@ -85,6 +85,20 @@ jobs:
           set -o pipefail
           uv run python cli.py --batch-file ./tasks-short01.jsonl --stop-at video | tee ../short01-result.json
 
+      - name: Polish hook and CTA
+        shell: bash
+        run: |
+          FINAL_VIDEO="$(find MoneyPrinterTurbo/storage/tasks -type f -name 'final-1.mp4' | head -n 1)"
+          if [ -z "$FINAL_VIDEO" ]; then
+            echo "Could not find rendered final-1.mp4"
+            exit 1
+          fi
+          uv run --project MoneyPrinterTurbo python video-factory/polish_short.py \
+            --input "$FINAL_VIDEO" \
+            --output "$(dirname "$FINAL_VIDEO")/polished-short01.mp4" \
+            --font MoneyPrinterTurbo/resource/fonts/BeVietnamPro-Bold.ttf \
+            --hook "Can I pay you in USDT?"
+
       - name: Collect render files
         if: always()
         shell: bash
