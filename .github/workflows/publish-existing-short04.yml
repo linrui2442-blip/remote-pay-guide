@@ -19,9 +19,73 @@ permissions:
   actions: read
 
 jobs:
+  prepare-short04:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Remote Pay Guide
+        uses: actions/checkout@v4
+
+      - name: Download existing rendered batch in GitHub cloud
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-pay-guide-short02-short10
+          path: source-batch
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Build small short04 publish bundle
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          source = Path('source-batch/short04')
+          metadata_path = source / 'metadata.json'
+          if not metadata_path.exists():
+              raise SystemExit(f'Missing {metadata_path}')
+          metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+          if metadata.get('content_id') != 'short04':
+              raise SystemExit('short04 metadata content_id mismatch')
+          if metadata.get('status') != 'succeeded':
+              raise SystemExit(f"short04 metadata status is {metadata.get('status')!r}, expected succeeded")
+          output = metadata.get('output')
+          if not output:
+              raise SystemExit('short04 metadata has no output field')
+          video = source / str(output)
+          if not video.exists() or video.stat().st_size <= 0:
+              raise SystemExit(f'Missing or empty short04 video: {video}')
+
+          target = Path('publish-bundle/batch-output/short04')
+          target.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(metadata_path, target / 'metadata.json')
+          shutil.copy2(video, target / video.name)
+
+          bridge_target = Path('publish-bundle/video-factory')
+          bridge_target.mkdir(parents=True, exist_ok=True)
+          shutil.copy2('video-factory/postiz_publish.py', bridge_target / 'postiz_publish.py')
+
+          content_target = Path('publish-bundle/content')
+          content_target.mkdir(parents=True, exist_ok=True)
+          shutil.copy2('content/posting-pack-01.md', content_target / 'posting-pack-01.md')
+
+          print(f'Prepared short04 bundle with {video.stat().st_size} byte video')
+          PY
+
+      - name: Upload small short04 publish bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-pay-guide-short04-bundle-${{ github.run_id }}
+          path: publish-bundle/
+          if-no-files-found: error
+          retention-days: 1
+
   publish-short04:
+    needs: prepare-short04
     runs-on: [self-hosted, windows, x64]
-    timeout-minutes: 30
+    timeout-minutes: 20
     concurrency:
       group: remote-pay-guide-short04-postiz
       cancel-in-progress: false
@@ -30,59 +94,90 @@ jobs:
       POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
 
     steps:
-      - name: Checkout Remote Pay Guide
-        uses: actions/checkout@v4
-
-      - name: Validate Postiz secret
+      - name: Validate Postiz secret and local Python
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           if ([string]::IsNullOrWhiteSpace($env:POSTIZ_API_KEY)) {
             throw 'Missing repository secret: POSTIZ_API_KEY'
           }
 
-      - name: Download existing rendered batch
+          $found = $false
+          try {
+            $version = & python --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and "$version" -match '^Python 3\.') {
+              Add-Content -Path $env:GITHUB_ENV -Value 'PYTHON_EXE=python'
+              Add-Content -Path $env:GITHUB_ENV -Value 'PYTHON_PREFIX='
+              Write-Host "Using local $version via python"
+              $found = $true
+            }
+          } catch {}
+
+          if (-not $found) {
+            try {
+              $version = & py -3 --version 2>&1
+              if ($LASTEXITCODE -eq 0 -and "$version" -match '^Python 3\.') {
+                Add-Content -Path $env:GITHUB_ENV -Value 'PYTHON_EXE=py'
+                Add-Content -Path $env:GITHUB_ENV -Value 'PYTHON_PREFIX=-3'
+                Write-Host "Using local $version via py -3"
+                $found = $true
+              }
+            } catch {}
+          }
+
+          if (-not $found) {
+            throw 'Python 3 is not installed or not available on PATH on this self-hosted runner.'
+          }
+
+      - name: Download prepared short04 bundle
         uses: actions/download-artifact@v4
         with:
-          name: remote-pay-guide-short02-short10
-          path: batch-output
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.source_run_id }}
+          name: remote-pay-guide-short04-bundle-${{ github.run_id }}
+          path: publish-bundle
 
-      - name: Verify short04 artifact
+      - name: Verify downloaded short04 bundle
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
-          $metadata = 'batch-output\short04\metadata.json'
-          $video = 'batch-output\short04\polished-short04.mp4'
+          $metadata = 'publish-bundle\batch-output\short04\metadata.json'
           if (-not (Test-Path $metadata)) { throw "Missing $metadata" }
-          if (-not (Test-Path $video)) { throw "Missing $video" }
-          if ((Get-Item $video).Length -le 0) { throw 'polished-short04.mp4 is empty' }
           $record = Get-Content $metadata -Raw | ConvertFrom-Json
+          if ($record.content_id -ne 'short04') { throw 'short04 metadata content_id mismatch' }
           if ($record.status -ne 'succeeded') { throw "short04 metadata status is $($record.status), expected succeeded" }
-          Write-Host "Verified existing short04 artifact: $((Get-Item $video).Length) bytes"
+          $video = Join-Path 'publish-bundle\batch-output\short04' ([string]$record.output)
+          if (-not (Test-Path $video)) { throw "Missing $video" }
+          if ((Get-Item $video).Length -le 0) { throw 'short04 video is empty' }
+          Write-Host "Verified short04 bundle: $((Get-Item $video).Length) bytes"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install publish bridge dependency
+      - name: Ensure publish bridge dependency
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
-        run: python -m pip install --disable-pip-version-check requests
+        run: |
+          $prefix = @()
+          if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_PREFIX)) { $prefix += $env:PYTHON_PREFIX }
+          & $env:PYTHON_EXE @prefix -c "import requests" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'Installing requests once for the local runner user...'
+            & $env:PYTHON_EXE @prefix -m pip install --disable-pip-version-check --user requests
+            if ($LASTEXITCODE -ne 0) { throw 'Could not install requests for local Python' }
+          } else {
+            Write-Host 'requests is already available.'
+          }
 
       - name: Publish or schedule short04 through local Postiz
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
-          $argsList = @(
-            'video-factory/postiz_publish.py',
+          $pythonArgs = @()
+          if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_PREFIX)) { $pythonArgs += $env:PYTHON_PREFIX }
+          $pythonArgs += @(
+            'publish-bundle/video-factory/postiz_publish.py',
             '--content-id', 'short04',
-            '--artifact-root', 'batch-output',
-            '--posting-pack', 'content/posting-pack-01.md'
+            '--artifact-root', 'publish-bundle/batch-output',
+            '--posting-pack', 'publish-bundle/content/posting-pack-01.md'
           )
           $schedule = '${{ inputs.schedule_at }}'
           if (-not [string]::IsNullOrWhiteSpace($schedule)) {
-            $argsList += @('--schedule-at', $schedule)
+            $pythonArgs += @('--schedule-at', $schedule)
           }
-          python @argsList
+          & $env:PYTHON_EXE @pythonArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Copy publish state into workflow artifact
         if: always()
@@ -109,9 +204,9 @@ jobs:
         if: always()
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
-          if (Test-Path 'batch-output') {
-            Remove-Item -Recurse -Force 'batch-output'
-            Write-Host 'Removed batch-output from self-hosted runner.'
+          if (Test-Path 'publish-bundle') {
+            Remove-Item -Recurse -Force 'publish-bundle'
+            Write-Host 'Removed publish-bundle from self-hosted runner.'
           } else {
-            Write-Host 'No batch-output directory to remove.'
+            Write-Host 'No publish-bundle directory to remove.'
           }
