@@ -15,7 +15,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout Remote Pay Guide
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Download existing rendered batch in GitHub cloud
         uses: actions/download-artifact@v4
@@ -34,7 +36,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.source_run_id }}
 
-      - name: Build small short04 publish bundle
+      - name: Stage short04 as public GitHub Pages media
         shell: bash
         run: |
           python3 - <<'PY'
@@ -58,40 +60,53 @@ jobs:
           if not video.exists() or video.stat().st_size <= 0:
               raise SystemExit(f'Missing or empty short04 video: {video}')
 
-          target = Path('publish-bundle/batch-output/short04')
-          target.mkdir(parents=True, exist_ok=True)
-          shutil.copy2(metadata_path, target / 'metadata.json')
-          shutil.copy2(video, target / video.name)
-
-          bridge_target = Path('publish-bundle/video-factory')
-          bridge_target.mkdir(parents=True, exist_ok=True)
-          shutil.copy2('video-factory/postiz_publish.py', bridge_target / 'postiz_publish.py')
-
-          content_target = Path('publish-bundle/content')
-          content_target.mkdir(parents=True, exist_ok=True)
-          shutil.copy2('content/posting-pack-01.md', content_target / 'posting-pack-01.md')
-
-          print(f'Prepared short04 bundle with {video.stat().st_size} byte video')
+          media_dir = Path('media')
+          media_dir.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(video, media_dir / 'short04.mp4')
+          shutil.copy2(metadata_path, media_dir / 'short04.json')
+          print(f'Staged public short04 media: {video.stat().st_size} bytes')
           PY
 
-      - name: Upload small short04 publish bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: remote-pay-guide-short04-bundle-${{ github.run_id }}
-          path: publish-bundle/
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit staged media to main for GitHub Pages
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add media/short04.mp4 media/short04.json
+          if git diff --cached --quiet; then
+            echo 'short04 public media is already staged on main.'
+          else
+            git commit -m 'Stage short04 public media for Postiz'
+            git push origin HEAD:main
+          fi
+
+      - name: Wait for GitHub Pages media URL
+        shell: bash
+        run: |
+          url='https://linrui2442-blip.github.io/remote-pay-guide/media/short04.mp4'
+          for attempt in $(seq 1 36); do
+            if curl -fsSI --max-time 15 "$url" > pages-headers.txt; then
+              echo "GitHub Pages media is reachable: $url"
+              grep -iE '^(content-type|content-length|etag|last-modified):' pages-headers.txt || true
+              exit 0
+            fi
+            echo "Waiting for GitHub Pages deployment ($attempt/36)..."
+            sleep 5
+          done
+          echo "GitHub Pages media did not become reachable: $url"
+          exit 1
 
   publish-short04:
     needs: prepare-short04
     runs-on: [self-hosted, windows, x64]
-    timeout-minutes: 20
+    timeout-minutes: 10
     concurrency:
       group: remote-pay-guide-short04-postiz
       cancel-in-progress: false
     env:
       POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
       POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
+      SHORT04_MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/short04.mp4
 
     steps:
       - name: Validate Postiz secret and local Python
@@ -128,24 +143,17 @@ jobs:
             throw 'Python 3 is not installed or not available on PATH on this self-hosted runner.'
           }
 
-      - name: Download prepared short04 bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: remote-pay-guide-short04-bundle-${{ github.run_id }}
-          path: publish-bundle
-
-      - name: Verify downloaded short04 bundle
+      - name: Download tiny publish inputs only
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
-          $metadata = 'publish-bundle\batch-output\short04\metadata.json'
-          if (-not (Test-Path $metadata)) { throw "Missing $metadata" }
-          $record = Get-Content $metadata -Raw | ConvertFrom-Json
-          if ($record.content_id -ne 'short04') { throw 'short04 metadata content_id mismatch' }
-          if ($record.status -ne 'succeeded') { throw "short04 metadata status is $($record.status), expected succeeded" }
-          $video = Join-Path 'publish-bundle\batch-output\short04' ([string]$record.output)
-          if (-not (Test-Path $video)) { throw "Missing $video" }
-          if ((Get-Item $video).Length -le 0) { throw 'short04 video is empty' }
-          Write-Host "Verified short04 bundle: $((Get-Item $video).Length) bytes"
+          Remove-Item -Recurse -Force 'publish-tools','publish-input' -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path 'publish-tools' | Out-Null
+          New-Item -ItemType Directory -Force -Path 'publish-input\short04' | Out-Null
+          $raw = 'https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main'
+          Invoke-WebRequest -UseBasicParsing -Uri "$raw/video-factory/postiz_publish.py" -OutFile 'publish-tools\postiz_publish.py'
+          Invoke-WebRequest -UseBasicParsing -Uri "$raw/content/posting-pack-01.md" -OutFile 'publish-tools\posting-pack-01.md'
+          Invoke-WebRequest -UseBasicParsing -Uri "$raw/media/short04.json" -OutFile 'publish-input\short04\metadata.json'
+          Write-Host 'Downloaded script, posting metadata, and render metadata only. No video was downloaded to this runner.'
 
       - name: Ensure publish bridge dependency
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
@@ -167,10 +175,11 @@ jobs:
           $pythonArgs = @()
           if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_PREFIX)) { $pythonArgs += $env:PYTHON_PREFIX }
           $pythonArgs += @(
-            'publish-bundle/video-factory/postiz_publish.py',
+            'publish-tools/postiz_publish.py',
             '--content-id', 'short04',
-            '--artifact-root', 'publish-bundle/batch-output',
-            '--posting-pack', 'publish-bundle/content/posting-pack-01.md'
+            '--artifact-root', 'publish-input',
+            '--posting-pack', 'publish-tools/posting-pack-01.md',
+            '--media-url', $env:SHORT04_MEDIA_URL
           )
           $schedule = '${{ inputs.schedule_at }}'
           if (-not [string]::IsNullOrWhiteSpace($schedule)) {
@@ -179,34 +188,9 @@ jobs:
           & $env:PYTHON_EXE @pythonArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Copy publish state into workflow artifact
+      - name: Remove local temporary publish inputs
         if: always()
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
-          New-Item -ItemType Directory -Force -Path publish-output | Out-Null
-          $state = Join-Path $env:LOCALAPPDATA 'RemotePayGuide\publish-state\short04.json'
-          if (Test-Path $state) {
-            Copy-Item $state 'publish-output\short04.json' -Force
-          } else {
-            Write-Host 'No publish state file was created.'
-          }
-
-      - name: Upload publish result
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: remote-pay-guide-short04-publish-result
-          path: publish-output/
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Remove downloaded media from self-hosted runner
-        if: always()
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
-        run: |
-          if (Test-Path 'publish-bundle') {
-            Remove-Item -Recurse -Force 'publish-bundle'
-            Write-Host 'Removed publish-bundle from self-hosted runner.'
-          } else {
-            Write-Host 'No publish-bundle directory to remove.'
-          }
+          Remove-Item -Recurse -Force 'publish-tools','publish-input' -ErrorAction SilentlyContinue
+          Write-Host 'Removed temporary publish inputs. No video was stored on this runner.'
