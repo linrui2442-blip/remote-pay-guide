@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 
 $InstallDir = 'C:\RemotePayGuide-tools'
 $TrayScript = Join-Path $InstallDir 'PostizTray.ps1'
-$RawUrl = 'https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main/tools/postiz-tray/PostizTray.ps1'
+$RawBaseUrl = 'https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main/tools/postiz-tray/PostizTray.ps1'
 $Desktop = [Environment]::GetFolderPath('Desktop')
 $ShortcutPath = Join-Path $Desktop 'Postiz.lnk'
 $PowerShellExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -19,8 +19,12 @@ if (-not (Test-Path 'C:\actions-runner\run.cmd')) {
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-Write-Host 'Downloading Postiz tray launcher...'
-Invoke-WebRequest -UseBasicParsing -Uri $RawUrl -OutFile $TrayScript
+# Add a unique query string so GitHub/CDN/browser caches cannot return an older launcher.
+$cacheBust = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+$RawUrl = $RawBaseUrl + '?v=' + $cacheBust
+
+Write-Host 'Downloading latest Postiz tray launcher (cache bypass enabled)...'
+Invoke-WebRequest -UseBasicParsing -Uri $RawUrl -Headers @{ 'Cache-Control' = 'no-cache'; 'Pragma' = 'no-cache' } -OutFile $TrayScript
 
 # Re-save as UTF-8 with BOM for Windows PowerShell 5.1 compatibility.
 $text = [System.IO.File]::ReadAllText($TrayScript, [System.Text.Encoding]::UTF8)
@@ -37,7 +41,7 @@ $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,13"
 $shortcut.Save()
 
 Write-Host ''
-Write-Host 'Installed successfully.'
+Write-Host 'Installed latest launcher successfully.'
 Write-Host "Desktop shortcut: $ShortcutPath"
 Write-Host "Tray launcher:    $TrayScript"
 Write-Host ''
