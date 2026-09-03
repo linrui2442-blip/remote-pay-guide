@@ -28,6 +28,43 @@ def _centered_multiline(draw: ImageDraw.ImageDraw, box, text: str, font, fill, s
     )
 
 
+def _wrap_to_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
+    words = text.split()
+    if not words:
+        return text
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return "\n".join(lines)
+
+
+def _fit_wrapped_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font_path: Path,
+    max_width: int,
+    max_height: int,
+    max_lines: int = 3,
+) -> tuple[str, ImageFont.FreeTypeFont]:
+    for size in range(58, 39, -2):
+        font = _font(font_path, size)
+        wrapped = _wrap_to_width(draw, text, font, max_width)
+        lines = wrapped.splitlines()
+        bbox = draw.multiline_textbbox((0, 0), wrapped, font=font, spacing=8, align="center")
+        if len(lines) <= max_lines and (bbox[3] - bbox[1]) <= max_height:
+            return wrapped, font
+    font = _font(font_path, 40)
+    return _wrap_to_width(draw, text, font, max_width), font
+
+
 def _video_duration(path: Path) -> float:
     proc = subprocess.run(
         [
@@ -50,14 +87,23 @@ def _video_duration(path: Path) -> float:
 def build_hook(path: Path, font_path: Path, message: str) -> None:
     image = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    box = (92, 160, 988, 470)
+    box = (92, 160, 988, 500)
     draw.rounded_rectangle(box, radius=38, fill=(255, 255, 255, 244))
     draw.text((140, 195), "CLIENT", font=_font(font_path, 34), fill=(70, 85, 120, 255))
+    text_box = (132, 245, 948, 465)
+    wrapped, font = _fit_wrapped_text(
+        draw,
+        message,
+        font_path,
+        max_width=text_box[2] - text_box[0],
+        max_height=text_box[3] - text_box[1],
+        max_lines=3,
+    )
     _centered_multiline(
         draw,
-        (120, 235, 960, 440),
-        message,
-        _font(font_path, 58),
+        text_box,
+        wrapped,
+        font,
         (20, 25, 35, 255),
     )
     image.save(path)
