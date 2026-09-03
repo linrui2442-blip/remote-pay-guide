@@ -1,0 +1,109 @@
+name: Render short01 proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MPT_COMMIT: cbbb366393105d5cefc254dc9ed492d43da0711b
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+
+    steps:
+      - name: Checkout Remote Pay Guide
+        uses: actions/checkout@v4
+
+      - name: Validate Pexels secret
+        shell: bash
+        run: |
+          if [ -z "$PEXELS_API_KEY" ]; then
+            echo "Missing repository secret: PEXELS_API_KEY"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv and FFmpeg
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip uv
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+
+      - name: Fetch pinned MoneyPrinterTurbo
+        shell: bash
+        run: |
+          git clone https://github.com/harry0703/MoneyPrinterTurbo.git
+          cd MoneyPrinterTurbo
+          git checkout "$MPT_COMMIT"
+
+      - name: Install MoneyPrinterTurbo dependencies
+        working-directory: MoneyPrinterTurbo
+        shell: bash
+        run: uv sync --frozen
+
+      - name: Configure Pexels without exposing the key
+        working-directory: MoneyPrinterTurbo
+        shell: bash
+        run: |
+          cp config.example.toml config.toml
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('config.toml')
+          text = path.read_text(encoding='utf-8')
+          key = os.environ['PEXELS_API_KEY']
+          replacement = 'pexels_api_keys = [' + json.dumps(key) + ']'
+          if 'pexels_api_keys = []' not in text:
+              raise SystemExit('Could not find pexels_api_keys placeholder in config.toml')
+          text = text.replace('pexels_api_keys = []', replacement, 1)
+          text = text.replace('log_level = "DEBUG"', 'log_level = "INFO"', 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Copy short01 render task
+        shell: bash
+        run: cp video-factory/tasks-short01.jsonl MoneyPrinterTurbo/tasks-short01.jsonl
+
+      - name: Render short01
+        working-directory: MoneyPrinterTurbo
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run python cli.py --batch-file ./tasks-short01.jsonl --stop-at video | tee ../short01-result.json
+
+      - name: Collect render files
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p render-artifacts
+          if [ -f short01-result.json ]; then
+            cp short01-result.json render-artifacts/
+          fi
+          if [ -d MoneyPrinterTurbo/storage/tasks ]; then
+            find MoneyPrinterTurbo/storage/tasks -type f \
+              \( -name '*.mp4' -o -name '*.srt' -o -name '*.json' -o -name '*.mp3' \) \
+              -exec cp --parents {} render-artifacts/ \;
+          fi
+
+      - name: Upload short01 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: short01-proof
+          path: render-artifacts/
+          if-no-files-found: warn
+          retention-days: 7
