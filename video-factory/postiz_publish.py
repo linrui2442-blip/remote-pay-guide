@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -22,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--artifact-root", default="batch-output")
     parser.add_argument("--posting-pack", default="content/posting-pack-01.md")
     parser.add_argument("--schedule-at", default="")
+    parser.add_argument("--media-url", default="")
     parser.add_argument(
         "--api-base-url",
         default=os.getenv("POSTIZ_API_BASE_URL", "http://localhost:4007/api/public/v1"),
@@ -108,6 +110,40 @@ def normalize_schedule(value: str, existing: str | None) -> str:
             raise SystemExit("--schedule-at must include a timezone offset or Z")
         dt = dt.astimezone(timezone.utc)
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def external_media(url: str, content_id: str) -> dict[str, str]:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise SystemExit("--media-url must be a public http(s) URL")
+    if not parsed.path.lower().endswith(".mp4"):
+        raise SystemExit("--media-url must point to an .mp4 file")
+    return {"id": f"external-{content_id}", "path": url}
+
+
+def verify_public_media(url: str) -> None:
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=30)
+        if response.status_code == 405:
+            response.close()
+            response = requests.get(url, allow_redirects=True, stream=True, timeout=30)
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "").lower()
+        content_length = response.headers.get("Content-Length", "")
+        final_url = response.url
+        response.close()
+    except Exception as exc:
+        raise RuntimeError(f"Public media URL is not reachable: {type(exc).__name__}: {exc}") from exc
+
+    if content_type and "video" not in content_type and "octet-stream" not in content_type:
+        raise RuntimeError(f"Public media URL returned unexpected Content-Type: {content_type}")
+    if content_length:
+        try:
+            if int(content_length) <= 0:
+                raise RuntimeError("Public media URL returned an empty file")
+        except ValueError:
+            pass
+    print(f"Verified public media URL: {final_url}")
 
 
 class PostizClient:
@@ -255,8 +291,10 @@ def main() -> None:
     output_name = metadata.get("output")
     if not output_name:
         raise SystemExit(f"{args.content_id} metadata has no output field")
+
+    media_url = args.media_url.strip()
     video = content_dir / str(output_name)
-    if not video.exists() or video.stat().st_size <= 0:
+    if not media_url and (not video.exists() or video.stat().st_size <= 0):
         raise SystemExit(f"Missing or empty polished video: {video}")
 
     posting_pack = parse_posting_pack(Path(args.posting_pack), args.content_id)
@@ -266,10 +304,22 @@ def main() -> None:
     if state and state.get("content_id") != args.content_id:
         raise SystemExit(f"State file content_id mismatch: {state_path}")
 
-    scheduled_at = normalize_schedule(args.schedule_at, state.get("scheduled_at"))
     state.setdefault("content_id", args.content_id)
-    state.setdefault("scheduled_at", scheduled_at)
     state.setdefault("platforms", {})
+
+    requested_media: dict[str, Any] | None = None
+    if media_url:
+        requested_media = external_media(media_url, args.content_id)
+        previous_path = str((state.get("media") or {}).get("path") or "")
+        if previous_path != media_url:
+            if previous_path:
+                print(f"MEDIA CHANGE {previous_path} -> {media_url}; resetting platform delivery state")
+            state["media"] = requested_media
+            state["platforms"] = {}
+            state.pop("scheduled_at", None)
+
+    scheduled_at = normalize_schedule(args.schedule_at, state.get("scheduled_at"))
+    state.setdefault("scheduled_at", scheduled_at)
     save_state(state_path, state)
 
     api_key = os.getenv("POSTIZ_API_KEY", "").strip()
@@ -281,7 +331,8 @@ def main() -> None:
             json.dumps(
                 {
                     "content_id": args.content_id,
-                    "video": str(video),
+                    "video": str(video) if not media_url else None,
+                    "media_url": media_url or None,
                     "scheduled_at": scheduled_at,
                     "state_path": str(state_path),
                     "title": posting_pack["title"],
@@ -297,7 +348,12 @@ def main() -> None:
     integrations = resolve_integrations(client.integrations())
 
     media = state.get("media")
-    if not media:
+    if media_url:
+        verify_public_media(media_url)
+        media = requested_media or external_media(media_url, args.content_id)
+        state["media"] = media
+        save_state(state_path, state)
+    elif not media:
         media = client.upload(video)
         state["media"] = media
         save_state(state_path, state)
