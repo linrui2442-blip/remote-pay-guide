@@ -5,6 +5,8 @@ $ErrorActionPreference = 'Stop'
 
 $PostizDir = 'C:\postiz-docker-compose'
 $RunnerDir = 'C:\actions-runner'
+$InstallDir = 'C:\RemotePayGuide-tools'
+$RunnerLog = Join-Path $InstallDir 'runner.log'
 $PostizUrl = 'http://localhost:4007'
 $DockerDesktopExe = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
 $DockerCliExe = 'C:\Program Files\Docker\Docker\DockerCli.exe'
@@ -36,18 +38,18 @@ function Test-Postiz {
 
 function Get-RunnerProcesses {
     try {
-        return @(Get-CimInstance Win32_Process | Where-Object {
-            $_.Name -in @('Runner.Listener.exe','Runner.Worker.exe') -and
-            (($_.ExecutablePath -and $_.ExecutablePath.StartsWith($RunnerDir, [System.StringComparison]::OrdinalIgnoreCase)) -or
-             ($_.CommandLine -and $_.CommandLine.IndexOf($RunnerDir, [System.StringComparison]::OrdinalIgnoreCase) -ge 0))
-        })
+        return @(Get-Process -Name 'Runner.Listener','Runner.Worker' -ErrorAction SilentlyContinue)
     } catch {
         return @()
     }
 }
 
 function Test-Runner {
-    return ((Get-RunnerProcesses | Where-Object { $_.Name -eq 'Runner.Listener.exe' }).Count -gt 0)
+    try {
+        return (@(Get-Process -Name 'Runner.Listener' -ErrorAction SilentlyContinue).Count -gt 0)
+    } catch {
+        return $false
+    }
 }
 
 function Show-TrayMessage([string]$title, [string]$message, [System.Windows.Forms.ToolTipIcon]$icon = [System.Windows.Forms.ToolTipIcon]::Info) {
@@ -128,31 +130,39 @@ function Start-RunnerIfNeeded {
         throw "GitHub Actions runner was not found at $runCmd"
     }
 
-    $script:NotifyIcon.Text = 'Postiz - starting runner'
-    Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/c','run.cmd' -WorkingDirectory $RunnerDir -WindowStyle Hidden | Out-Null
+    if (-not (Test-Path $InstallDir)) {
+        New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    }
+    Remove-Item $RunnerLog -Force -ErrorAction SilentlyContinue
 
-    $deadline = (Get-Date).AddSeconds(30)
+    $script:NotifyIcon.Text = 'Postiz - starting runner'
+    $command = "call `"$runCmd`" >> `"$RunnerLog`" 2>&1"
+    Start-Process -FilePath $env:ComSpec -ArgumentList '/d','/c',$command -WorkingDirectory $RunnerDir -WindowStyle Hidden | Out-Null
+
+    $deadline = (Get-Date).AddSeconds(45)
     while ((Get-Date) -lt $deadline) {
         [System.Windows.Forms.Application]::DoEvents()
         if (Test-Runner) { return }
         Start-Sleep -Seconds 1
     }
-    throw 'GitHub Actions runner did not start within 30 seconds.'
+
+    $details = ''
+    if (Test-Path $RunnerLog) {
+        try {
+            $tail = @(Get-Content $RunnerLog -Tail 20 -ErrorAction SilentlyContinue)
+            if ($tail.Count -gt 0) { $details = "`n`nRunner log:`n" + ($tail -join "`n") }
+        } catch {}
+    }
+    throw ('GitHub Actions runner did not start within 45 seconds.' + $details)
 }
 
 function Stop-Runner {
-    $processes = @(Get-RunnerProcesses)
-    $listenerIds = @($processes | Where-Object { $_.Name -eq 'Runner.Listener.exe' } | Select-Object -ExpandProperty ProcessId)
-    foreach ($pidValue in $listenerIds) {
-        try {
-            & taskkill.exe /PID $pidValue /T /F *> $null
-        } catch {}
-    }
-
-    # Clean up any worker left behind.
-    Start-Sleep -Milliseconds 300
     foreach ($proc in @(Get-RunnerProcesses)) {
-        try { Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+        try {
+            & taskkill.exe /PID $proc.Id /T /F *> $null
+        } catch {
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        }
     }
 }
 
