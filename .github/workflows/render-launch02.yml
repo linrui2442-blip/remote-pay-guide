@@ -122,7 +122,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Postiz secret
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           if ([string]::IsNullOrWhiteSpace($env:POSTIZ_API_KEY)) {
             throw 'Missing repository secret: POSTIZ_API_KEY'
@@ -140,11 +140,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install publish bridge dependency
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: python -m pip install --disable-pip-version-check requests
 
       - name: Publish or schedule short04 through local Postiz
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           $argsList = @(
             'video-factory/postiz_publish.py',
@@ -160,7 +160,7 @@ jobs:
 
       - name: Copy publish state into workflow artifact
         if: always()
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           New-Item -ItemType Directory -Force -Path publish-output | Out-Null
           $state = Join-Path $env:LOCALAPPDATA 'RemotePayGuide\publish-state\short04.json'
@@ -181,7 +181,7 @@ jobs:
 
       - name: Remove downloaded media from self-hosted runner
         if: always()
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           if (Test-Path 'batch-output') {
             Remove-Item -Recurse -Force 'batch-output'
