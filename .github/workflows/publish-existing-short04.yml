@@ -1,0 +1,106 @@
+name: Publish existing short04 through Postiz
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Successful Render short02-short10 batch run ID containing the artifact'
+        required: true
+        default: '33723359599'
+        type: string
+      schedule_at:
+        description: 'Optional ISO 8601 schedule time with timezone; blank = 20 minutes after publish job starts'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  publish-short04:
+    runs-on: [self-hosted, windows, x64]
+    timeout-minutes: 30
+    concurrency:
+      group: remote-pay-guide-short04-postiz
+      cancel-in-progress: false
+    env:
+      POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+      POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
+
+    steps:
+      - name: Checkout Remote Pay Guide
+        uses: actions/checkout@v4
+
+      - name: Validate Postiz secret
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:POSTIZ_API_KEY)) {
+            throw 'Missing repository secret: POSTIZ_API_KEY'
+          }
+
+      - name: Download existing rendered batch
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-pay-guide-short02-short10
+          path: batch-output
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify short04 artifact
+        shell: pwsh
+        run: |
+          $metadata = 'batch-output\short04\metadata.json'
+          $video = 'batch-output\short04\polished-short04.mp4'
+          if (-not (Test-Path $metadata)) { throw "Missing $metadata" }
+          if (-not (Test-Path $video)) { throw "Missing $video" }
+          if ((Get-Item $video).Length -le 0) { throw 'polished-short04.mp4 is empty' }
+          $record = Get-Content $metadata -Raw | ConvertFrom-Json
+          if ($record.status -ne 'succeeded') { throw "short04 metadata status is $($record.status), expected succeeded" }
+          Write-Host "Verified existing short04 artifact: $((Get-Item $video).Length) bytes"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install publish bridge dependency
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check requests
+
+      - name: Publish or schedule short04 through local Postiz
+        shell: pwsh
+        run: |
+          $argsList = @(
+            'video-factory/postiz_publish.py',
+            '--content-id', 'short04',
+            '--artifact-root', 'batch-output',
+            '--posting-pack', 'content/posting-pack-01.md'
+          )
+          $schedule = '${{ inputs.schedule_at }}'
+          if (-not [string]::IsNullOrWhiteSpace($schedule)) {
+            $argsList += @('--schedule-at', $schedule)
+          }
+          python @argsList
+
+      - name: Copy publish state into workflow artifact
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path publish-output | Out-Null
+          $state = Join-Path $env:LOCALAPPDATA 'RemotePayGuide\publish-state\short04.json'
+          if (Test-Path $state) {
+            Copy-Item $state 'publish-output\short04.json' -Force
+          } else {
+            Write-Host 'No publish state file was created.'
+          }
+
+      - name: Upload publish result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-pay-guide-short04-publish-result
+          path: publish-output/
+          if-no-files-found: warn
+          retention-days: 30
