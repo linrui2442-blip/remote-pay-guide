@@ -1,0 +1,16 @@
+{
+  "content_id": "short04",
+  "status": "succeeded",
+  "task_id": "d045ee3d-ab77-46ef-bda1-c9c6e190f9a0",
+  "hook": "USDT or USDC — which one?",
+  "video_subject": "Your client says they can pay USDT or USDC. Which one should you choose?",
+  "video_script": "Don't choose based only on the name. Ask what networks the sender can use, then check what your receiving wallet or platform currently supports. USDT and USDC are different assets, and supported networks can differ. Confirm the asset, confirm the network, then copy the receiving address. Beginner checklist in my profile.",
+  "video_terms": [
+    "person comparing two options on smartphone",
+    "remote worker checking information on laptop",
+    "freelancer reading client message on smartphone",
+    "person reviewing settings on phone",
+    "young professional using laptop at home office"
+  ],
+  "output": "polished-short04.mp4"
+}
