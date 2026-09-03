@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://linrui2442-blip.github.io/remote-pay-guide/sitemap.xml
