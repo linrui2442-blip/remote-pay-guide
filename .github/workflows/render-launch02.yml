@@ -178,3 +178,14 @@ jobs:
           path: publish-output/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Remove downloaded media from self-hosted runner
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path 'batch-output') {
+            Remove-Item -Recurse -Force 'batch-output'
+            Write-Host 'Removed batch-output from self-hosted runner.'
+          } else {
+            Write-Host 'No batch-output directory to remove.'
+          }
