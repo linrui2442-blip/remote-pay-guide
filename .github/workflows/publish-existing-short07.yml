@@ -1,0 +1,60 @@
+name: Publish existing short07 through Postiz
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Successful Render short02-short10 batch run ID containing the artifact'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  prepare-short07:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download existing rendered batch
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-pay-guide-short02-short10
+          path: source-batch
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Stage short07 media
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          cid='short07'
+          source=Path('source-batch')/cid
+          meta=source/'metadata.json'
+          data=json.loads(meta.read_text())
+          assert data.get('content_id')==cid
+          assert data.get('status')=='succeeded'
+          shutil.copy2(source/str(data['output']), Path('media')/f'{cid}.mp4')
+          shutil.copy2(meta, Path('media')/f'{cid}.json')
+          PY
+      - name: Commit media
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add media/short07.mp4 media/short07.json
+          git commit -m 'Stage short07 public media for Postiz' || true
+          git push origin HEAD:main || true
+  publish-short07:
+    needs: prepare-short07
+    runs-on: [self-hosted, windows, x64]
+    env:
+      POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+      POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
+      SHORT07_MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/short07.mp4
+    steps:
+      - name: Publish short07
+        shell: powershell
+        run: |
+          python publish-tools\postiz_publish.py --content-id short07 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url $env:SHORT07_MEDIA_URL
