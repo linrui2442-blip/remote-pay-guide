@@ -1,0 +1,45 @@
+name: Publish existing short08 through Postiz
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Successful Render short02-short10 batch run ID containing the artifact'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish-short08:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download existing rendered batch
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-pay-guide-short02-short10
+          path: source-batch
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Stage short08 media
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,shutil
+          from pathlib import Path
+          cid='short08'; src=Path('source-batch')/cid; m=src/'metadata.json'; d=json.loads(m.read_text()); assert d['content_id']==cid and d['status']=='succeeded'; Path('media').mkdir(exist_ok=True); shutil.copy2(src/d['output'],'media/short08.mp4'); shutil.copy2(m,'media/short08.json')
+          PY
+      - name: Commit media
+        run: |
+          git add media/short08.mp4 media/short08.json && git commit -m 'Stage short08 public media for Postiz' || true
+          git push origin HEAD:main || true
+  publish:
+    needs: publish-short08
+    runs-on: [self-hosted, windows, x64]
+    steps:
+      - name: Publish short08 through Postiz
+        shell: powershell
+        run: python publish-tools\postiz_publish.py --content-id short08 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short08.mp4
