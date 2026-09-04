@@ -3,19 +3,15 @@
 ## Current Architecture
 
 ```
-JSONL Tasks
+Content Factory
     ↓
-MoneyPrinterTurbo Adapter
+Finished MP4
     ↓
-render_batch.py
-    ↓
-polish_short.py
-    ↓
-Finished Video
+GitHub Pages Public Media
     ↓
 Postiz
     ↓
-YouTube / Instagram / Facebook
+Facebook / Instagram / YouTube Shorts
     ↓
 Landing Page
     ↓
@@ -26,124 +22,111 @@ Referral Conversion
 
 ## Content Factory
 
-The video production system uses predefined JSONL tasks.
+The video production system uses predefined tasks.
 
-Current task sources:
+Production plan:
 
-- tasks-launch01.jsonl
-- tasks-launch02.jsonl
-- tasks-short01.jsonl
+```
+short01-short10
+```
 
-Tasks contain acquisition-specific content including:
+Completed production:
 
-- video subject
-- script
-- search terms
-- metadata
+```
+short01
+short02
+short03
+short04
+```
 
-The render pipeline does not require an LLM to write scripts during rendering.
+The system separates:
+
+- planned content
+- completed content
+
+They must not be mixed.
 
 ## Distribution Layer
 
-Current implementation:
+Current publishing architecture:
 
 ```
-Finished MP4
-    ↓
-postiz_publish.py
-    ↓
-Postiz API
-    ↓
+MP4
+ ↓
+Public GitHub Pages URL
+ ↓
+Postiz
+ ↓
 Social Platforms
 ```
 
-Current connected publishing accounts:
+Confirmed publishing platforms:
 
 - Facebook ✅
 - Instagram ✅
-- YouTube ✅
+- YouTube Shorts ✅
 
-Pending verification:
+TikTok is not part of the current verified distribution chain.
+
+## short04 Validation Milestone
+
+short04 is the first key architecture validation video.
+
+It verified:
 
 ```
-content_id
-    ↓
-post_id
-    ↓
-publish status
-    ↓
-tracking source
+GitHub Pages public video URL
+        ↓
+Postiz
+        ↓
+External social platform publishing
 ```
 
-The goal is for Postiz-related publishing records to maintain:
-
-- content_id
-- video
-- caption
-- platform
-- publish status
-- tracking source
+This architecture enables future scale production without manual local upload.
 
 ## Local Operations Layer
 
-A Windows tray launcher is used for local infrastructure operations.
-
-Architecture:
+Windows local tools manage infrastructure only:
 
 ```
-RPG Desktop Launcher
+Launcher
     ↓
-Hidden VBS Startup
+Postiz
     ↓
-PostizTray.ps1
+Docker
     ↓
-Docker / Postiz / GitHub Runner
+GitHub Runner
 ```
 
-Current functions:
-
-- Start Postiz stack
-- Start GitHub Actions Runner
-- Check running status
-- Open Postiz interface
-
-This layer supports local operation only and is separate from the content growth funnel.
+This layer does not define the growth architecture.
 
 ## Attribution Layer
 
-The system needs to connect:
+Target tracking chain:
 
 ```
 content_id
     ↓
-platform distribution
+platform
     ↓
 traffic source
     ↓
 GA4
+    ↓
+conversion
 ```
 
-Example target flow:
+Example:
 
 ```
 short04
     ↓
-yt_short04
+YouTube
     ↓
 GA4
     ↓
 binance_referral_click
 ```
-
-## User Intent Layer
-
-The Landing Page is not only a conversion page.
-
-It collects user intent through:
-
-- payment_type_select
-- payer_type_select
-- exchange_status_select
 
 ## Conversion Layer
 
@@ -153,27 +136,18 @@ Final conversion event:
 binance_referral_click
 ```
 
-## Known Constraints
+## Current Objective
 
-- No need to redesign content strategy
-- No need to rebuild Video Factory
-- Validation starts from existing published assets
-- short04 is the first attribution validation target
+The system is no longer proving whether publishing works.
 
-The current objective is validation, not increasing publishing volume.
-
-The complete feedback loop is:
+The next objective is:
 
 ```
-Content Factory
-    ↓
-Distribution
-    ↓
-Attribution
-    ↓
-User Intent
-    ↓
-Conversion
-    ↓
-Revenue Feedback
+More content
+ ↓
+More traffic samples
+ ↓
+Better attribution data
+ ↓
+Better content decisions
 ```
