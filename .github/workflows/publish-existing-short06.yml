@@ -1,0 +1,115 @@
+name: Publish existing short06 through Postiz
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Successful Render short02-short10 batch run ID containing the artifact'
+        required: true
+        type: string
+      schedule_at:
+        description: 'Optional ISO 8601 schedule time with timezone'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  prepare-short06:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Remote Pay Guide
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download existing rendered batch
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-pay-guide-short02-short10
+          path: source-batch
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Stage short06 as public GitHub Pages media
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          content_id = 'short06'
+          source = Path('source-batch') / content_id
+          metadata_path = source / 'metadata.json'
+          metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+
+          if metadata.get('content_id') != content_id:
+              raise SystemExit('short06 metadata content_id mismatch')
+          if metadata.get('status') != 'succeeded':
+              raise SystemExit('short06 render did not succeed')
+
+          video = source / str(metadata['output'])
+          if not video.exists() or video.stat().st_size <= 0:
+              raise SystemExit(f'Missing video: {video}')
+
+          media = Path('media')
+          media.mkdir(exist_ok=True)
+          shutil.copy2(video, media / 'short06.mp4')
+          shutil.copy2(metadata_path, media / 'short06.json')
+          PY
+
+      - name: Commit staged media to main for GitHub Pages
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add media/short06.mp4 media/short06.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Stage short06 public media for Postiz'
+            git push origin HEAD:main
+          fi
+
+      - name: Wait for GitHub Pages media URL
+        shell: bash
+        run: |
+          url='https://linrui2442-blip.github.io/remote-pay-guide/media/short06.mp4'
+          for attempt in $(seq 1 36); do
+            if curl -fsSI --max-time 15 "$url"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+
+  publish-short06:
+    needs: prepare-short06
+    runs-on: [self-hosted, windows, x64]
+    timeout-minutes: 10
+    env:
+      POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+      POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
+      SHORT06_MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/short06.mp4
+
+    steps:
+      - name: Download publish inputs only
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path publish-tools,publish-input\short06 | Out-Null
+          $raw='https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main'
+          Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
+          Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
+          Invoke-WebRequest "$raw/media/short06.json" -OutFile publish-input\short06\metadata.json
+
+      - name: Publish short06 through Postiz
+        shell: powershell
+        run: |
+          python publish-tools\postiz_publish.py `
+            --content-id short06 `
+            --artifact-root publish-input `
+            --posting-pack publish-tools\posting-pack-01.md `
+            --media-url $env:SHORT06_MEDIA_URL
