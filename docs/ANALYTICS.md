@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Analytics measures the path:
+Analytics measures the complete acquisition path:
 
 ```
 social traffic
@@ -12,6 +12,8 @@ landing page
 user intent
     ↓
 referral click
+    ↓
+conversion feedback
 ```
 
 ## Current Status
@@ -23,8 +25,11 @@ DONE
 Event tracking:
 IMPLEMENTED
 
-Real traffic validation:
-PENDING
+Published content validation:
+DONE (short01-short04)
+
+Real traffic attribution validation:
+IN PROGRESS
 
 Revenue validation:
 PENDING
@@ -67,36 +72,74 @@ exchange_status_select
 binance_referral_click
 ```
 
-## Validation Required
+## Current Publishing Attribution
 
-GA4 integration does not mean the business loop is verified.
-
-Need to confirm:
+Active publishing platforms:
 
 ```
-YouTube short04
-    ↓
-Profile link
-    ↓
-Landing Page
-    ↓
-GA4 realtime data
-    ↓
-Events received
+YouTube Shorts
+Instagram Reels
+Facebook Reels
 ```
 
-## Attribution Goal
+TikTok is not currently part of the publishing workflow.
 
-The target attribution model is:
+The attribution goal is:
 
 ```
-short04
+content_id
     ↓
-yt_short04
+platform
+    ↓
+traffic source
     ↓
 GA4
     ↓
 binance_referral_click
 ```
 
-The goal is identifying which content generates revenue.
+Example:
+
+```
+short04
+    ↓
+youtube_short04
+    ↓
+GA4
+    ↓
+binance_referral_click
+```
+
+## Validation Status
+
+The system has verified:
+
+```
+Content Factory
+    ↓
+Video Production
+    ↓
+Postiz Publishing
+    ↓
+Landing Page
+    ↓
+GA4 Events
+```
+
+Remaining validation:
+
+```
+Real external user
+    ↓
+Social platform
+    ↓
+Landing Page
+    ↓
+Intent event
+    ↓
+Referral conversion
+```
+
+## Goal
+
+Identify which content generates users with real stablecoin payment intent and referral conversion.
