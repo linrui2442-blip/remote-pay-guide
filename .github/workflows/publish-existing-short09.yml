@@ -1,0 +1,34 @@
+name: Publish existing short09 through Postiz
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish-short09:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: remote-pay-guide-short02-short10
+          path: source-batch
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+      - name: Stage
+        run: |
+          mkdir -p media
+          cp source-batch/short09/*.mp4 media/short09.mp4
+          cp source-batch/short09/metadata.json media/short09.json
+      - name: Commit
+        run: git add media && git commit -m 'Stage short09 public media for Postiz' || true; git push origin HEAD:main || true
+  postiz:
+    needs: publish-short09
+    runs-on: [self-hosted, windows, x64]
+    steps:
+      - run: python publish-tools\postiz_publish.py --content-id short09 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4
