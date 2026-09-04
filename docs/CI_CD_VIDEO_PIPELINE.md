@@ -1,0 +1,227 @@
+# Remote Pay Guide CI/CD Video Pipeline
+
+## 0. Purpose
+
+This document records the GitHub Actions layer of Remote Pay Guide Video Factory.
+
+It describes how production workflows execute:
+
+```
+GitHub Actions
+        ↓
+Render workflow
+        ↓
+Artifact
+        ↓
+Media hosting
+        ↓
+Publish workflow
+        ↓
+Postiz
+```
+
+This document describes CI/CD execution only.
+
+Production logic is documented in:
+
+```
+docs/VIDEO_PRODUCTION_PIPELINE.md
+```
+
+---
+
+# 1. Render Workflow
+
+## Workflow
+
+```
+.github/workflows/render-launch02.yml
+```
+
+Purpose:
+
+Batch render short02-short10 content.
+
+short04 was produced through this batch workflow.
+
+---
+
+## Runner
+
+```
+runs-on: ubuntu-latest
+```
+
+The render environment provides:
+
+- Python 3.11
+- uv
+- FFmpeg
+- MoneyPrinterTurbo dependencies
+
+---
+
+## MoneyPrinterTurbo
+
+The workflow clones:
+
+```
+https://github.com/harry0703/MoneyPrinterTurbo.git
+```
+
+Pinned commit:
+
+```
+cbbb366393105d5cefc254dc9ed492d43da0711b
+```
+
+---
+
+## Secrets
+
+Required secret:
+
+```
+PEXELS_API_KEY
+```
+
+Injected into MoneyPrinterTurbo configuration during workflow execution.
+
+---
+
+## Render Command
+
+The workflow executes:
+
+```
+python video-factory/render_batch.py \
+  --mpt-root MoneyPrinterTurbo \
+  --tasks video-factory/tasks-launch02.jsonl \
+  --meta video-factory/launch02-meta.json \
+  --output batch-output \
+  --polisher video-factory/polish_short.py \
+  --font MoneyPrinterTurbo/resource/fonts/BeVietnamPro-Bold.ttf
+```
+
+---
+
+## Artifact
+
+The render workflow uploads:
+
+```
+remote-pay-guide-short02-short10
+```
+
+The publish workflow consumes this artifact.
+
+---
+
+# 2. Short04 Publish Workflow
+
+## Workflow
+
+```
+.github/workflows/publish-existing-short04.yml
+```
+
+Purpose:
+
+Publish an existing rendered short04 asset without rerendering.
+
+---
+
+# 3. Media Staging Flow
+
+The workflow downloads the render artifact and extracts:
+
+```
+batch-output/short04/polished-short04.mp4
+```
+
+Then stages public media:
+
+```
+media/short04.mp4
+media/short04.json
+```
+
+The workflow commits these files to the main branch.
+
+---
+
+# 4. GitHub Pages Media URL
+
+The public media URL is:
+
+```
+https://linrui2442-blip.github.io/remote-pay-guide/media/short04.mp4
+```
+
+The publish workflow waits until the URL becomes reachable before continuing.
+
+---
+
+# 5. Postiz Publishing
+
+Publishing runner:
+
+```
+[self-hosted, windows, x64]
+```
+
+Postiz environment:
+
+```
+POSTIZ_API_KEY
+POSTIZ_API_BASE_URL
+```
+
+The workflow does not download the video to the publishing runner.
+
+Instead it passes:
+
+```
+--media-url
+```
+
+Example:
+
+```
+https://linrui2442-blip.github.io/remote-pay-guide/media/short04.mp4
+```
+
+Postiz receives the public media URL and publishes the asset to connected platforms.
+
+---
+
+# 6. Validated Short04 Chain
+
+```
+render-launch02.yml
+        ↓
+remote-pay-guide-short02-short10 artifact
+        ↓
+publish-existing-short04.yml
+        ↓
+media/short04.mp4
+        ↓
+GitHub Pages
+        ↓
+Postiz --media-url
+        ↓
+Social platforms
+```
+
+---
+
+# 7. Maintenance Rule
+
+Do not redesign CI/CD without checking:
+
+1. Render workflow
+2. Artifact contract
+3. Media hosting step
+4. Publish workflow
+
+Changes should preserve the validated short04 production chain.
