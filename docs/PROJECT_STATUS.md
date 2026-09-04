@@ -16,20 +16,6 @@ Current phase:
 - Verify traffic attribution
 - Optimize conversion path
 
-## System Layers
-
-```
-Content Factory
-+
-Distribution Layer
-+
-Attribution Layer
-+
-User Intent Layer
-+
-Conversion Layer
-```
-
 ## Implemented
 
 ### Website
@@ -68,6 +54,7 @@ short01
 short02
 short03
 short04
+short05
 ```
 
 Important:
@@ -88,6 +75,29 @@ Not confirmed:
 
 - TikTok ❌ (do not include in current platform count)
 
+## Publishing Validation Status
+
+short04:
+
+- Render ✅
+- Public media pipeline ✅
+- Postiz publishing ✅
+- Facebook / Instagram / YouTube validation ✅
+
+short05:
+
+- Render ✅
+- Public media pipeline ✅
+- Postiz publishing ✅
+- Facebook / Instagram / YouTube validation ✅
+
+Current status:
+
+```
+short04-short05 publishing chain verified
+ready for short06-short10 production
+```
+
 ## short04 Architecture Validation
 
 short04 is the key architecture verification milestone.
@@ -103,30 +113,6 @@ Facebook / Instagram / YouTube
 ```
 
 This replaces the old localhost upload approach.
-
-Old:
-
-```
-Local upload
-    ↓
-localhost media
-    ↓
-Postiz
-```
-
-Problem:
-
-Third-party platforms cannot access localhost resources.
-
-New:
-
-```
-Public media URL
-    ↓
-Postiz
-    ↓
-Social platforms fetch media
-```
 
 ## Current Validation Loop
 
@@ -146,8 +132,8 @@ binance_referral_click
 
 ## Next Tasks
 
-1. Produce short05-short10
+1. Produce short06-short10
 2. Keep the same publishing architecture
-3. Build automated publishing templates
+3. Build automated publishing templates after production validation
 4. Record video/platform/traffic/conversion data
 5. Optimize content based on real user behavior
