@@ -30,15 +30,11 @@ Video asset
 Publishing metadata
  ↓
 Traffic attribution
- ↓
-Performance analysis
 ```
 
 ---
 
 # 1. Content Preparation
-
-## Task Sources
 
 Video production starts from JSONL task manifests inside `video-factory/`:
 
@@ -46,21 +42,27 @@ Video production starts from JSONL task manifests inside `video-factory/`:
 - `tasks-launch02.jsonl`
 - `tasks-short01.jsonl`
 
-These files are production inputs, not output files or publishing records.
+These files define production tasks, not output files or publishing records.
 
-Each task provides the content information required by the rendering pipeline, including:
+Each task provides rendering inputs including:
 
 - `video_subject`
 - `video_script`
 - `video_terms`
 
-The current workflow does not require an LLM step to create scripts or search terms during rendering because those fields already exist in the task manifests.
+Metadata JSON files provide additional content-level information.
+
+Example:
+
+```
+video-factory/launch02-meta.json
+```
+
+Metadata enriches production tasks. It does not replace JSONL task definitions.
 
 ---
 
 # 2. Rendering Pipeline
-
-## Entry Point
 
 The batch renderer is:
 
@@ -76,16 +78,16 @@ Task JSONL
 Metadata JSON
 ```
 
-Command arguments include:
+Required runtime arguments include:
 
+- `--mpt-root`
 - `--tasks`
 - `--meta`
 - `--output`
 - `--polisher`
 - `--font`
-- `--mpt-root`
 
-## Flow
+Flow:
 
 ```
 JSONL task
@@ -95,19 +97,11 @@ render_batch.py
 MoneyPrinterTurbo adapter flow
     ↓
 Rendered video
+    ↓
+polish_short.py
 ```
 
-`render_batch.py`:
-
-- reads task records from JSONL
-- reads metadata records
-- matches tasks with metadata using content order
-- runs MoneyPrinterTurbo rendering
-- locates generated task output
-- sends the rendered video into post processing
-- writes production metadata
-
-The rendered source video from MoneyPrinterTurbo is expected as:
+The rendered source video is expected as:
 
 ```
 final-1.mp4
@@ -119,24 +113,15 @@ final-1.mp4
 
 Remote Pay Guide uses MoneyPrinterTurbo as the rendering engine.
 
-It provides the production plumbing:
+It provides:
 
 - stock video retrieval
-- Edge TTS voice generation
+- voice generation
 - subtitle generation
 - FFmpeg/MoviePy composition
-- 9:16 video output
-- batch task execution
+- final video rendering
 
-Remote Pay Guide controls:
-
-- acquisition content
-- hooks
-- CTA
-- attribution metadata
-- content selection
-
-MoneyPrinterTurbo is called through the project pipeline rather than requiring manual editing.
+Remote Pay Guide controls content tasks, hooks, CTA, and attribution metadata.
 
 ---
 
@@ -149,84 +134,129 @@ Rendered video
       ↓
 polish_short.py
       ↓
-Final polished video
-```
-
-The batch pipeline calls the polisher after MoneyPrinterTurbo completes.
-
-Output naming:
-
-```
 polished-{content_id}.mp4
 ```
 
-The final asset is stored under the content output directory.
-
-The pipeline also copies subtitle output when available:
-
-```
-{content_id}.srt
-```
+The final polished asset is stored under the content output directory.
 
 ---
 
 # 5. Publishing Pipeline
 
-Publishing uses the generated polished video asset.
-
-Current flow:
+The validated short04 publishing architecture is:
 
 ```
 Polished MP4
       ↓
-Public media hosting
+GitHub Pages public media
       ↓
 Postiz
       ↓
-Social platforms
+YouTube Shorts
+Instagram Reels
+Facebook Reels
 ```
 
-Current publishing platforms:
+Important:
 
-- YouTube Shorts
-- Instagram Reels
-- Facebook Reels
+Postiz uses a public media URL.
 
-Publishing automation is handled through Postiz-related workflow components.
+The publishing flow does not upload the MP4 file to Postiz from the runner.
 
-Publishing records should keep:
-
-- video asset
-- caption
-- platform
-- metadata
-- tracking information
+The media URL is passed through `--media-url`.
 
 ---
 
 # 6. Short04 Validation Case
 
-short04 is the current production pipeline validation asset.
+short04 is the first validated production chain.
 
-It validated the full chain:
+The actual GitHub Actions workflow chain:
+
+## Render
+
+Workflow:
 
 ```
-Production task
-      ↓
-Render
-      ↓
-Polish
-      ↓
-Public media workflow
-      ↓
-Postiz publishing
-      ↓
-Attribution validation
+.github/workflows/render-launch02.yml
 ```
 
-short04 is not a separate production method. It is the first validated example of the standard pipeline.
+Purpose:
 
-Future content should reuse this workflow.
+Render short02-short10 batch content.
+
+Runner:
+
+```
+ubuntu-latest
+```
+
+Task input:
+
+```
+video-factory/tasks-launch02.jsonl
+```
+
+Metadata:
+
+```
+video-factory/launch02-meta.json
+```
+
+Artifact:
+
+```
+remote-pay-guide-short02-short10
+```
+
+---
+
+## Publish
+
+Workflow:
+
+```
+.github/workflows/publish-existing-short04.yml
+```
+
+Purpose:
+
+Publish an existing rendered short04 asset.
+
+The workflow:
+
+1. Downloads the existing render artifact.
+2. Extracts short04 polished video.
+3. Creates public media files:
+
+```
+media/short04.mp4
+media/short04.json
+```
+
+4. Commits media files to main branch.
+5. Uses GitHub Pages as public media hosting.
+6. Passes the public URL to Postiz.
+
+Public media URL:
+
+```
+https://linrui2442-blip.github.io/remote-pay-guide/media/short04.mp4
+```
+
+Publish runner:
+
+```
+[self-hosted, windows, x64]
+```
+
+Postiz receives:
+
+```
+--media-url
+```
+
+and does not require downloading the video asset to the publishing runner.
 
 ---
 
@@ -255,11 +285,11 @@ For short05+:
 
         ↓
 
-6. Prepare public media asset
+6. Stage public media asset
 
         ↓
 
-7. Publish through Postiz
+7. Publish through Postiz using media URL
 
         ↓
 
@@ -273,7 +303,6 @@ For short05+:
 Current areas requiring further validation:
 
 - fully unattended batch publishing flow
-- complete media hosting automation
 - complete content_id to native platform post_id attribution chain
 - retry and publishing recovery behavior
 
@@ -288,8 +317,8 @@ Future maintenance rules:
 Do not:
 
 - redesign Video Factory without understanding the existing pipeline
-- replace the production chain unnecessarily
-- remove validated short04 workflow
+- replace validated production workflows unnecessarily
+- remove the short04 validated chain
 
 Any modification should follow:
 
