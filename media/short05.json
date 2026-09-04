@@ -1,0 +1,16 @@
+{
+  "content_id": "short05",
+  "status": "succeeded",
+  "task_id": "e9f8afef-2dcd-438c-84a8-d81ecd6c9ede",
+  "hook": "Don't copy that address yet.",
+  "video_subject": "Someone is sending you USDT? Don't make this beginner mistake.",
+  "video_script": "The biggest mistake is copying a deposit address before checking the network. A sender can transfer the same stablecoin over different blockchain networks. If the sending network and receiving network don't match, you can create a serious problem. Confirm the network first, then copy the address from the official receive or deposit screen.",
+  "video_terms": [
+    "office worker double checking smartphone at desk",
+    "freelancer reading instructions on phone in home office",
+    "person copying text from smartphone to laptop",
+    "remote worker reviewing details on laptop at desk",
+    "freelancer using phone and laptop at home"
+  ],
+  "output": "polished-short05.mp4"
+}
