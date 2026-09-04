@@ -128,6 +128,15 @@ Final conversion event:
 binance_referral_click
 ```
 
+## Known Constraints
+
+- No need to redesign content strategy
+- No need to rebuild Video Factory
+- Validation starts from existing published assets
+- short04 is the first attribution validation target
+
+The current objective is validation, not increasing publishing volume.
+
 The complete feedback loop is:
 
 ```
