@@ -1,26 +1,36 @@
 # Remote Pay Guide
 
-Beginner-friendly landing page for people receiving USDT or USDC payments for the first time.
+An overseas content acquisition MVP for people receiving USDT or USDC payments for the first time.
 
 ## Goal
 
-Test whether first-time stablecoin payment intent can generate attributable Binance referrals.
+Test whether stablecoin payment education content can generate attributable user intent and Binance referral conversions.
+
+The project is not a crypto news or trading content account.
+
+The focus is:
+
+```
+Content
+  ↓
+Traffic
+  ↓
+User Intent
+  ↓
+Referral Conversion
+```
 
 ## Referral
 
 Binance referral ID: `137553211`
 
-The page discloses the referral relationship and reminds users to verify the exact asset and network before transferring funds.
+The landing page discloses the referral relationship and reminds users to verify the exact asset and network before transferring funds.
 
-## Traffic source tracking
+## Current Tracking
 
-Append `?src=` to the URL, for example:
+GA4 is connected.
 
-- `?src=yt01`
-- `?src=tt01`
-- `?src=fb01`
-
-The V0 page emits these browser events:
+Tracked user behavior includes:
 
 - `page_view`
 - `payment_type_select`
@@ -29,8 +39,101 @@ The V0 page emits these browser events:
 - `new_to_exchange_identified`
 - `binance_referral_click`
 
-V0 stores a local event log and also pushes events to `window.dataLayer`. A real analytics destination (GA4/Plausible/Umami) should be connected before paid traffic is sent.
+The main measurement goal is:
+
+```
+Video
+ ↓
+Landing Page
+ ↓
+User Intent Events
+ ↓
+Binance Referral Click
+```
+
+## Traffic Source Tracking
+
+Content attribution uses source parameters.
+
+Current publishing platforms:
+
+- YouTube Shorts
+- Instagram Reels
+- Facebook Reels
+
+TikTok is not currently part of the publishing workflow.
+
+Example source IDs:
+
+- `yt01`
+- `ig01`
+- `fb01`
+
+Each future content item should map:
+
+```
+content_id
+ ↓
+platform
+ ↓
+tracking source
+ ↓
+GA4
+ ↓
+conversion
+```
+
+## Publishing Architecture
+
+Current workflow:
+
+```
+Content Factory
+      ↓
+Finished MP4
+      ↓
+GitHub Pages Public Media
+      ↓
+Postiz
+      ↓
+YouTube / Instagram / Facebook
+      ↓
+Landing Page
+      ↓
+GA4
+      ↓
+Referral Conversion
+```
+
+## Content Status
+
+Production plan:
+
+```
+short01 - short10
+```
+
+Currently completed:
+
+```
+short01
+short02
+short03
+short04
+```
+
+short04 is the first key architecture validation asset for:
+
+```
+Public Video URL
+      ↓
+Postiz
+      ↓
+Social Publishing
+      ↓
+Attribution Validation
+```
 
 ## Deployment
 
-This repository is designed to be published from the `main` branch root with GitHub Pages.
+This repository is published through GitHub Pages from the `main` branch root.
