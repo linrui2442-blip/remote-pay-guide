@@ -84,6 +84,31 @@ The goal is for Postiz-related publishing records to maintain:
 - publish status
 - tracking source
 
+## Local Operations Layer
+
+A Windows tray launcher is used for local infrastructure operations.
+
+Architecture:
+
+```
+RPG Desktop Launcher
+    ↓
+Hidden VBS Startup
+    ↓
+PostizTray.ps1
+    ↓
+Docker / Postiz / GitHub Runner
+```
+
+Current functions:
+
+- Start Postiz stack
+- Start GitHub Actions Runner
+- Check running status
+- Open Postiz interface
+
+This layer supports local operation only and is separate from the content growth funnel.
+
 ## Attribution Layer
 
 The system needs to connect:
