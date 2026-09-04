@@ -4,7 +4,7 @@
 
 This document records the GitHub Actions layer of Remote Pay Guide Video Factory.
 
-It describes how production workflows execute:
+It describes:
 
 ```
 GitHub Actions
@@ -20,8 +20,6 @@ Publish workflow
 Postiz
 ```
 
-This document describes CI/CD execution only.
-
 Production logic is documented in:
 
 ```
@@ -32,7 +30,7 @@ docs/VIDEO_PRODUCTION_PIPELINE.md
 
 # 1. Render Workflow
 
-## Workflow
+Workflow:
 
 ```
 .github/workflows/render-launch02.yml
@@ -42,42 +40,13 @@ Purpose:
 
 Batch render short02-short10 content.
 
-short04 was produced through this batch workflow.
-
----
-
-## Runner
+Runner:
 
 ```
-runs-on: ubuntu-latest
+ubuntu-latest
 ```
 
-The render environment provides:
-
-- Python 3.11
-- uv
-- FFmpeg
-- MoneyPrinterTurbo dependencies
-
----
-
-## MoneyPrinterTurbo
-
-The workflow clones:
-
-```
-https://github.com/harry0703/MoneyPrinterTurbo.git
-```
-
-Pinned commit:
-
-```
-cbbb366393105d5cefc254dc9ed492d43da0711b
-```
-
----
-
-## Secrets
+MoneyPrinterTurbo is provided through the workflow environment.
 
 Required secret:
 
@@ -85,117 +54,143 @@ Required secret:
 PEXELS_API_KEY
 ```
 
-Injected into MoneyPrinterTurbo configuration during workflow execution.
-
----
-
-## Render Command
-
-The workflow executes:
-
-```
-python video-factory/render_batch.py \
-  --mpt-root MoneyPrinterTurbo \
-  --tasks video-factory/tasks-launch02.jsonl \
-  --meta video-factory/launch02-meta.json \
-  --output batch-output \
-  --polisher video-factory/polish_short.py \
-  --font MoneyPrinterTurbo/resource/fonts/BeVietnamPro-Bold.ttf
-```
-
----
-
-## Artifact
-
-The render workflow uploads:
+Artifact:
 
 ```
 remote-pay-guide-short02-short10
 ```
 
-The publish workflow consumes this artifact.
-
 ---
 
-# 2. Short04 Publish Workflow
+# 2. Publish Workflow
 
-## Workflow
+Example:
 
 ```
 .github/workflows/publish-existing-short04.yml
+.github/workflows/publish-existing-short05.yml
 ```
 
 Purpose:
 
-Publish an existing rendered short04 asset without rerendering.
+Publish existing rendered assets without rerendering.
+
+Flow:
+
+```
+Render artifact
+        ↓
+actions/download-artifact@v4
+        ↓
+public media staging
+        ↓
+GitHub Pages media URL
+        ↓
+Postiz --media-url
+```
 
 ---
 
-# 3. Media Staging Flow
+# 3. Artifact Download Requirement
 
-The workflow downloads the render artifact and extracts:
+Publish workflows consume artifacts from successful render workflow runs.
+
+Rules:
+
+- `source_run_id` must be the complete GitHub Actions Run ID.
+- The value comes from the successful render workflow run.
+- Do not use workflow number, job ID, or shortened values.
+- Artifact name and repository context must match.
+
+When download fails:
 
 ```
-batch-output/short04/polished-short04.mp4
+Download existing rendered batch
 ```
 
-Then stages public media:
+check:
+
+1. source render workflow Run ID
+2. artifact name
+3. repository context
+4. artifact availability
+
+---
+
+# 4. Media Hosting
+
+Rendered assets are staged into GitHub Pages media storage.
+
+Example:
 
 ```
 media/short04.mp4
 media/short04.json
 ```
 
-The workflow commits these files to the main branch.
-
----
-
-# 4. GitHub Pages Media URL
-
-The public media URL is:
+Postiz receives the public URL through:
 
 ```
-https://linrui2442-blip.github.io/remote-pay-guide/media/short04.mp4
+--media-url
 ```
 
-The publish workflow waits until the URL becomes reachable before continuing.
+The publishing runner does not upload the video file directly.
 
 ---
 
 # 5. Postiz Publishing
 
-Publishing runner:
-
-```
-[self-hosted, windows, x64]
-```
-
-Postiz environment:
+Publishing uses:
 
 ```
 POSTIZ_API_KEY
 POSTIZ_API_BASE_URL
 ```
 
-The workflow does not download the video to the publishing runner.
-
-Instead it passes:
+The bridge calls:
 
 ```
---media-url
+video-factory/postiz_publish.py
 ```
-
-Example:
-
-```
-https://linrui2442-blip.github.io/remote-pay-guide/media/short04.mp4
-```
-
-Postiz receives the public media URL and publishes the asset to connected platforms.
 
 ---
 
-# 6. Validated Short04 Chain
+# 6. Platform-level Retry Behavior
+
+The Postiz publishing bridge is idempotent.
+
+A publish workflow can be safely rerun after a partial platform failure.
+
+The publish bridge keeps publish state and checks previously completed platforms.
+
+When a publish workflow is executed again:
+
+- Existing successful platforms are skipped.
+- Failed or incomplete platforms are retried.
+- The workflow does not blindly recreate all platform posts.
+
+Example from the validated short04 production run:
+
+```
+SKIP short04:facebook already succeeded
+SKIP short04:instagram already succeeded
+SUCCESS short04:youtube
+```
+
+This means a platform authentication issue can be fixed first, then the same publish workflow can be rerun to complete missing platforms.
+
+Recovery procedure:
+
+1. Fix the platform authentication or API issue.
+2. Re-run the same publish workflow.
+3. Verify the previously failed platform completes.
+
+Do not rerender the video.
+Do not manually upload the media again.
+
+---
+
+# 7. Validated Short04 Chain
 
 ```
 render-launch02.yml
@@ -215,38 +210,6 @@ Social platforms
 
 ---
 
-# 7. Cross-workflow Artifact Download Requirement
-
-Publish workflows download artifacts generated by render workflows through:
-
-```
-actions/download-artifact@v4
-```
-
-The publish workflow requires the exact source render workflow run ID.
-
-Rules:
-
-- `source_run_id` must be the complete GitHub Actions Run ID.
-- The value must come from the successful render workflow run.
-- Do not use workflow number, job ID, or shortened values.
-- Artifact name and repository context must match the source render workflow.
-
-When a publish workflow fails at:
-
-```
-Download existing rendered batch
-```
-
-check in this order:
-
-1. source render workflow Run ID
-2. artifact name
-3. repository context
-4. artifact availability and retention
-
----
-
 # 8. Maintenance Rule
 
 Do not redesign CI/CD without checking:
@@ -255,5 +218,6 @@ Do not redesign CI/CD without checking:
 2. Artifact contract
 3. Media hosting step
 4. Publish workflow
+5. Platform retry behavior
 
-Changes should preserve the validated short04 production chain.
+Changes should preserve the validated production chain.
