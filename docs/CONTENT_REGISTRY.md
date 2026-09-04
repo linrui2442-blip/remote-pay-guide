@@ -13,6 +13,15 @@ It separates:
 
 Do not infer publishing status from tracking parameter examples.
 
+Production process reference:
+
+```
+docs/VIDEO_PRODUCTION_PIPELINE.md
+```
+
+This registry records assets and status.
+The production pipeline document explains how assets are created.
+
 ---
 
 # Content Plan
@@ -115,9 +124,9 @@ Current confirmed production:
 
 | Content ID | Facebook | Instagram | YouTube | Status |
 |---|---|---|---|---|
-| short01 | Planned/Published tracking | Planned/Published tracking | Planned/Published tracking | DONE |
-| short02 | Planned/Published tracking | Planned/Published tracking | Planned/Published tracking | DONE |
-| short03 | Planned/Published tracking | Planned/Published tracking | Planned/Published tracking | DONE |
+| short01 | Published workflow | Published workflow | Published workflow | DONE |
+| short02 | Published workflow | Published workflow | Published workflow | DONE |
+| short03 | Published workflow | Published workflow | Published workflow | DONE |
 | short04 | Validation | Validation | Validation | DONE |
 
 ---
