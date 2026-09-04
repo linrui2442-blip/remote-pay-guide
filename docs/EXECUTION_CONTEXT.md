@@ -75,6 +75,34 @@ Before asking the user for a run ID, check:
 
 ---
 
+# Operator Behavior When Information Is Missing
+
+If source_run_id or another execution value is unavailable:
+
+The operator must first attempt all available repository and history checks.
+
+Do not immediately ask the user to manually search GitHub Actions.
+
+Only request user input when the required information is genuinely unavailable through available tools.
+
+The requested input should be the minimum possible reference:
+
+Preferred:
+
+```
+workflow run URL
+```
+
+Not:
+
+```
+manual extraction of IDs
+```
+
+The purpose is to provide an entry point for verification, not to transfer repository investigation work to the user.
+
+---
+
 # If Workflow History Cannot Be Queried
 
 If the available tools cannot list workflow runs:
