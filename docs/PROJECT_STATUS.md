@@ -87,7 +87,7 @@ Partially implemented:
 
 Implemented:
 
-A Windows tray launcher is now available for local Postiz operations.
+A Windows tray launcher is available for local Postiz operations.
 
 Current capabilities:
 
@@ -108,7 +108,23 @@ Verified production and publishing validation:
 - short03
 - short04
 
-These assets do not need to be regenerated during validation work.
+short04 has already been produced and published successfully.
+
+Current short04 work is not publishing. It is attribution and traffic validation:
+
+```
+short04
+    ↓
+platform traffic
+    ↓
+Landing Page
+    ↓
+GA4
+    ↓
+User Intent Events
+    ↓
+binance_referral_click
+```
 
 ## Pending Validation
 
@@ -136,6 +152,18 @@ platform
 GA4 source
     ↓
 conversion
+```
+
+Example:
+
+```
+short04
+    ↓
+yt_short04
+    ↓
+GA4
+    ↓
+binance_referral_click
 ```
 
 ### Revenue Validation
@@ -169,6 +197,6 @@ Not the number of published videos.
 Priority order:
 
 1. Verify content_id → platform → GA4 → events
-2. Run real short04 validation
+2. Run real traffic attribution validation on existing short04
 3. Verify referral conversion events
 4. Expand short05-short10 automation after validation
