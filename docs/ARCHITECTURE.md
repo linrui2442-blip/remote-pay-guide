@@ -57,11 +57,11 @@ Postiz API
 Social Platforms
 ```
 
-Supported platforms:
+Current connected publishing accounts:
 
-- YouTube
-- Instagram
-- Facebook
+- Facebook ✅
+- Instagram ✅
+- YouTube ✅
 
 Pending verification:
 
@@ -75,6 +75,15 @@ publish status
 tracking source
 ```
 
+The goal is for Postiz-related publishing records to maintain:
+
+- content_id
+- video
+- caption
+- platform
+- publish status
+- tracking source
+
 ## Attribution Layer
 
 The system needs to connect:
@@ -87,6 +96,18 @@ platform distribution
 traffic source
     ↓
 GA4
+```
+
+Example target flow:
+
+```
+short04
+    ↓
+yt_short04
+    ↓
+GA4
+    ↓
+binance_referral_click
 ```
 
 ## User Intent Layer
