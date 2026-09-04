@@ -83,6 +83,22 @@ Partially implemented:
 - Instagram
 - Facebook publishing support
 
+### Local Operations Launcher
+
+Implemented:
+
+A Windows tray launcher is now available for local Postiz operations.
+
+Current capabilities:
+
+- Hidden startup through VBS launcher
+- Docker/Postiz startup management
+- GitHub Actions Runner startup
+- Tray status checking
+- Postiz access shortcut
+
+The launcher is an operational tool and does not change the content acquisition architecture.
+
 ## Published Content Validation
 
 Verified production and publishing validation:
