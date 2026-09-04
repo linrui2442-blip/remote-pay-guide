@@ -4,7 +4,8 @@
     payment_type: null,
     payer_type: null,
     exchange_status: null,
-    src: params.get('src') || 'direct'
+    src: params.get('src') || 'direct',
+    content_id: params.get('content_id') || 'unknown'
   };
 
   const steps = [...document.querySelectorAll('.step')];
@@ -18,6 +19,7 @@
     const payload = {
       event: name,
       src: state.src,
+      content_id: state.content_id,
       ts: new Date().toISOString(),
       ...data
     };
@@ -36,7 +38,7 @@
     if (debugLog) {
       const row = document.createElement('div');
       const detail = payload.payment_type || payload.payer_type || payload.exchange_status || '';
-      row.textContent = `${payload.event} · src=${payload.src}${detail ? ` · ${detail}` : ''}`;
+      row.textContent = `${payload.event} · src=${payload.src} · content_id=${payload.content_id}${detail ? ` · ${detail}` : ''}`;
       debugLog.prepend(row);
     }
   }
