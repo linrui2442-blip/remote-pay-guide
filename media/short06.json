@@ -1,0 +1,16 @@
+{
+  "content_id": "short06",
+  "status": "succeeded",
+  "task_id": "1dad5112-a85a-456c-9e84-9bc7f16e667c",
+  "hook": "Which wallet should you use?",
+  "video_subject": "What wallet do I need to receive USDT from a client?",
+  "video_script": "There isn't one universal answer. You can use a compatible self-custody wallet or an account-based platform such as an exchange, depending on your country and what you need to do with the money afterwards. Whatever you choose, confirm that it supports the exact stablecoin and network your client will send. I made a simple decision guide in my profile.",
+  "video_terms": [
+    "person comparing apps on smartphone",
+    "remote worker using phone and laptop",
+    "freelancer researching options on laptop",
+    "professional reviewing account settings on phone",
+    "home office smartphone beside laptop"
+  ],
+  "output": "polished-short06.mp4"
+}
