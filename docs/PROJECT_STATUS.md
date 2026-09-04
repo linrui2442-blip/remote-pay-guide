@@ -4,23 +4,19 @@
 
 Remote Pay Guide is an overseas content acquisition MVP for people receiving USDT or USDC payments for the first time.
 
-The goal is not to build a crypto media account. The goal is to test whether stablecoin payment education content can generate attributable user intent and referral conversions.
+The goal is not to build a crypto media account. The goal is to validate whether stablecoin payment education content can generate user intent and referral conversions.
 
 ## Current Stage
 
-MVP infrastructure is implemented.
+MVP completed. The project has entered content scale testing and data feedback validation.
 
 Current phase:
 
-- Debug
-- Validation
-- Real traffic verification
-
-The project is not currently in the idea or architecture phase.
+- Scale content production
+- Verify traffic attribution
+- Optimize conversion path
 
 ## System Layers
-
-Remote Pay Guide consists of:
 
 ```
 Content Factory
@@ -34,169 +30,124 @@ User Intent Layer
 Conversion Layer
 ```
 
-## Known Constraints
-
-- No need to redesign content strategy
-- No need to rebuild Video Factory
-- Validation starts from existing published assets
-- short04 is the first attribution validation target
-
 ## Implemented
+
+### Website
+
+Completed:
+
+- Landing Page
+- Binance referral flow
+- User intent questionnaire
+- GA4 tracking
 
 ### Content Factory
 
-Implemented:
+Production pipeline completed:
 
 ```
 JSONL Tasks
     ↓
-MoneyPrinterTurbo Adapter
+Video Production Pipeline
     ↓
-render_batch.py
-    ↓
-polish_short.py
-    ↓
-Finished MP4
+MP4
 ```
 
-Content is currently pre-defined in task files, not generated in real time.
+Current production status:
 
-Sources include:
-
-- tasks-launch01.jsonl
-- tasks-launch02.jsonl
-
-### Landing Page
-
-Implemented:
-
-- Binance referral flow
-- User intent questionnaire
-- GA4 integration layer
-
-### Distribution
-
-Partially implemented:
-
-- Postiz API integration
-- YouTube
-- Instagram
-- Facebook publishing support
-
-### Local Operations Launcher
-
-Implemented:
-
-A Windows tray launcher is available for local Postiz operations.
-
-Current capabilities:
-
-- Hidden startup through VBS launcher
-- Docker/Postiz startup management
-- GitHub Actions Runner startup
-- Tray status checking
-- Postiz access shortcut
-
-The launcher is an operational tool and does not change the content acquisition architecture.
-
-## Published Content Validation
-
-Verified production and publishing validation:
-
-- short01
-- short02
-- short03
-- short04
-
-short04 has already been produced and published successfully.
-
-Current short04 work is not publishing. It is attribution and traffic validation:
+Planned:
 
 ```
+short01-short10
+```
+
+Completed:
+
+```
+short01
+short02
+short03
 short04
-    ↓
-platform traffic
-    ↓
-Landing Page
-    ↓
-GA4
-    ↓
-User Intent Events
-    ↓
-binance_referral_click
 ```
 
-## Pending Validation
+Important:
 
-### Real Traffic Validation
+The plan of 10 videos is not the same as 10 completed videos.
 
-Need to verify:
+## Distribution
+
+Postiz publishing system completed.
+
+Confirmed platforms:
+
+- Facebook ✅
+- Instagram ✅
+- YouTube Shorts ✅
+
+Not confirmed:
+
+- TikTok ❌ (do not include in current platform count)
+
+## short04 Architecture Validation
+
+short04 is the key architecture verification milestone.
+
+The validated publishing path:
 
 ```
+GitHub Pages public MP4
+        ↓
+Postiz public media URL
+        ↓
+Facebook / Instagram / YouTube
+```
+
+This replaces the old localhost upload approach.
+
+Old:
+
+```
+Local upload
+    ↓
+localhost media
+    ↓
+Postiz
+```
+
+Problem:
+
+Third-party platforms cannot access localhost resources.
+
+New:
+
+```
+Public media URL
+    ↓
+Postiz
+    ↓
+Social platforms fetch media
+```
+
+## Current Validation Loop
+
+```
+Video
+ ↓
 Social Platform
-    ↓
+ ↓
 Landing Page
-    ↓
+ ↓
 GA4
-```
-
-### Attribution Validation
-
-Need to verify:
-
-```
-content_id
-    ↓
-platform
-    ↓
-GA4 source
-    ↓
-conversion
-```
-
-Example:
-
-```
-short04
-    ↓
-yt_short04
-    ↓
-GA4
-    ↓
+ ↓
+Intent Events
+ ↓
 binance_referral_click
 ```
-
-### Revenue Validation
-
-Need to verify whether real users complete:
-
-```
-Content
-    ↓
-Intent
-    ↓
-Referral Click
-```
-
-## Current MVP Goal
-
-Validate one complete path:
-
-```
-One video
-+
-One real user
-+
-One complete behavior path
-```
-
-Not the number of published videos.
 
 ## Next Tasks
 
-Priority order:
-
-1. Verify content_id → platform → GA4 → events
-2. Run real traffic attribution validation on existing short04
-3. Verify referral conversion events
-4. Expand short05-short10 automation after validation
+1. Produce short05-short10
+2. Keep the same publishing architecture
+3. Build automated publishing templates
+4. Record video/platform/traffic/conversion data
+5. Optimize content based on real user behavior
