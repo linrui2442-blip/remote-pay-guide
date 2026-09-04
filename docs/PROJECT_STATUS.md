@@ -76,6 +76,17 @@ Partially implemented:
 - Instagram
 - Facebook publishing support
 
+## Published Content Validation
+
+Verified production and publishing validation:
+
+- short01
+- short02
+- short03
+- short04
+
+These assets do not need to be regenerated during validation work.
+
 ## Pending Validation
 
 ### Real Traffic Validation
