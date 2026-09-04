@@ -34,6 +34,13 @@ User Intent Layer
 Conversion Layer
 ```
 
+## Known Constraints
+
+- No need to redesign content strategy
+- No need to rebuild Video Factory
+- Validation starts from existing published assets
+- short04 is the first attribution validation target
+
 ## Implemented
 
 ### Content Factory
