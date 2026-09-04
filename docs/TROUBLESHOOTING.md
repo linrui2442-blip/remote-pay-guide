@@ -53,3 +53,73 @@ Do not use:
 - incomplete Run ID
 
 Always copy the full Run ID from the successful render workflow execution.
+
+---
+
+## Postiz Platform State Mismatch During Recovery
+
+### Symptom
+
+A platform delivery fails, but the local publish state records the platform as:
+
+```
+status: succeeded
+```
+
+The retry workflow skips the failed platform instead of retrying.
+
+### Example
+
+YouTube:
+
+```
+Postiz create request accepted
+        ↓
+OAuth/platform delivery failed asynchronously
+        ↓
+Actual YouTube publish failed
+```
+
+but local state showed:
+
+```
+youtube:
+status: succeeded
+```
+
+### Cause
+
+Postiz API request success does not always mean final platform delivery success.
+
+The current publish state records success after Postiz accepts the request, while some platforms complete delivery asynchronously.
+
+### Recovery
+
+1. Confirm the actual platform failure.
+2. Reset only the failed platform state:
+
+```
+succeeded → failed
+```
+
+3. Rerun the existing publish workflow.
+
+Expected behavior:
+
+```
+Successful platforms:
+skip
+
+Failed platform:
+retry
+```
+
+### Verified
+
+short06 recovery confirmed:
+
+```
+Facebook: SKIP
+Instagram: SKIP
+YouTube: RETRY SUCCESS
+```
