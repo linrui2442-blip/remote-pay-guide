@@ -26,6 +26,8 @@ from production.results.manager import get_results,get_result,get_result_by_job
 from data.lifecycle import get_video_lifecycle
 from data.manager import get_overview,get_statistics
 from data.performance import get_video_performance,get_performance_summary
+from ai.gateway import AIGatewayService
+from ai.models import AIRequest
 
 app=FastAPI(title="Remote Pay Guide OS")
 github_client=GitHubClient()
@@ -35,6 +37,7 @@ publish_queue=PublishQueue()
 publish_worker=PublishWorker(publish_queue)
 publish_scheduler=PublishScheduler(publish_queue)
 runtime_worker=ProductionRuntimeWorker()
+ai_gateway=AIGatewayService()
 
 class WorkflowRequest(BaseModel):
  workflow:str
@@ -166,15 +169,19 @@ def production_result_job(runtime_job_id:int): return get_result_by_job(runtime_
 
 @app.get('/data/lifecycle/{video_id}')
 def data_lifecycle(video_id:str): return get_video_lifecycle(video_id)
-
 @app.get('/data/overview')
 def data_overview(): return get_overview()
-
 @app.get('/data/statistics')
 def data_statistics(): return get_statistics()
-
 @app.get('/data/performance/{video_id}')
 def data_performance(video_id:str): return get_video_performance(video_id)
-
 @app.get('/data/performance/summary')
 def data_performance_summary(): return get_performance_summary()
+
+@app.post('/ai/request')
+def ai_request(data:AIRequest):
+ return ai_gateway.request(data)
+
+@app.get('/ai/status')
+def ai_status_core():
+ return {'status':'ready','gateway':'enabled'}
