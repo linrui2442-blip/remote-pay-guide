@@ -19,11 +19,17 @@ jobs:
       - name: Migrate registry
         run: python database/migrate_registry.py
 
-      - name: Export dashboard
-        run: python database/export_dashboard.py
+      - name: Migrate publish status
+        run: python database/publish_migration.py
+
+      - name: Migrate analytics metrics
+        run: python database/analytics_migration.py
 
       - name: Generate lifecycle report
         run: python lifecycle/lifecycle_state.py
+
+      - name: Export dashboard
+        run: python database/export_dashboard.py
 
       - name: Run health check
         run: python health/health_check.py
