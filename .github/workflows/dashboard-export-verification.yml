@@ -1,0 +1,47 @@
+name: Dashboard Export Verification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-dashboard-export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run dashboard export
+        run: python database/export_dashboard.py
+
+      - name: Validate dashboard data
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('dashboard/data/dashboard_data.json')
+          if not path.exists():
+              raise SystemExit('dashboard_data.json missing')
+
+          data = json.loads(path.read_text(encoding='utf-8'))
+
+          if 'total_videos' not in data:
+              raise SystemExit('missing total_videos')
+
+          if 'videos' not in data or not isinstance(data['videos'], list):
+              raise SystemExit('missing videos array')
+
+          print(f"total_videos={data['total_videos']}")
+          PY
+
+      - name: Upload dashboard export artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-export-output
+          path: dashboard/data/dashboard_data.json
