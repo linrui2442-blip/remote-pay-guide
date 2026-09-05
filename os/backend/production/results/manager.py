@@ -2,6 +2,8 @@ import json
 import sqlite3
 from datetime import datetime
 
+from assets.binding import create_asset_from_result
+
 DB_PATH = "os/database/os.db"
 
 
@@ -33,7 +35,19 @@ def create_result(data):
     conn.commit()
     result = get_result(cur.lastrowid)
     conn.close()
-    return result
+
+    if result and result.get("status") == "completed":
+        binding = create_asset_from_result(result)
+        if binding.get("asset_id"):
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute(
+                "UPDATE production_results SET asset_id=?,updated_at=? WHERE id=?",
+                (binding["asset_id"], datetime.utcnow().isoformat(), result["id"]),
+            )
+            conn.commit()
+            conn.close()
+
+    return get_result(cur.lastrowid)
 
 
 def get_results():
@@ -61,4 +75,7 @@ def update_result_status(result_id, status):
     conn = sqlite3.connect(DB_PATH)
     conn.execute('UPDATE production_results SET status=?,updated_at=? WHERE id=?',(status,datetime.utcnow().isoformat(),result_id))
     conn.commit(); conn.close()
-    return get_result(result_id)
+    result = get_result(result_id)
+    if result and status == "completed":
+        create_asset_from_result(result)
+    return result
