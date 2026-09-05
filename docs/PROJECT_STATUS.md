@@ -80,6 +80,16 @@ Status:
 - system health monitoring added
 - read-only diagnostics layer
 
+## Phase 14C
+
+### Lifecycle + Health Dashboard Integration
+
+Status:
+
+- lifecycle state connected to dashboard
+- system health connected to dashboard
+- dashboard remains read-only
+
 ## Data flow:
 
 ```
