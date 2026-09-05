@@ -71,6 +71,15 @@ Status:
 - lifecycle state calculation added
 - read-only lifecycle layer
 
+## Phase 14B
+
+### System Health Check Layer
+
+Status:
+
+- system health monitoring added
+- read-only diagnostics layer
+
 ## Data flow:
 
 ```
@@ -79,6 +88,8 @@ Content Registry
 SQLite Database
         ↓
 Lifecycle State Machine
+        ↓
+Health Diagnostics
         ↓
 Dashboard / Reports
 ```
@@ -111,4 +122,6 @@ publish-sync read-only layer
 analytics read-only layer
         ↓
 lifecycle read-only layer
+        ↓
+health read-only layer
 ```
