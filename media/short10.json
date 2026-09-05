@@ -1,0 +1,16 @@
+{
+  "content_id": "short10",
+  "status": "succeeded",
+  "task_id": "5c5c69e2-cd24-4682-968f-8c9a4f4d01ab",
+  "hook": "First time receiving USDT or USDC?",
+  "video_subject": "First time receiving USDT or USDC? Save this checklist.",
+  "video_script": "One: confirm USDT or USDC. Two: confirm the blockchain network. Three: use the official receive or deposit screen. Four: double-check the address. Five: for an unfamiliar large transfer, consider a small test transaction first. I put the full beginner flow in the link in my profile.",
+  "video_terms": [
+    "person making checklist at desk",
+    "freelancer checking smartphone and laptop",
+    "remote worker reviewing details on laptop",
+    "person double checking information on phone",
+    "professional working remotely with phone and laptop"
+  ],
+  "output": "polished-short10.mp4"
+}
