@@ -1,0 +1,61 @@
+name: Runtime Verification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  runtime-verification:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Migrate registry
+        run: python database/migrate_registry.py
+
+      - name: Export dashboard
+        run: python database/export_dashboard.py
+
+      - name: Generate lifecycle report
+        run: python lifecycle/lifecycle_state.py
+
+      - name: Run health check
+        run: python health/health_check.py
+
+      - name: Validate dashboard data
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('dashboard/data/dashboard_data.json')
+          if not path.exists():
+              raise SystemExit('dashboard_data.json missing')
+
+          with path.open() as f:
+              data = json.load(f)
+
+          if 'total_videos' not in data:
+              raise SystemExit('total_videos missing')
+
+          if 'videos' not in data or not isinstance(data['videos'], list):
+              raise SystemExit('videos array missing')
+
+          print('total_videos=', data['total_videos'])
+          print('videos_count=', len(data['videos']))
+          PY
+
+      - name: Upload runtime verification output
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-verification-output
+          path: |
+            dashboard/data/dashboard_data.json
+            lifecycle/lifecycle_report.json
+            health/health_report.json
