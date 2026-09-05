@@ -67,6 +67,30 @@ Examples:
 
 The project does not compete for crypto news or trading traffic.
 
+## Content Factory
+
+Video production uses real stock footage from Pexels combined with AI-assisted content production.
+
+Production workflow:
+
+```
+Content tasks (JSONL)
+        ↓
+AI script / content structure
+        ↓
+Pexels video assets
+        ↓
+MoneyPrinterTurbo assembly
+        ↓
+Voice + subtitles + editing
+        ↓
+polish_short.py
+        ↓
+Final Short MP4
+```
+
+Pexels is the visual asset source for the short-form video production pipeline.
+
 ## Referral
 
 Binance referral ID: `137553211`
