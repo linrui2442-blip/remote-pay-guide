@@ -1,4 +1,4 @@
-# Remote Pay Guide OS Blueprint v2
+# Remote Pay Guide OS Blueprint v2.1
 
 ## 1. 项目定位
 
@@ -19,6 +19,155 @@ Remote Pay Guide OS 是 AI 驱动的远程生产运营系统。
 
 ```
 Data Feedback
+↓
+AI Intelligence
+↓
+Production Task
+↓
+Production Execution
+↓
+Video Asset
+↓
+Publish
+↓
+Analytics
+↓
+Data Feedback
+```
+
+---
+
+# 2. Legacy Production Compatibility Layer
+
+Remote Pay Guide OS 当前架构是在已有内容生产体系基础上的升级。
+
+历史 short01-short10 生产流程必须保持兼容。
+
+## Legacy Production Flow
+
+真实历史流程：
+
+```
+Content Strategy
+
+↓
+
+Production Task File
+(tasks-launch02.jsonl)
+
+↓
+
+GitHub Actions workflow_dispatch
+
+↓
+
+render-launch02.yml
+
+↓
+
+render_batch.py
+
+↓
+
+MoneyPrinterTurbo
+
+↓
+
+batch-output
+
+↓
+
+GitHub Actions Artifact
+
+↓
+
+GitHub Pages Media URL
+
+↓
+
+Postiz
+
+↓
+
+Social Platforms
+```
+
+说明：
+
+历史 short01-short10 的生产由已有 Production Task 文件驱动。
+
+当前仓库可以确认 Task 文件和执行链路，但不能证明历史 Task 文件最初来源于 AI Intelligence。
+
+---
+
+## workflow_dispatch 定义
+
+workflow_dispatch 代表：
+
+Manual Trigger
+
+不代表：
+
+Manual Production
+
+需要区分：
+
+执行触发：
+
+谁启动 Workflow Run。
+
+生产逻辑来源：
+
+Production Task / Template / Parameters。
+
+历史流程中：
+
+人工负责：
+
+- 启动 GitHub Workflow
+
+生产体系负责：
+
+- 提供 Production Task
+- 提供模板
+- 提供生产参数
+
+---
+
+# 3. Production Task Evolution
+
+## Stage 1: Legacy
+
+```
+Content Strategy
+
+↓
+
+Production Task File
+
+↓
+
+GitHub Workflow
+```
+
+## Stage 2: Remote Pay Guide OS
+
+```
+Production Center
+
+↓
+
+Runtime
+
+↓
+
+Provider
+```
+
+## Stage 3: AI Orchestration
+
+```
+Data Center
 
 ↓
 
@@ -26,32 +175,40 @@ AI Intelligence
 
 ↓
 
-Production Task
+Production Task Generation
 
 ↓
 
-Production Execution
+Provider Selection
 
 ↓
 
-Video Asset
-
-↓
-
-Publish
-
-↓
-
-Analytics
-
-↓
-
-Data Feedback
+GitHub Production / AI Production
 ```
 
 ---
 
-## 2. 总体系统架构
+# 4. AI Intelligence
+
+AI Intelligence 是系统智能决策层。
+
+职责：
+
+1. 分析 Data Center 数据
+2. 生成生产策略
+3. 生成 Production Task
+4. 选择生产线路
+5. 优化未来生产流程
+
+AI Intelligence 不直接执行生产。
+
+历史 short01-short10 不定义为 AI Intelligence 自动生成。
+
+---
+
+# 5. 双生产线路
+
+Production Task 进入 Provider Selection。
 
 ```
                  AI Intelligence
@@ -74,189 +231,107 @@ Data Feedback
                   \          /
 
               Production Result
-
                         |
                         ↓
-
-              Video Asset Center
-
+              Video Asset Layer
                         |
                         ↓
-
-                 Publish Center
-
+              Publish Center
                         |
                         ↓
-
-                   Analytics
-
-                        |
-                        ↓
-
-                  Data Center
-
-                        |
-                        ↓
-
-               AI Intelligence
+              Platforms
 ```
 
 ---
 
-## 3. AI Intelligence
+# 6. GitHub Production
 
-AI Intelligence 是系统智能决策层。
+GitHub Production 不是：
 
-职责：
+- 内容决策系统
+- AI策略系统
 
-1. 分析 Data Center 数据
-2. 生成生产策略
-3. 生成 Production Task
-4. 选择生产线路
-5. 优化未来生产流程
+GitHub Production 是 Production Execution Engine。
 
-AI Intelligence 不直接执行生产。
-
-它负责决策，Production 负责执行。
-
----
-
-## 4. Production Task
-
-Production Task 是 AI Intelligence 输出给 Production 系统的生产执行指令。
-
-不是：
-
-- 用户手动视频任务
-- GitHub 生成任务
-
-包含：
-
-- production objective
-- provider selection
-- execution parameters
-- template/configuration
-- input resources
-
-流程：
-
-```
-AI Intelligence
-
-↓
-
-Production Task
-
-↓
-
-Production Execution
-```
-
----
-
-## 5. 双生产线路
-
-Production Task 进入 Provider Selection。
-
-### GitHub Production
-
-流程：
-
-```
-Production Task
-
-↓
-
-GitHub Provider
-
-↓
-
-GitHub Actions
-
-↓
-
-Render Workflow
-
-↓
-
-Video Artifact
-```
-
-GitHub 不负责：
-
-- 决策
-- 内容理解
-- 生产策略生成
-
-GitHub 负责：
+负责：
 
 - 接收 Production Task
-- 调用 Workflow
-- 执行生产
-- 返回 Artifact
+- 执行 GitHub Actions
+- 调用 Render Workflow
+- 运行生产脚本
+- 输出 Artifact
+
+历史流程：
+
+```
+Production Task File
+↓
+GitHub Actions
+↓
+Render Pipeline
+↓
+Artifact
+```
 
 ---
 
-### AI Production
+# 7. AI Production
 
-流程：
+AI Gateway Provider：
 
-```
-Production Task
-
-↓
-
-AI Gateway Provider
-
-↓
-
-AI Model/API
-
-↓
-
-Video Result
-```
-
-AI Gateway Provider 负责：
+负责：
 
 - 接收 Production Task
 - 调用 AI 生产能力
-- 返回生产结果
+- 返回 Video Result
+
+流程：
+
+```
+Production Task
+↓
+AI Gateway Provider
+↓
+AI Model/API
+↓
+Video Result
+```
 
 ---
 
-## 6. Video Asset Center
+# 8. Video Asset Center
 
-Video Asset Center 不是本机文件存储。
+Video Asset Center 是未来统一资产抽象层。
 
-它是线上视频资产管理中心。
+它不是历史 short 视频存储位置。
 
-职责：
+历史：
 
-- Asset Registry
-- Asset URL 管理
-- 来源记录
-- 状态管理
-- 生命周期管理
+```
+Artifact
+↓
+GitHub Pages Media URL
+↓
+Postiz
+```
 
-统一接收：
-
-- GitHub Video Artifact
-- AI Video Result
-
-结构：
+未来：
 
 ```
 Production Result
-
 ↓
-
 Video Asset Center
-
 ↓
-
 Publish Center
 ```
+
+Video Asset Center 管理：
+
+- Asset Registry
+- Asset URL
+- 来源记录
+- 状态管理
+- 生命周期管理
 
 实际文件位置可以是：
 
@@ -265,37 +340,24 @@ Publish Center
 - External Asset URL
 - AI Provider Output URL
 
-Asset Center 管理的是引用关系和生命周期。
+---
+
+# 9. Legacy vs Future OS
+
+| Layer | Legacy | Future OS |
+|---|---|---|
+| 内容策略 | Content Strategy | AI Intelligence |
+| Task来源 | Task文件 | AI生成Production Task |
+| 触发 | workflow_dispatch | 自动调度 |
+| 执行 | GitHub Workflow | Provider System |
+| 视频产物 | Artifact | Production Result |
+| 资产管理 | GitHub Pages URL | Video Asset Center |
+| 发布 | Postiz | Publish Center |
+| 反馈 | Analytics | Data Center + AI Loop |
 
 ---
 
-## 7. Publish Center
-
-Publish Center 不关心视频来源。
-
-只接收 Video Asset。
-
-流程：
-
-```
-Video Asset
-
-↓
-
-Publish Center
-
-↓
-
-Postiz
-
-↓
-
-Platform
-```
-
----
-
-## 8. Data Center
+# 10. Data Center
 
 Data Center 不是普通数据库。
 
@@ -311,7 +373,7 @@ Production Feedback System。
 - Analytics Metrics
 - Execution Performance
 
-并提供给：
+提供给：
 
 AI Intelligence
 
@@ -319,81 +381,53 @@ AI Intelligence
 
 ---
 
-## 9. Feedback Loop
-
-```
-Production
-
-↓
-
-Asset
-
-↓
-
-Publish
-
-↓
-
-Analytics
-
-↓
-
-Data Center
-
-↓
-
-AI Intelligence
-
-↓
-
-New Production Strategy
-```
-
----
-
-## 10. Phase 规划
+# 11. Phase规划
 
 Phase 15.9C:
-
-原：Prompt Optimization
-
-更新为：
 
 AI Production Intelligence Layer
 
 目标：
 
-实现：
+将：
+
+Legacy:
+
+```
+Task文件
+↓
+人工触发
+↓
+GitHub执行
+```
+
+升级为：
 
 ```
 Data Center
-
 ↓
-
 AI Intelligence
-
 ↓
-
-Production Task Generation
-
+自动Production Task
 ↓
-
 GitHub Production / AI Production
-
 ↓
-
 Feedback Loop
 ```
 
+目标不是替代 GitHub Production。
+
+目标是增加智能编排层。
+
 ---
 
-## 11. 开发原则
+# 12. 开发原则
 
 保持：
 
-- GitHub 原生产线路
+- Legacy GitHub Production兼容
 - 双生产架构
-- Provider 解耦
+- Provider解耦
 - Data Feedback Loop
 - 本地控制中心
 
