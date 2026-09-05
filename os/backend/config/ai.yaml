@@ -1,0 +1,7 @@
+gateway:
+  enabled: false
+  endpoint: ""
+  timeout: 300
+
+default:
+  model: auto
