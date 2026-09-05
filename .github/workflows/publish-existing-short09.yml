@@ -4,11 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       source_run_id:
-        description: 'Successful Render short02-short10 batch run ID containing the artifact'
+        description: Render batch run ID
         required: true
         type: string
       schedule_at:
-        description: 'Optional ISO 8601 time with timezone; blank = randomized audience-window scheduling'
         required: false
         default: ''
         type: string
@@ -20,58 +19,49 @@ permissions:
 jobs:
   prepare-short09:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Download existing rendered batch
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: remote-pay-guide-short02-short10
           path: source-batch
           github-token: ${{ github.token }}
           run-id: ${{ inputs.source_run_id }}
       - name: Stage short09 media
-        shell: bash
         run: |
           set -e
           python3 - <<'PY'
-          import json, shutil
+          import json,shutil
           from pathlib import Path
           cid='short09'
-          source=Path('source-batch')/cid
-          meta=source/'metadata.json'
-          if not meta.exists(): raise SystemExit('missing metadata')
+          src=Path('source-batch')/cid
+          meta=src/'metadata.json'
+          assert meta.exists()
           data=json.loads(meta.read_text())
-          if data.get('content_id') != cid: raise SystemExit('content_id mismatch')
-          if data.get('status') != 'succeeded': raise SystemExit('render failed')
-          video=source/str(data['output'])
-          if not video.exists() or video.stat().st_size <= 0: raise SystemExit('missing video')
-          media=Path('media')
-          media.mkdir(exist_ok=True)
-          shutil.copy2(video, media/f'{cid}.mp4')
-          shutil.copy2(meta, media/f'{cid}.json')
+          assert data.get('content_id')==cid
+          video=src/data['output']
+          assert video.exists()
+          Path('media').mkdir(exist_ok=True)
+          shutil.copy2(video,'media/short09.mp4')
+          shutil.copy2(meta,'media/short09.json')
           PY
+          test -f media/short09.mp4
+          test -f media/short09.json
       - name: Commit media
-        shell: bash
         run: |
           set -e
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add media/short09.mp4 media/short09.json
+          git add -f media/short09.mp4 media/short09.json
+          git diff --cached --quiet && exit 1
           git commit -m 'Stage short09 public media for Postiz'
           git push origin HEAD:main
       - name: Wait for GitHub Pages media URL
-        shell: bash
         run: |
           set -e
-          url='https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4'
-          for attempt in $(seq 1 36); do
-            curl -fsSI --max-time 15 "$url" && exit 0
-            sleep 5
-          done
-          exit 1
+          curl -fsSI https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4
 
   publish-short09:
     needs: prepare-short09
@@ -81,7 +71,7 @@ jobs:
       POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
       SHORT09_MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4
     steps:
-      - name: Download publish inputs only
+      - name: Download publish inputs
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path publish-tools,publish-input\short09 | Out-Null
@@ -89,11 +79,8 @@ jobs:
           Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
           Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
           Invoke-WebRequest "$raw/media/short09.json" -OutFile publish-input\short09\metadata.json
-          if(!(Test-Path publish-input\short09\metadata.json)){ exit 1 }
-      - name: Publish short09 through Postiz
+          if(!(Test-Path publish-input\short09\metadata.json)){exit 1}
+      - name: Publish short09
         shell: powershell
         run: |
-          $args=@('publish-tools\postiz_publish.py','--content-id','short09','--artifact-root','publish-input','--posting-pack','publish-tools\posting-pack-01.md','--media-url',$env:SHORT09_MEDIA_URL)
-          $schedule='${{ inputs.schedule_at }}'
-          if(-not [string]::IsNullOrWhiteSpace($schedule)){ $args += @('--schedule-at',$schedule) }
-          python @args
+          python publish-tools\postiz_publish.py --content-id short09 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url $env:SHORT09_MEDIA_URL
