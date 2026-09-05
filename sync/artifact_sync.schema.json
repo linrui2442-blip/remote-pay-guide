@@ -1,0 +1,16 @@
+{
+  "name": "artifact_sync_interface",
+  "purpose": "Map existing artifact metadata to content registry fields",
+  "input": {
+    "artifact_id": "string",
+    "metadata": "object",
+    "video_file": "string"
+  },
+  "output": {
+    "content_id": "string",
+    "artifact_id": "string",
+    "video_file": "string",
+    "production_status": "string"
+  },
+  "write_registry": false
+}
