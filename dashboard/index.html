@@ -13,6 +13,11 @@
   </section>
 
   <section>
+    <h2>System Health</h2>
+    <div id="health"></div>
+  </section>
+
+  <section>
     <h2>Content List</h2>
     <div id="list"></div>
   </section>
@@ -24,6 +29,9 @@ fetch('./data/dashboard_data.json')
     document.getElementById('overview').textContent =
       `Total Videos: ${data.total_videos}`;
 
+    document.getElementById('health').textContent =
+      `System Status: ${data.system_health.system_status} | Checks: ${JSON.stringify(data.system_health.checks)}`;
+
     document.getElementById('list').innerHTML = data.videos.map(v => `
       <div>
         <strong>${v.content_id}</strong><br>
@@ -33,6 +41,7 @@ fetch('./data/dashboard_data.json')
         Publish Status: ${v.publish_status}<br>
         Platforms: ${v.platforms}<br>
         Published URL: ${v.published_url}<br>
+        Lifecycle: ${v.lifecycle.current_state}<br>
         Analytics Status: ${v.analytics_status}<br>
         Analytics Platform: ${v.analytics.platform}<br>
         Views: ${v.analytics.views}<br>
