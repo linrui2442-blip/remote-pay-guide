@@ -2,49 +2,119 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Remote Pay Guide OS Console</title>
   <link rel="stylesheet" href="./assets/style.css" />
 </head>
 <body>
-  <h1>Remote Pay Guide OS Console</h1>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">REMOTE PAY GUIDE</p>
+        <h1>OS Console</h1>
+        <p class="subtitle">Read-only content operations, distribution, lifecycle and analytics view.</p>
+      </div>
+      <div class="topbar-meta">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>Read only</span>
+      </div>
+    </header>
 
-  <section class="card-grid">
-    <div class="card">Total Content<br><strong id="total">0</strong></div>
-    <div class="card">Published<br><strong>Read Only</strong></div>
-    <div class="card">Production<br><strong>Lifecycle</strong></div>
-    <div class="card">System Health<br><strong>Diagnostics</strong></div>
-  </section>
+    <section aria-labelledby="overview-title">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">Overview</p>
+          <h2 id="overview-title">System snapshot</h2>
+        </div>
+        <p class="generated-at" id="generated-at">Generated: —</p>
+      </div>
+      <div class="card-grid">
+        <article class="metric-card">
+          <span class="metric-label">Total Content</span>
+          <strong class="metric-value" id="total">0</strong>
+          <span class="metric-note">Tracked assets</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Published</span>
+          <strong class="metric-value" id="published">0</strong>
+          <span class="metric-note">Platform-ready / live</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">In Production</span>
+          <strong class="metric-value" id="production">0</strong>
+          <span class="metric-note">Before published state</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Failed</span>
+          <strong class="metric-value" id="failed">0</strong>
+          <span class="metric-note">Needs attention</span>
+        </article>
+        <article class="metric-card health-card">
+          <span class="metric-label">System Health</span>
+          <strong class="metric-value metric-value-text" id="system-health">UNKNOWN</strong>
+          <span class="metric-note">Diagnostics layer</span>
+        </article>
+      </div>
+    </section>
 
-  <section class="panel">
-    <h2>Lifecycle Board</h2>
-    <div id="lifecycle">Lifecycle states from dashboard data</div>
-  </section>
+    <section class="panel" aria-labelledby="lifecycle-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="section-kicker">Lifecycle</p>
+          <h2 id="lifecycle-title">Content state board</h2>
+        </div>
+      </div>
+      <div id="lifecycle" class="lifecycle-grid" aria-live="polite"></div>
+    </section>
 
-  <section class="panel">
-    <h2>Content Table</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>content_id</th>
-          <th>topic</th>
-          <th>production_status</th>
-          <th>publish_status</th>
-          <th>lifecycle</th>
-        </tr>
-      </thead>
-      <tbody id="content-table"></tbody>
-    </table>
-  </section>
+    <section class="panel" aria-labelledby="content-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="section-kicker">Registry</p>
+          <h2 id="content-title">Content table</h2>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Content ID</th>
+              <th>Topic</th>
+              <th>Production</th>
+              <th>Publish</th>
+              <th>Lifecycle</th>
+            </tr>
+          </thead>
+          <tbody id="content-table"></tbody>
+        </table>
+      </div>
+      <div id="content-empty" class="empty-state" hidden>No content records available in dashboard_data.json.</div>
+    </section>
 
-  <section class="panel">
-    <h2>Analytics Panel</h2>
-    <div id="analytics-panel"></div>
-  </section>
+    <div class="split-grid">
+      <section class="panel" aria-labelledby="analytics-title">
+        <div class="section-heading compact">
+          <div>
+            <p class="section-kicker">Analytics</p>
+            <h2 id="analytics-title">Performance</h2>
+          </div>
+        </div>
+        <div id="analytics-panel"></div>
+      </section>
 
-  <section class="panel">
-    <h2>Health Panel</h2>
-    <div id="health-panel"></div>
-  </section>
+      <section class="panel" aria-labelledby="health-title">
+        <div class="section-heading compact">
+          <div>
+            <p class="section-kicker">Diagnostics</p>
+            <h2 id="health-title">System health</h2>
+          </div>
+        </div>
+        <div id="health-panel"></div>
+      </section>
+    </div>
+
+    <div id="dashboard-error" class="error-banner" hidden></div>
+  </main>
 
   <script src="./assets/dashboard.js"></script>
 </body>
