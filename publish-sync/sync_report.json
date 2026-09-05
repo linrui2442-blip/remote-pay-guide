@@ -1,0 +1,8 @@
+{
+  "sync_mode": "read_only",
+  "source": "publish-state",
+  "registry_write": false,
+  "records_processed": 0,
+  "records_failed": 0,
+  "records": []
+}
