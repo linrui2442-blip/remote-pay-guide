@@ -23,18 +23,9 @@ PUBLISH_FIELDS = ["postiz_id", "platforms", "published_url"]
 ANALYTICS_FIELDS = ["platform", "views", "clicks", "likes", "shares", "conversion"]
 
 STRING_FIELDS = {
-    "content_id",
-    "topic",
-    "production_status",
-    "publish_status",
-    "analytics_status",
-    "generator",
-    "video_source",
-    "artifact_id",
-    "postiz_id",
-    "platforms",
-    "published_url",
-    "platform",
+    "content_id", "topic", "production_status", "publish_status",
+    "analytics_status", "generator", "video_source", "artifact_id",
+    "postiz_id", "platforms", "published_url", "platform", "current_state"
 }
 
 
@@ -52,7 +43,11 @@ def load_json(path, default):
 
 def export_dashboard():
     lifecycle_data = load_json(LIFECYCLE_PATH, {"records": []})
-    lifecycle_rows = {item.get("content_id"): item for item in lifecycle_data.get("records", [])}
+    lifecycle_rows = {
+        item.get("content_id"): item
+        for item in lifecycle_data.get("records", [])
+        if item.get("content_id")
+    }
 
     health_data = load_json(HEALTH_PATH, {"system_status": "UNKNOWN", "checks": []})
 
@@ -72,18 +67,19 @@ def export_dashboard():
 
     videos = []
     for row in rows:
+        content_id = row["content_id"]
         item = {field: normalize(row[field], field) for field in BASE_FIELDS}
 
-        publish = publish_rows.get(row["content_id"])
+        publish = publish_rows.get(content_id)
         item.update({field: normalize(publish[field], field) if publish else "UNKNOWN" for field in PUBLISH_FIELDS})
 
-        analytics = analytics_rows.get(row["content_id"])
+        analytics = analytics_rows.get(content_id)
         item["analytics"] = {
             field: normalize(analytics[field], field) if analytics else ("UNKNOWN" if field == "platform" else 0)
             for field in ANALYTICS_FIELDS
         }
 
-        lifecycle = lifecycle_rows.get(row["content_id"], {})
+        lifecycle = lifecycle_rows.get(content_id, {})
         item["lifecycle"] = {
             "current_state": normalize(lifecycle.get("current_state"), "current_state")
         }
