@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Run registry migration
+        run: python database/migrate_registry.py
+
       - name: Run dashboard export
         run: python database/export_dashboard.py
 
@@ -36,6 +39,13 @@ jobs:
 
           if 'videos' not in data or not isinstance(data['videos'], list):
               raise SystemExit('missing videos array')
+
+          ids = {item.get('content_id') for item in data['videos']}
+          expected = {f'short{i:02d}' for i in range(1, 11)}
+
+          missing = expected - ids
+          if missing:
+              raise SystemExit(f'missing content ids: {sorted(missing)}')
 
           print(f"total_videos={data['total_videos']}")
           PY
