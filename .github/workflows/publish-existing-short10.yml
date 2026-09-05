@@ -7,14 +7,16 @@ on:
         required: true
         type: string
       schedule_at:
-        description: 'Optional ISO 8601 time with timezone; blank = randomized audience-window scheduling'
         required: false
+        default: ''
         type: string
+
 permissions:
   contents: write
   actions: read
+
 jobs:
-  publish-short10:
+  prepare-short10:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,22 +26,46 @@ jobs:
           path: source-batch
           github-token: ${{ github.token }}
           run-id: ${{ inputs.source_run_id }}
-      - run: |
-          mkdir -p media
-          cp source-batch/short10/*.mp4 media/short10.mp4
-          cp source-batch/short10/metadata.json media/short10.json
-          git add media && git commit -m 'Stage short10 public media for Postiz' || true
-          git push origin HEAD:main || true
-  postiz:
-    needs: publish-short10
+      - name: Stage short10 media
+        shell: bash
+        run: |
+          set -e
+          python3 - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          cid='short10'
+          source=Path('source-batch')/cid
+          meta=source/'metadata.json'
+          data=json.loads(meta.read_text())
+          if data.get('content_id')!=cid or data.get('status')!='succeeded': raise SystemExit('metadata invalid')
+          media=Path('media'); media.mkdir(exist_ok=True)
+          shutil.copy2(source/str(data['output']), media/f'{cid}.mp4')
+          shutil.copy2(meta, media/f'{cid}.json')
+          PY
+      - name: Commit media
+        shell: bash
+        run: |
+          set -e
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add media/short10.mp4 media/short10.json
+          git commit -m 'Stage short10 public media for Postiz'
+          git push origin HEAD:main
+      - name: Wait Pages
+        shell: bash
+        run: |
+          set -e
+          for i in $(seq 1 36); do curl -fsSI --max-time 15 https://linrui2442-blip.github.io/remote-pay-guide/media/short10.mp4 && exit 0; sleep 5; done
+          exit 1
+  publish-short10:
+    needs: prepare-short10
     runs-on: [self-hosted, windows, x64]
+    env:
+      POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+      POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
+      SHORT10_MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/short10.mp4
     steps:
-      - name: Download publish inputs only
+      - name: Publish short10
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path publish-tools,publish-input\short10 | Out-Null
-          $raw='https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main'
-          Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
-          Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
-          Invoke-WebRequest "$raw/media/short10.json" -OutFile publish-input\short10\metadata.json
-      - run: python publish-tools\postiz_publish.py --content-id short10 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short10.mp4 --schedule-at "${{ inputs.schedule_at }}"
+          python publish-tools\postiz_publish.py --content-id short10 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url $env:SHORT10_MEDIA_URL
