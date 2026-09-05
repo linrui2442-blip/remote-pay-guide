@@ -40,6 +40,14 @@ jobs:
     needs: publish-short08
     runs-on: [self-hosted, windows, x64]
     steps:
+      - name: Download publish inputs only
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path publish-tools,publish-input\short08 | Out-Null
+          $raw='https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main'
+          Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
+          Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
+          Invoke-WebRequest "$raw/media/short08.json" -OutFile publish-input\short08\metadata.json
       - name: Publish short08 through Postiz
         shell: powershell
         run: python publish-tools\postiz_publish.py --content-id short08 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short08.mp4
