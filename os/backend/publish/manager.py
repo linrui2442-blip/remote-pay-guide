@@ -6,12 +6,15 @@ DB_PATH = "os/database/os.db"
 
 def _init_db():
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(
+    cursor = conn.cursor()
+
+    cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS publish_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             video_id TEXT,
             platform TEXT,
+            account_id INTEGER,
             status TEXT,
             scheduled_time TEXT,
             created_at TEXT,
@@ -19,6 +22,11 @@ def _init_db():
         )
         """
     )
+
+    columns = [row[1] for row in cursor.execute("PRAGMA table_info(publish_tasks)").fetchall()]
+    if "account_id" not in columns:
+        cursor.execute("ALTER TABLE publish_tasks ADD COLUMN account_id INTEGER")
+
     conn.commit()
     conn.close()
 
@@ -30,12 +38,13 @@ def create_publish_task(task):
     cursor = conn.execute(
         """
         INSERT INTO publish_tasks
-        (video_id, platform, status, scheduled_time, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (video_id, platform, account_id, status, scheduled_time, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.video_id,
             task.platform,
+            getattr(task, "account_id", None),
             task.status,
             task.scheduled_time,
             now,
@@ -52,7 +61,7 @@ def get_publish_tasks():
     _init_db()
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
-        "SELECT id, video_id, platform, status, scheduled_time FROM publish_tasks"
+        "SELECT id, video_id, platform, account_id, status, scheduled_time FROM publish_tasks"
     ).fetchall()
     conn.close()
     return [
@@ -60,8 +69,9 @@ def get_publish_tasks():
             "id": row[0],
             "video_id": row[1],
             "platform": row[2],
-            "status": row[3],
-            "scheduled_time": row[4],
+            "account_id": row[3],
+            "status": row[4],
+            "scheduled_time": row[5],
         }
         for row in rows
     ]
@@ -71,7 +81,7 @@ def get_publish_task(task_id):
     _init_db()
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
-        "SELECT id, video_id, platform, status, scheduled_time FROM publish_tasks WHERE id=?",
+        "SELECT id, video_id, platform, account_id, status, scheduled_time FROM publish_tasks WHERE id=?",
         (task_id,),
     ).fetchone()
     conn.close()
@@ -81,8 +91,9 @@ def get_publish_task(task_id):
         "id": row[0],
         "video_id": row[1],
         "platform": row[2],
-        "status": row[3],
-        "scheduled_time": row[4],
+        "account_id": row[3],
+        "status": row[4],
+        "scheduled_time": row[5],
     }
 
 
