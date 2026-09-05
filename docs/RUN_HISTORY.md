@@ -1,5 +1,20 @@
 # Remote Pay Guide — Run History
 
+## Phase 10 Registry Storage Upgrade
+
+Completed:
+
+- SQLite database created
+- short01-short10 migrated
+
+Storage:
+
+```
+content-registry/registry.json
+        ↓
+database/content.db
+```
+
 ## Verified Render Batch
 
 Workflow:
@@ -28,91 +43,13 @@ SUCCESS
 
 ## Verified Published Assets
 
-### short04
-
-Status:
-
-```
-Render: SUCCESS
-Publish: SUCCESS
-```
+short04-short06 publishing chain verified.
 
 Platforms:
 
 - Facebook
 - Instagram
 - YouTube Shorts
-
-### short05
-
-Status:
-
-```
-Render: SUCCESS
-Publish: SUCCESS
-```
-
-Platforms:
-
-- Facebook
-- Instagram
-- YouTube Shorts
-
-### short06
-
-Initial publish:
-
-```
-Publish: SUCCESS
-```
-
-Recovery test:
-
-```
-Workflow:
-publish-existing-short06.yml
-
-Source Run ID:
-33723359599
-
-Result:
-SUCCESS
-```
-
-Platform recovery behavior:
-
-```
-Facebook:
-SKIP (already succeeded)
-
-Instagram:
-SKIP (already succeeded)
-
-YouTube:
-SUCCESS (retry)
-```
-
-Recovery reason:
-
-The local publish state recorded YouTube as succeeded, but the actual YouTube delivery failed because the old OAuth Integration was invalid.
-
-After resetting the YouTube platform state to failed and rerunning the publish workflow:
-
-```
-Facebook and Instagram were skipped.
-YouTube was successfully retried.
-```
-
-Final short06 status:
-
-```
-Render: SUCCESS
-Artifact: SUCCESS
-GitHub Pages media: SUCCESS
-Facebook: SUCCESS
-Instagram: SUCCESS
-YouTube Shorts: SUCCESS
-```
 
 ## Operational Notes
 
