@@ -12,11 +12,18 @@ from publish.manager import (
     update_publish_status,
 )
 from publish.adapters.youtube import YouTubeAdapter
+from publish.queue import PublishQueue
+from publish.worker import PublishWorker
+from publish.scheduler import PublishScheduler
 
 app = FastAPI(title="Remote Pay Guide OS")
 github_client = GitHubClient()
 youtube_adapter = YouTubeAdapter()
 youtube_adapter.initialize()
+
+publish_queue = PublishQueue()
+publish_worker = PublishWorker(publish_queue)
+publish_scheduler = PublishScheduler(publish_queue)
 
 
 class WorkflowRequest(BaseModel):
@@ -32,9 +39,13 @@ class YouTubeTestRequest(BaseModel):
     video_id: str
 
 
+class QueueRequest(BaseModel):
+    publish_task_id: int
+
+
 @app.get("/")
 def root():
-    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4B", "modules": ["production", "publish", "analytics"]}
+    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4C", "modules": ["production", "publish", "analytics"]}
 
 
 @app.get("/health")
@@ -106,3 +117,23 @@ def youtube_test(request: YouTubeTestRequest):
         {"video_id": request.video_id},
         {"platform": "youtube"}
     )
+
+
+@app.post("/publish/queue")
+def add_publish_queue(request: QueueRequest):
+    return {"queued": publish_queue.add_task(request.publish_task_id)}
+
+
+@app.get("/publish/queue")
+def publish_queue_status():
+    return publish_queue.get_pending_tasks()
+
+
+@app.post("/publish/worker/run")
+def run_publish_worker():
+    return publish_worker.run_once()
+
+
+@app.get("/publish/scheduler/status")
+def scheduler_status():
+    return publish_scheduler.status()
