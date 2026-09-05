@@ -1,15 +1,16 @@
 {
   "content_id": "short08",
   "status": "succeeded",
-  "hook": "What wallet do I need to receive USDT from a client?",
-  "video_subject": "What wallet do I need to receive USDT from a client?",
-  "video_script": "Before receiving USDT from a client, understand what wallet or receiving method supports the exact asset and network they will use. The right choice depends on where you live, what chain is used, and how you plan to access your funds.",
+  "task_id": "52d581c2-cd20-4f6f-b055-bbb2f08928c1",
+  "hook": "First stablecoin payment?",
+  "video_subject": "How can a freelancer receive a stablecoin payment safely?",
+  "video_script": "Treat it like a payment setup problem, not a trading decision. Confirm the asset, confirm the network, choose a compatible receiving account or wallet, and for a large first payment consider a small test transfer. Once the test arrives correctly, the sender can send the remainder. Beginner guide in profile.",
   "video_terms": [
-    "freelancer checking crypto payment details on laptop",
-    "remote worker receiving international client message",
-    "professional using smartphone for payment information",
-    "home office international freelance work",
-    "digital nomad reviewing payment options"
+    "freelancer reviewing client email on laptop at home",
+    "remote worker reading payment message on smartphone at desk",
+    "person checking email confirmation on phone",
+    "freelancer using laptop and smartphone in home office",
+    "young professional reading message on laptop"
   ],
   "output": "polished-short08.mp4"
 }
