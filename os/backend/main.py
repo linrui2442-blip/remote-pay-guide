@@ -23,6 +23,9 @@ from production.providers import get_provider,production_provider_registry
 from production.runtime.manager import create_job,get_jobs,get_job
 from production.runtime.worker import ProductionRuntimeWorker
 from production.results.manager import get_results,get_result,get_result_by_job
+from data.lifecycle import get_video_lifecycle
+from data.manager import get_overview,get_statistics
+from data.performance import get_video_performance,get_performance_summary
 
 app=FastAPI(title="Remote Pay Guide OS")
 github_client=GitHubClient()
@@ -156,9 +159,22 @@ def ai_status():
 
 @app.get('/production/results')
 def production_results(): return get_results()
-
 @app.get('/production/results/{result_id}')
 def production_result(result_id:int): return get_result(result_id)
-
 @app.get('/production/results/job/{runtime_job_id}')
 def production_result_job(runtime_job_id:int): return get_result_by_job(runtime_job_id)
+
+@app.get('/data/lifecycle/{video_id}')
+def data_lifecycle(video_id:str): return get_video_lifecycle(video_id)
+
+@app.get('/data/overview')
+def data_overview(): return get_overview()
+
+@app.get('/data/statistics')
+def data_statistics(): return get_statistics()
+
+@app.get('/data/performance/{video_id}')
+def data_performance(video_id:str): return get_video_performance(video_id)
+
+@app.get('/data/performance/summary')
+def data_performance_summary(): return get_performance_summary()
