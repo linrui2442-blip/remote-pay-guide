@@ -22,6 +22,23 @@ def init_insights_db():
         )
         """
     )
+
+    columns = {
+        "content_type": "TEXT",
+        "platform": "TEXT",
+        "provider": "TEXT",
+        "production_source": "TEXT",
+        "prompt_version": "TEXT",
+        "metrics_snapshot": "TEXT",
+    }
+
+    cursor.execute("PRAGMA table_info(content_insights)")
+    existing = {row[1] for row in cursor.fetchall()}
+
+    for name, field_type in columns.items():
+        if name not in existing:
+            cursor.execute(f"ALTER TABLE content_insights ADD COLUMN {name} {field_type}")
+
     conn.commit()
     conn.close()
 
@@ -40,8 +57,10 @@ def create_insight(insight):
     cursor.execute(
         """
         INSERT INTO content_insights
-        (video_id, score, strengths, weaknesses, recommendations, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (video_id, score, strengths, weaknesses, recommendations,
+         content_type, platform, provider, production_source,
+         prompt_version, metrics_snapshot, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             insight.get("video_id"),
@@ -49,6 +68,12 @@ def create_insight(insight):
             json.dumps(insight.get("strengths", [])),
             json.dumps(insight.get("weaknesses", [])),
             json.dumps(insight.get("recommendations", [])),
+            insight.get("content_type"),
+            insight.get("platform"),
+            insight.get("provider"),
+            insight.get("production_source"),
+            insight.get("prompt_version"),
+            json.dumps(insight.get("metrics_snapshot", {})),
             created_at,
         ),
     )
@@ -101,5 +126,11 @@ def _serialize(row):
         "strengths": json.loads(row["strengths"] or "[]"),
         "weaknesses": json.loads(row["weaknesses"] or "[]"),
         "recommendations": json.loads(row["recommendations"] or "[]"),
+        "content_type": row["content_type"],
+        "platform": row["platform"],
+        "provider": row["provider"],
+        "production_source": row["production_source"],
+        "prompt_version": row["prompt_version"],
+        "metrics_snapshot": json.loads(row["metrics_snapshot"] or "{}"),
         "created_at": row["created_at"],
     }
