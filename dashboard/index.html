@@ -2,57 +2,50 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Remote Pay Guide Dashboard</title>
+  <title>Remote Pay Guide OS Console</title>
+  <link rel="stylesheet" href="./assets/style.css" />
 </head>
 <body>
-  <h1>Remote Pay Guide Dashboard</h1>
+  <h1>Remote Pay Guide OS Console</h1>
 
-  <section>
-    <h2>Content Overview</h2>
-    <div id="overview"></div>
+  <section class="card-grid">
+    <div class="card">Total Content<br><strong id="total">0</strong></div>
+    <div class="card">Published<br><strong>Read Only</strong></div>
+    <div class="card">Production<br><strong>Lifecycle</strong></div>
+    <div class="card">System Health<br><strong>Diagnostics</strong></div>
   </section>
 
-  <section>
-    <h2>System Health</h2>
-    <div id="health"></div>
+  <section class="panel">
+    <h2>Lifecycle Board</h2>
+    <div id="lifecycle">Lifecycle states from dashboard data</div>
   </section>
 
-  <section>
-    <h2>Content List</h2>
-    <div id="list"></div>
+  <section class="panel">
+    <h2>Content Table</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>content_id</th>
+          <th>topic</th>
+          <th>production_status</th>
+          <th>publish_status</th>
+          <th>lifecycle</th>
+        </tr>
+      </thead>
+      <tbody id="content-table"></tbody>
+    </table>
   </section>
 
-<script>
-fetch('./data/dashboard_data.json')
-  .then(r => r.json())
-  .then(data => {
-    document.getElementById('overview').textContent =
-      `Total Videos: ${data.total_videos}`;
+  <section class="panel">
+    <h2>Analytics Panel</h2>
+    <div id="analytics-panel"></div>
+  </section>
 
-    document.getElementById('health').textContent =
-      `System Status: ${data.system_health.system_status} | Checks: ${JSON.stringify(data.system_health.checks)}`;
+  <section class="panel">
+    <h2>Health Panel</h2>
+    <div id="health-panel"></div>
+  </section>
 
-    document.getElementById('list').innerHTML = data.videos.map(v => `
-      <div>
-        <strong>${v.content_id}</strong><br>
-        Topic: ${v.topic}<br>
-        Generator: ${v.generator}<br>
-        Production: ${v.production_status}<br>
-        Publish Status: ${v.publish_status}<br>
-        Platforms: ${v.platforms}<br>
-        Published URL: ${v.published_url}<br>
-        Lifecycle: ${v.lifecycle.current_state}<br>
-        Analytics Status: ${v.analytics_status}<br>
-        Analytics Platform: ${v.analytics.platform}<br>
-        Views: ${v.analytics.views}<br>
-        Clicks: ${v.analytics.clicks}<br>
-        Likes: ${v.analytics.likes}<br>
-        Shares: ${v.analytics.shares}<br>
-        Conversion: ${v.analytics.conversion}
-      </div>
-      <hr>
-    `).join('');
-  });
-</script>
+  <script src="./assets/dashboard.js"></script>
 </body>
 </html>
