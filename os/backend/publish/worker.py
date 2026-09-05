@@ -18,18 +18,24 @@ class PublishWorker:
             if not task:
                 continue
 
-            adapter = self.adapters.get(task[2] if isinstance(task, tuple) else task.get("platform"))
+            platform = task[2] if isinstance(task, tuple) else task.get("platform")
+            adapter = self.adapters.get(platform)
             if not adapter:
                 update_publish_status(task_id, "failed", error_message="unsupported platform")
                 continue
 
             update_publish_status(task_id, "publishing")
 
+            # Future path: asset_id first, legacy video_id fallback.
+            video_reference = task[1] if isinstance(task, tuple) else task.get("asset_id")
+            if not video_reference:
+                video_reference = task[1] if isinstance(task, tuple) else task.get("video_id")
+
             result = adapter.publish_video(
-                {"video_id": task[1] if isinstance(task, tuple) else task.get("video_id")},
-                task[3] if isinstance(task, tuple) else task.get("account_id"),
-                video_path=task[1] if isinstance(task, tuple) else None,
-                title=task[1] if isinstance(task, tuple) else None,
+                {"asset_id": video_reference, "video_id": video_reference},
+                task[3] if isinstance(task, tuple) else None,
+                video_path=video_reference,
+                title=video_reference,
             )
 
             if result.get("status") == "published":
