@@ -1,0 +1,7 @@
+{
+  "sync_mode": "read_only",
+  "source": "analytics-source",
+  "records_processed": 0,
+  "records_failed": 0,
+  "records": []
+}
