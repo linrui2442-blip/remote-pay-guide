@@ -1,0 +1,40 @@
+name: Publish Dashboard Verification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Migrate registry
+        run: python database/migrate_registry.py
+
+      - name: Migrate publish status
+        run: python database/publish_migration.py
+
+      - name: Export dashboard
+        run: python database/export_dashboard.py
+
+      - name: Validate dashboard data
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('dashboard/data/dashboard_data.json')
+          assert p.exists()
+          data = json.loads(p.read_text())
+          assert 'publish_status' in data['videos'][0]
+          print(data.get('total_videos'))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: publish-dashboard-output
+          path: dashboard/data/dashboard_data.json
