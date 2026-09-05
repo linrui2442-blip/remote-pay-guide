@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import {apiGet} from "./api";
+import {apiGet, getProductionTasks, getProductionStatus, createProductionTask, runProductionTask} from "./api";
 
 export default function App(){
  const [system,setSystem]=useState(null);
@@ -7,13 +7,36 @@ export default function App(){
  const [tasks,setTasks]=useState([]);
  const [platforms,setPlatforms]=useState([]);
  const [metrics,setMetrics]=useState([]);
+ const [productionStatus,setProductionStatus]=useState(null);
+ const [productionTasks,setProductionTasks]=useState([]);
+
+ const refreshProduction=()=>{
+  getProductionStatus().then(setProductionStatus).catch(()=>{});
+  getProductionTasks().then(setProductionTasks).catch(()=>{});
+ };
+
  useEffect(()=>{
   apiGet('/').then(setSystem).catch(()=>setSystem({status:'offline'}));
   apiGet('/assets').then(setAssets).catch(()=>{});
   apiGet('/publish/tasks').then(setTasks).catch(()=>{});
   apiGet('/publish/platforms').then(setPlatforms).catch(()=>{});
   apiGet('/analytics/metrics').then(setMetrics).catch(()=>{});
+  refreshProduction();
  },[]);
+
+ const createTask=()=>{
+  createProductionTask({
+   task_type:"video_render",
+   provider:"github",
+   workflow:"render.yml",
+   branch:"main"
+  }).then(refreshProduction);
+ };
+
+ const runTask=(id)=>{
+  runProductionTask(id).then(refreshProduction);
+ };
+
  return <main>
   <h1>Remote Pay Guide OS</h1>
   <h2>System Status</h2><pre>{JSON.stringify(system,null,2)}</pre>
@@ -21,5 +44,18 @@ export default function App(){
   <h2>Publish Tasks</h2><pre>{JSON.stringify(tasks,null,2)}</pre>
   <h2>Platforms</h2><pre>{JSON.stringify(platforms,null,2)}</pre>
   <h2>Analytics</h2><pre>{JSON.stringify(metrics,null,2)}</pre>
+
+  <h2>Production Center</h2>
+  <h3>Production Status</h3>
+  <pre>{JSON.stringify(productionStatus,null,2)}</pre>
+  <button onClick={createTask}>Create Production Task</button>
+
+  <h3>Production Tasks</h3>
+  <pre>{JSON.stringify(productionTasks,null,2)}</pre>
+  {productionTasks.map(task=>(
+    <button key={task.id} onClick={()=>runTask(task.id)}>
+      Run Task {task.id}
+    </button>
+  ))}
  </main>
 }
