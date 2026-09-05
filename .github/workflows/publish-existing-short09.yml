@@ -6,6 +6,10 @@ on:
       source_run_id:
         required: true
         type: string
+      schedule_at:
+        description: 'Postiz scheduled publish time ISO format'
+        required: false
+        type: string
 permissions:
   contents: write
   actions: read
@@ -39,4 +43,4 @@ jobs:
           Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
           Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
           Invoke-WebRequest "$raw/media/short09.json" -OutFile publish-input\short09\metadata.json
-      - run: python publish-tools\postiz_publish.py --content-id short09 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4
+      - run: python publish-tools\postiz_publish.py --content-id short09 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4 --schedule-at "${{ inputs.schedule_at }}"
