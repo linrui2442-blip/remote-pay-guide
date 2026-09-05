@@ -7,6 +7,10 @@ on:
         description: 'Successful Render short02-short10 batch run ID containing the artifact'
         required: true
         type: string
+      schedule_at:
+        description: 'Postiz scheduled publish time in ISO format, e.g. 2026-09-05T12:00:00Z'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -50,4 +54,5 @@ jobs:
           Invoke-WebRequest "$raw/media/short08.json" -OutFile publish-input\short08\metadata.json
       - name: Publish short08 through Postiz
         shell: powershell
-        run: python publish-tools\postiz_publish.py --content-id short08 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short08.mp4
+        run: |
+          python publish-tools\postiz_publish.py --content-id short08 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short08.mp4 --schedule-at "${{ inputs.schedule_at }}"
