@@ -20,15 +20,16 @@ def check_database():
     if not os.path.exists(db):
         return result
 
+    required = {
+        "videos",
+        "publish_status",
+        "analytics_metrics"
+    }
+
+    conn = None
     try:
         conn = sqlite3.connect(db)
         cursor = conn.cursor()
-
-        required = [
-            "videos",
-            "publish_status",
-            "analytics_metrics"
-        ]
 
         tables = {
             row[0]
@@ -37,11 +38,13 @@ def check_database():
             )
         }
 
-        if all(table in tables for table in required):
+        if required.issubset(tables):
             result["status"] = "ok"
-        conn.close()
-    except Exception:
-        pass
+    except sqlite3.Error:
+        result["status"] = "failed"
+    finally:
+        if conn:
+            conn.close()
 
     return result
 
