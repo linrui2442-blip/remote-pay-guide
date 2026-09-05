@@ -15,6 +15,7 @@ from publish.adapters.youtube import YouTubeAdapter
 from publish.queue import PublishQueue
 from publish.worker import PublishWorker
 from publish.scheduler import PublishScheduler
+from publish.registry import platform_registry, get_adapter
 from accounts.models import Account
 from accounts.manager import create_account, get_accounts, get_account, update_account_status
 from oauth.models import OAuthToken
@@ -43,6 +44,12 @@ class PublishStatusRequest(BaseModel):
 
 class YouTubeTestRequest(BaseModel):
     video_id: str
+    account_id: int | None = None
+
+
+class PlatformTestRequest(BaseModel):
+    video_id: str
+    account_id: int | None = None
 
 
 class QueueRequest(BaseModel):
@@ -129,12 +136,27 @@ def update_publish(task_id: int, request: PublishStatusRequest):
 
 @app.get("/publish/platforms")
 def publish_platforms():
-    return ["youtube"]
+    return list(platform_registry.keys())
 
 
 @app.post("/publish/youtube/test")
 def youtube_test(request: YouTubeTestRequest):
-    return youtube_adapter.publish_video({"video_id": request.video_id}, {"platform": "youtube"})
+    adapter = get_adapter("youtube")
+    return adapter.publish_video(
+        {"video_id": request.video_id},
+        request.account_id,
+    )
+
+
+@app.post("/publish/{platform}/test")
+def platform_test(platform: str, request: PlatformTestRequest):
+    adapter = get_adapter(platform)
+    if adapter is None:
+        return {"status": "unsupported_platform"}
+    return adapter.publish_video(
+        {"video_id": request.video_id},
+        request.account_id,
+    )
 
 
 @app.post("/publish/queue")
