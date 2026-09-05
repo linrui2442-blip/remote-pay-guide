@@ -55,4 +55,8 @@ jobs:
       - name: Publish short08 through Postiz
         shell: powershell
         run: |
-          python publish-tools\postiz_publish.py --content-id short08 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url https://linrui2442-blip.github.io/remote-pay-guide/media/short08.mp4 --schedule-at "${{ inputs.schedule_at }}"
+          $args = @('--content-id','short08','--artifact-root','publish-input','--posting-pack','publish-tools\posting-pack-01.md','--media-url','https://linrui2442-blip.github.io/remote-pay-guide/media/short08.mp4')
+          if ('${{ inputs.schedule_at }}' -ne '') {
+            $args += @('--schedule-at','${{ inputs.schedule_at }}')
+          }
+          python publish-tools\postiz_publish.py @args
