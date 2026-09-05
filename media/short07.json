@@ -1,0 +1,16 @@
+{
+  "content_id": "short07",
+  "status": "succeeded",
+  "task_id": "fae46e51-0a93-4977-8fce-91aa7689d069",
+  "hook": "Overseas client paying in crypto?",
+  "video_subject": "My overseas client wants to pay me in crypto. What should I ask them first?",
+  "video_script": "Ask three questions before you send any address: What asset are you sending? Which network are you using? What amount are you sending? Then choose a receiving method that supports that exact asset and network in your location. Don't let the word crypto make the process more complicated than it needs to be.",
+  "video_terms": [
+    "international video call on laptop home office",
+    "freelancer reading client message on smartphone",
+    "remote worker asking questions on video call",
+    "professional checking information on laptop",
+    "home office client communication"
+  ],
+  "output": "polished-short07.mp4"
+}
