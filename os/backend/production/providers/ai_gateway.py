@@ -29,7 +29,12 @@ class AIGatewayProvider:
         }
 
     def run(self, task):
-        return self.submit_job(task)
+        submitted = self.submit_job(task)
+        return {
+            "status": "completed",
+            "provider": "ai_gateway",
+            "output": submitted
+        }
 
     def get_provider_status(self):
         return {
