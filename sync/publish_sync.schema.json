@@ -1,0 +1,19 @@
+{
+  "name": "publish_sync_interface",
+  "purpose": "Map existing publish state to content registry fields",
+  "input": {
+    "content_id": "string",
+    "publish_state": "object"
+  },
+  "output": {
+    "postiz_id": "string",
+    "platforms": {
+      "facebook": "string",
+      "instagram": "string",
+      "youtube": "string"
+    },
+    "published_url": "object",
+    "publish_status": "string"
+  },
+  "write_registry": false
+}
