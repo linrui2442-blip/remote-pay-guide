@@ -22,10 +22,25 @@ BASE_FIELDS = [
 PUBLISH_FIELDS = ["postiz_id", "platforms", "published_url"]
 ANALYTICS_FIELDS = ["platform", "views", "clicks", "likes", "shares", "conversion"]
 
+STRING_FIELDS = {
+    "content_id",
+    "topic",
+    "production_status",
+    "publish_status",
+    "analytics_status",
+    "generator",
+    "video_source",
+    "artifact_id",
+    "postiz_id",
+    "platforms",
+    "published_url",
+    "platform",
+}
 
-def normalize(value):
+
+def normalize(value, field=None):
     if value is None or value == "":
-        return "UNKNOWN"
+        return "UNKNOWN" if field in STRING_FIELDS else value
     return value
 
 
@@ -57,17 +72,20 @@ def export_dashboard():
 
     videos = []
     for row in rows:
-        item = {field: normalize(row[field]) for field in BASE_FIELDS}
+        item = {field: normalize(row[field], field) for field in BASE_FIELDS}
 
         publish = publish_rows.get(row["content_id"])
-        item.update({field: normalize(publish[field]) if publish else "UNKNOWN" for field in PUBLISH_FIELDS})
+        item.update({field: normalize(publish[field], field) if publish else "UNKNOWN" for field in PUBLISH_FIELDS})
 
         analytics = analytics_rows.get(row["content_id"])
-        item["analytics"] = {field: normalize(analytics[field]) if analytics else 0 for field in ANALYTICS_FIELDS}
+        item["analytics"] = {
+            field: normalize(analytics[field], field) if analytics else ("UNKNOWN" if field == "platform" else 0)
+            for field in ANALYTICS_FIELDS
+        }
 
         lifecycle = lifecycle_rows.get(row["content_id"], {})
         item["lifecycle"] = {
-            "current_state": normalize(lifecycle.get("current_state"))
+            "current_state": normalize(lifecycle.get("current_state"), "current_state")
         }
 
         videos.append(item)
@@ -77,7 +95,7 @@ def export_dashboard():
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_videos": len(videos),
         "system_health": {
-            "system_status": normalize(health_data.get("system_status")),
+            "system_status": normalize(health_data.get("system_status"), "system_status"),
             "checks": health_data.get("checks", [])
         },
         "videos": videos,
