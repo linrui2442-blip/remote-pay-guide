@@ -69,11 +69,19 @@ The project does not compete for crypto news or trading traffic.
 
 ## Content Factory
 
-Video production uses real stock footage from Pexels combined with AI-assisted content production.
+Remote Pay Guide uses an AI-assisted content production pipeline. AI is used for content structure, scripting, and automation; the visual footage is not generated from scratch.
+
+Video asset source:
+
+```
+Pexels video assets
+```
 
 Production workflow:
 
 ```
+Topic strategy
+        ↓
 Content tasks (JSONL)
         ↓
 AI script / content structure
@@ -89,7 +97,31 @@ polish_short.py
 Final Short MP4
 ```
 
-Pexels is the visual asset source for the short-form video production pipeline.
+The objective is not mass-producing low-quality AI videos. The objective is to build a repeatable content testing system and learn which content structures create qualified user intent.
+
+## Publishing Architecture
+
+Current system:
+
+```
+Render Layer
+      ↓
+Artifact
+      ↓
+Publish Layer (publish-short.yml)
+      ↓
+GitHub Pages Public Media
+      ↓
+Postiz
+      ↓
+YouTube / Instagram / Facebook
+      ↓
+Landing Page
+      ↓
+GA4
+      ↓
+Binance Referral Conversion
+```
 
 ## Referral
 
@@ -136,28 +168,6 @@ tracking source
 GA4
  ↓
 conversion
-```
-
-## Publishing Architecture
-
-Current system:
-
-```
-Content Factory
-      ↓
-Finished MP4
-      ↓
-GitHub Pages Public Media
-      ↓
-Postiz
-      ↓
-YouTube / Instagram / Facebook
-      ↓
-Landing Page
-      ↓
-GA4
-      ↓
-Referral Conversion
 ```
 
 ## Current MVP Status
