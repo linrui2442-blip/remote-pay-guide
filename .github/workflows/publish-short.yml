@@ -1,0 +1,143 @@
+name: Publish short through Postiz
+
+on:
+  workflow_dispatch:
+    inputs:
+      content_id:
+        description: 'Short content id, for example short10'
+        required: true
+        type: string
+      source_run_id:
+        description: 'Successful Render short02-short10 batch run ID containing the artifact'
+        required: true
+        type: string
+      schedule_at:
+        description: 'Optional ISO 8601 time with timezone'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  prepare-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Remote Pay Guide
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download rendered batch artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: remote-pay-guide-short02-short10
+          path: source-batch
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Validate and stage public media
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+          import os
+
+          content_id = os.environ['CONTENT_ID']
+          source = Path('source-batch') / content_id
+          metadata_path = source / 'metadata.json'
+
+          if not metadata_path.exists():
+              raise SystemExit(f'Missing metadata: {metadata_path}')
+
+          metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+          if metadata.get('content_id') != content_id:
+              raise SystemExit('metadata content_id mismatch')
+          if metadata.get('status') != 'succeeded':
+              raise SystemExit('render status is not succeeded')
+
+          video = source / str(metadata.get('output'))
+          if not video.exists() or video.stat().st_size <= 0:
+              raise SystemExit(f'Missing video: {video}')
+
+          media = Path('media')
+          media.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(video, media / f'{content_id}.mp4')
+          shutil.copy2(metadata_path, media / f'{content_id}.json')
+          PY
+        env:
+          CONTENT_ID: ${{ inputs.content_id }}
+
+      - name: Verify staged media
+        shell: bash
+        run: |
+          test -f "media/${{ inputs.content_id }}.mp4"
+          test -f "media/${{ inputs.content_id }}.json"
+
+      - name: Commit media to main
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "media/${{ inputs.content_id }}.mp4" "media/${{ inputs.content_id }}.json"
+          if git diff --cached --quiet; then
+            echo 'No media changes to commit.'
+          else
+            git commit -m "Stage ${{ inputs.content_id }} public media for Postiz"
+            git push origin HEAD:main
+          fi
+
+      - name: Wait for GitHub Pages media URL
+        shell: bash
+        run: |
+          url="https://linrui2442-blip.github.io/remote-pay-guide/media/${{ inputs.content_id }}.mp4"
+          for attempt in $(seq 1 36); do
+            if curl -fsSI --max-time 15 "$url"; then
+              echo "GitHub Pages media reachable: $url"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "GitHub Pages media unavailable: $url"
+          exit 1
+
+  publish:
+    needs: prepare-media
+    runs-on: [self-hosted, windows, x64]
+    timeout-minutes: 10
+    env:
+      POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+      POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
+      MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/${{ inputs.content_id }}.mp4
+
+    steps:
+      - name: Download publish inputs
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path publish-tools,publish-input\${{ inputs.content_id }} | Out-Null
+          $raw='https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main'
+          Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
+          Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
+          Invoke-WebRequest "$raw/media/${{ inputs.content_id }}.json" -OutFile "publish-input\${{ inputs.content_id }}\metadata.json"
+          if(!(Test-Path "publish-input\${{ inputs.content_id }}\metadata.json")){ exit 1 }
+
+      - name: Publish through Postiz
+        shell: powershell
+        run: |
+          $args=@(
+            'publish-tools\postiz_publish.py',
+            '--content-id', '${{ inputs.content_id }}',
+            '--artifact-root', 'publish-input',
+            '--posting-pack', 'publish-tools\posting-pack-01.md',
+            '--media-url', $env:MEDIA_URL
+          )
+          $schedule='${{ inputs.schedule_at }}'
+          if(-not [string]::IsNullOrWhiteSpace($schedule)){
+            $args += @('--schedule-at',$schedule)
+          }
+          python @args
