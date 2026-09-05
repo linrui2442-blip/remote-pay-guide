@@ -1,0 +1,15 @@
+{
+  "name": "analytics_sync_interface",
+  "purpose": "Future GA4 analytics mapping interface",
+  "input": {
+    "content_id": "string",
+    "platform_metrics": "object"
+  },
+  "output": {
+    "views": "number",
+    "clicks": "number",
+    "conversion": "number"
+  },
+  "api_connection": false,
+  "write_registry": false
+}
