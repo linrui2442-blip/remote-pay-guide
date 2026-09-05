@@ -33,7 +33,13 @@ fetch('./data/dashboard_data.json')
         Publish Status: ${v.publish_status}<br>
         Platforms: ${v.platforms}<br>
         Published URL: ${v.published_url}<br>
-        Analytics: ${v.analytics_status}
+        Analytics Status: ${v.analytics_status}<br>
+        Analytics Platform: ${v.analytics.platform}<br>
+        Views: ${v.analytics.views}<br>
+        Clicks: ${v.analytics.clicks}<br>
+        Likes: ${v.analytics.likes}<br>
+        Shares: ${v.analytics.shares}<br>
+        Conversion: ${v.analytics.conversion}
       </div>
       <hr>
     `).join('');
