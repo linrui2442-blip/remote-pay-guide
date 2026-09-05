@@ -53,6 +53,15 @@ Status:
 - analytics_metrics table created
 - analytics layer remains read-only
 
+## Phase 13C
+
+### Analytics Dashboard Integration
+
+Status:
+
+- analytics metrics connected to dashboard
+- analytics layer remains read-only
+
 Data flow:
 
 ```
@@ -61,6 +70,10 @@ analytics source
 analytics_sync
     ↓
 analytics_metrics table
+    ↓
+export_dashboard.py
+    ↓
+dashboard/data/dashboard_data.json
     ↓
 Dashboard
 ```
