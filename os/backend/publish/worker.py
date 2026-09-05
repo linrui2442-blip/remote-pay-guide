@@ -26,10 +26,10 @@ class PublishWorker:
             update_publish_status(task_id, "publishing")
             result = adapter.publish_video(
                 {"video_id": task["video_id"]},
-                task
+                task.get("account_id")
             )
 
-            if result.get("status") == "simulated":
+            if result.get("status") == "simulated_upload":
                 update_publish_status(task_id, "published")
             else:
                 update_publish_status(task_id, "failed")
