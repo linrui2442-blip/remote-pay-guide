@@ -1,0 +1,16 @@
+{
+  "content_id": "short09",
+  "status": "succeeded",
+  "task_id": "eb5aaee0-565d-4c84-a2b8-de4ee4e1d693",
+  "hook": "Just received USDC?",
+  "video_subject": "I just received USDC. What can I do with it?",
+  "video_script": "First, make sure the payment actually arrived on the expected network. Then your options depend on the service you use and your country: hold it, transfer it, convert it, or use supported local cash-out options. Don't rush into a trade just because the money is in crypto. Start with the payment basics first.",
+  "video_terms": [
+    "remote worker reading payment notification on smartphone",
+    "freelancer checking message on laptop at desk",
+    "person reviewing transfer options on laptop in home office",
+    "professional reading smartphone notification at desk",
+    "freelancer calmly using phone and laptop"
+  ],
+  "output": "polished-short09.mp4"
+}
