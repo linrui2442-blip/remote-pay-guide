@@ -90,6 +90,16 @@ Status:
 - system health connected to dashboard
 - dashboard remains read-only
 
+## Phase 14D
+
+### Dashboard UI Upgrade
+
+Status:
+
+- Remote Pay Guide OS Console UI created
+- lifecycle, analytics and health panels integrated
+- dashboard remains read-only
+
 ## Data flow:
 
 ```
