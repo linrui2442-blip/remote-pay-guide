@@ -7,21 +7,36 @@
 </head>
 <body>
   <h1>Remote Pay Guide Dashboard v1</h1>
-  <p>Read-only dashboard placeholder.</p>
 
   <section>
     <h2>Content Overview</h2>
-    <div id="overview">Data source: content-registry/registry.json</div>
+    <div id="overview"></div>
   </section>
 
   <section>
-    <h2>Content Detail</h2>
-    <div id="detail">Select content_id to view details.</div>
+    <h2>Content List</h2>
+    <div id="list"></div>
   </section>
 
-  <script>
-    // Phase 6 v1 intentionally keeps data loading simple and read-only.
-    // Future implementation may read registry.json and sync reports.
-  </script>
+<script>
+fetch('./data/dashboard_data.json')
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('overview').textContent =
+      `Total Videos: ${data.total_videos}`;
+
+    document.getElementById('list').innerHTML = data.videos.map(v => `
+      <div>
+        <strong>${v.content_id}</strong><br>
+        Topic: ${v.topic}<br>
+        Generator: ${v.generator}<br>
+        Production: ${v.production_status}<br>
+        Publish: ${v.publish_status}<br>
+        Analytics: ${v.analytics_status}
+      </div>
+      <hr>
+    `).join('');
+  });
+</script>
 </body>
 </html>
