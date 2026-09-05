@@ -4,7 +4,7 @@ class YouTubeAPIClient:
         self.credentials = None
 
     def initialize(self, credentials=None):
-        self.credentials = credentials
+        self.credentials = credentials or {}
         self.status = "ready"
         return {
             "platform": "youtube",
