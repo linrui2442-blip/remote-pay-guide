@@ -1,0 +1,21 @@
+{
+  "import_status": "design_only",
+  "mode": "read_only",
+  "registry_write": false,
+  "sources": {
+    "tasks_launch02": {
+      "status": "pending_import",
+      "fields": ["topic", "script_metadata"]
+    },
+    "artifact_metadata": {
+      "status": "pending_import",
+      "fields": ["artifact_id", "video_file", "production_result"]
+    },
+    "publish_state": {
+      "status": "pending_import",
+      "fields": ["postiz_id", "platform_status", "published_url"]
+    }
+  },
+  "assets": [],
+  "notes": "No real runtime data imported. No registry modification performed."
+}
