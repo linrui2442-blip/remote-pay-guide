@@ -51,6 +51,15 @@ dashboard/data/dashboard_data.json
 Dashboard
 ```
 
+## Phase 13A
+
+### Analytics Layer Foundation
+
+Status:
+
+- analytics schema foundation created
+- read-only analytics layer initialized
+
 ## Implemented
 
 ### Distribution
@@ -75,4 +84,6 @@ Dashboard Export Layer
 Read-only Dashboard
         ↓
 publish-sync read-only layer
+        ↓
+analytics read-only layer
 ```
