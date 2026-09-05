@@ -10,12 +10,6 @@ The goal is not to build a crypto media account. The goal is to validate whether
 
 MVP completed. The project has entered content scale testing and data feedback validation.
 
-Current phase:
-
-- Scale content production
-- Verify traffic attribution
-- Optimize conversion path
-
 ## Phase 11
 
 ### Dashboard Database Integration
@@ -25,16 +19,23 @@ Status:
 - SQLite connected
 - Dashboard reads exported database data
 
+## Phase 12B
+
+### Publish Sync Database Integration
+
+Status:
+
+- publish_status table created
+- publish sync remains read-only
+
 Data flow:
 
 ```
-SQLite
-  ↓
-export_dashboard.py
-  ↓
-dashboard/data/dashboard_data.json
-  ↓
-Dashboard
+publish-state
+    ↓
+publish-sync
+    ↓
+publish_status table
 ```
 
 ## Implemented
@@ -80,4 +81,6 @@ SQLite Database
 Dashboard Export Layer
         ↓
 Read-only Dashboard
+        ↓
+publish-sync read-only layer
 ```
