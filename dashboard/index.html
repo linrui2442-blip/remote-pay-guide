@@ -3,10 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <title>Remote Pay Guide Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
-  <h1>Remote Pay Guide Dashboard v1</h1>
+  <h1>Remote Pay Guide Dashboard</h1>
 
   <section>
     <h2>Content Overview</h2>
@@ -31,7 +30,9 @@ fetch('./data/dashboard_data.json')
         Topic: ${v.topic}<br>
         Generator: ${v.generator}<br>
         Production: ${v.production_status}<br>
-        Publish: ${v.publish_status}<br>
+        Publish Status: ${v.publish_status}<br>
+        Platforms: ${v.platforms}<br>
+        Published URL: ${v.published_url}<br>
         Analytics: ${v.analytics_status}
       </div>
       <hr>
