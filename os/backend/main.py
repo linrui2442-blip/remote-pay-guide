@@ -11,9 +11,12 @@ from publish.manager import (
     get_publish_task,
     update_publish_status,
 )
+from publish.adapters.youtube import YouTubeAdapter
 
 app = FastAPI(title="Remote Pay Guide OS")
 github_client = GitHubClient()
+youtube_adapter = YouTubeAdapter()
+youtube_adapter.initialize()
 
 
 class WorkflowRequest(BaseModel):
@@ -25,9 +28,13 @@ class PublishStatusRequest(BaseModel):
     status: str
 
 
+class YouTubeTestRequest(BaseModel):
+    video_id: str
+
+
 @app.get("/")
 def root():
-    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4A", "modules": ["production", "publish", "analytics"]}
+    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4B", "modules": ["production", "publish", "analytics"]}
 
 
 @app.get("/health")
@@ -86,3 +93,16 @@ def publish_task(task_id: int):
 def update_publish(task_id: int, request: PublishStatusRequest):
     update_publish_status(task_id, request.status)
     return get_publish_task(task_id)
+
+
+@app.get("/publish/platforms")
+def publish_platforms():
+    return ["youtube"]
+
+
+@app.post("/publish/youtube/test")
+def youtube_test(request: YouTubeTestRequest):
+    return youtube_adapter.publish_video(
+        {"video_id": request.video_id},
+        {"platform": "youtube"}
+    )
