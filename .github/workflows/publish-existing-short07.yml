@@ -36,8 +36,10 @@ jobs:
           data=json.loads(meta.read_text())
           assert data.get('content_id')==cid
           assert data.get('status')=='succeeded'
-          shutil.copy2(source/str(data['output']), Path('media')/f'{cid}.mp4')
-          shutil.copy2(meta, Path('media')/f'{cid}.json')
+          media=Path('media')
+          media.mkdir(exist_ok=True)
+          shutil.copy2(source/str(data['output']), media/f'{cid}.mp4')
+          shutil.copy2(meta, media/f'{cid}.json')
           PY
       - name: Commit media
         run: |
@@ -54,6 +56,14 @@ jobs:
       POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
       SHORT07_MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/short07.mp4
     steps:
+      - name: Download publish inputs only
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path publish-tools,publish-input\short07 | Out-Null
+          $raw='https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main'
+          Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
+          Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
+          Invoke-WebRequest "$raw/media/short07.json" -OutFile publish-input\short07\metadata.json
       - name: Publish short07
         shell: powershell
         run: |
