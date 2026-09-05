@@ -18,21 +18,33 @@ class PublishWorker:
             if not task:
                 continue
 
-            adapter = self.adapters.get(task["platform"])
+            adapter = self.adapters.get(task[2] if isinstance(task, tuple) else task.get("platform"))
             if not adapter:
-                update_publish_status(task_id, "failed")
+                update_publish_status(task_id, "failed", error_message="unsupported platform")
                 continue
 
             update_publish_status(task_id, "publishing")
+
             result = adapter.publish_video(
-                {"video_id": task["video_id"]},
-                task.get("account_id")
+                {"video_id": task[1] if isinstance(task, tuple) else task.get("video_id")},
+                task[3] if isinstance(task, tuple) else task.get("account_id"),
+                video_path=task[1] if isinstance(task, tuple) else None,
+                title=task[1] if isinstance(task, tuple) else None,
             )
 
-            if result.get("status") == "simulated_upload":
-                update_publish_status(task_id, "published")
+            if result.get("status") == "published":
+                update_publish_status(
+                    task_id,
+                    "published",
+                    platform_video_id=result.get("video_id"),
+                    published_url=result.get("url"),
+                )
             else:
-                update_publish_status(task_id, "failed")
+                update_publish_status(
+                    task_id,
+                    "failed",
+                    error_message=result.get("error", result.get("status")),
+                )
 
             self.queue.remove_task(task_id)
             processed += 1
