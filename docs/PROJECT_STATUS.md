@@ -62,20 +62,25 @@ Status:
 - analytics metrics connected to dashboard
 - analytics layer remains read-only
 
-Data flow:
+## Phase 14A
+
+### Content Lifecycle State Machine
+
+Status:
+
+- lifecycle state calculation added
+- read-only lifecycle layer
+
+## Data flow:
 
 ```
-analytics source
-    ↓
-analytics_sync
-    ↓
-analytics_metrics table
-    ↓
-export_dashboard.py
-    ↓
-dashboard/data/dashboard_data.json
-    ↓
-Dashboard
+Content Registry
+        ↓
+SQLite Database
+        ↓
+Lifecycle State Machine
+        ↓
+Dashboard / Reports
 ```
 
 ## Implemented
@@ -104,4 +109,6 @@ Read-only Dashboard
 publish-sync read-only layer
         ↓
 analytics read-only layer
+        ↓
+lifecycle read-only layer
 ```
