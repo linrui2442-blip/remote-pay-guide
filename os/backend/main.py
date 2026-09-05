@@ -20,6 +20,8 @@ from analytics.collector import AnalyticsCollector
 from production.models import ProductionTask
 from production.manager import create_production_task,get_production_tasks,get_production_task,update_production_status
 from production.providers import get_provider,production_provider_registry
+from production.runtime.manager import create_job,get_jobs,get_job
+from production.runtime.worker import ProductionRuntimeWorker
 
 app=FastAPI(title="Remote Pay Guide OS")
 github_client=GitHubClient()
@@ -28,6 +30,7 @@ analytics_collector=AnalyticsCollector()
 publish_queue=PublishQueue()
 publish_worker=PublishWorker(publish_queue)
 publish_scheduler=PublishScheduler(publish_queue)
+runtime_worker=ProductionRuntimeWorker()
 
 class WorkflowRequest(BaseModel):
  workflow:str
@@ -131,3 +134,26 @@ def run_production(task_id:int):
 @app.get('/production/status')
 def production_status():
  return {'status':'ready','providers':list(production_provider_registry.keys())}
+
+@app.post('/production/runtime/jobs')
+def create_runtime_job(data:dict):
+ return create_job(data)
+
+@app.get('/production/runtime/jobs')
+def runtime_jobs():
+ return get_jobs()
+
+@app.get('/production/runtime/jobs/{job_id}')
+def runtime_job(job_id:int):
+ return get_job(job_id)
+
+@app.post('/production/runtime/jobs/{job_id}/run')
+def run_runtime_job(job_id:int):
+ job=get_job(job_id)
+ if job is None:
+  return {'status':'not_found'}
+ return runtime_worker.run(job)
+
+@app.get('/production/runtime/status')
+def runtime_status():
+ return {'status':'ready'}
