@@ -15,6 +15,8 @@ from publish.adapters.youtube import YouTubeAdapter
 from publish.queue import PublishQueue
 from publish.worker import PublishWorker
 from publish.scheduler import PublishScheduler
+from accounts.models import Account
+from accounts.manager import create_account, get_accounts, get_account, update_account_status
 
 app = FastAPI(title="Remote Pay Guide OS")
 github_client = GitHubClient()
@@ -43,9 +45,13 @@ class QueueRequest(BaseModel):
     publish_task_id: int
 
 
+class AccountStatusRequest(BaseModel):
+    status: str
+
+
 @app.get("/")
 def root():
-    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4C", "modules": ["production", "publish", "analytics"]}
+    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4D", "modules": ["production", "publish", "analytics"]}
 
 
 @app.get("/health")
@@ -113,10 +119,7 @@ def publish_platforms():
 
 @app.post("/publish/youtube/test")
 def youtube_test(request: YouTubeTestRequest):
-    return youtube_adapter.publish_video(
-        {"video_id": request.video_id},
-        {"platform": "youtube"}
-    )
+    return youtube_adapter.publish_video({"video_id": request.video_id}, {"platform": "youtube"})
 
 
 @app.post("/publish/queue")
@@ -137,3 +140,24 @@ def run_publish_worker():
 @app.get("/publish/scheduler/status")
 def scheduler_status():
     return publish_scheduler.status()
+
+
+@app.post("/accounts")
+def add_account(account: Account):
+    return create_account(account)
+
+
+@app.get("/accounts")
+def accounts():
+    return get_accounts()
+
+
+@app.get("/accounts/{account_id}")
+def account(account_id: int):
+    return get_account(account_id)
+
+
+@app.put("/accounts/{account_id}")
+def update_account(account_id: int, request: AccountStatusRequest):
+    update_account_status(account_id, request.status)
+    return get_account(account_id)
