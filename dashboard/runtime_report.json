@@ -1,0 +1,17 @@
+{
+  "status": "verified",
+  "checks": [
+    {
+      "component": "dashboard_data",
+      "status": "ok"
+    },
+    {
+      "component": "javascript",
+      "status": "ok"
+    },
+    {
+      "component": "ui_structure",
+      "status": "ok"
+    }
+  ]
+}
