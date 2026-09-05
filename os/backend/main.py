@@ -19,11 +19,13 @@ from accounts.models import Account
 from accounts.manager import create_account, get_accounts, get_account, update_account_status
 from oauth.models import OAuthToken
 from oauth.manager import create_token, get_token, update_token, delete_token
+from oauth.providers.youtube import YouTubeOAuthProvider
 
 app = FastAPI(title="Remote Pay Guide OS")
 github_client = GitHubClient()
 youtube_adapter = YouTubeAdapter()
 youtube_adapter.initialize()
+youtube_oauth = YouTubeOAuthProvider()
 
 publish_queue = PublishQueue()
 publish_worker = PublishWorker(publish_queue)
@@ -57,9 +59,14 @@ class OAuthUpdateRequest(BaseModel):
     expires_at: str | None = None
 
 
+class YouTubeCallbackRequest(BaseModel):
+    code: str
+    account_id: int
+
+
 @app.get("/")
 def root():
-    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4E", "modules": ["production", "publish", "analytics"]}
+    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4F-1", "modules": ["production", "publish", "analytics"]}
 
 
 @app.get("/health")
@@ -189,3 +196,24 @@ def update_oauth_token(account_id: int, request: OAuthUpdateRequest):
 @app.delete("/oauth/tokens/{account_id}")
 def delete_oauth_token(account_id: int):
     return delete_token(account_id)
+
+
+@app.get("/oauth/youtube/authorize")
+def youtube_authorize(client_id: str, redirect_uri: str):
+    return youtube_oauth.get_authorization_url(client_id, redirect_uri)
+
+
+@app.post("/oauth/youtube/callback")
+def youtube_callback(request: YouTubeCallbackRequest):
+    token_data = youtube_oauth.exchange_code(request.code)
+    create_token({"account_id": request.account_id, **token_data})
+    update_account_status(request.account_id, "active")
+    return {"status": "connected", "account_id": request.account_id}
+
+
+@app.post("/oauth/youtube/refresh/{account_id}")
+def youtube_refresh(account_id: int):
+    token = get_token(account_id)
+    refreshed = youtube_oauth.refresh_token(token.get("refresh_token"))
+    update_token(account_id, refreshed)
+    return {"status": "refreshed"}
