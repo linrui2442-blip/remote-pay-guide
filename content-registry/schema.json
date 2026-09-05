@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Remote Pay Guide Content Registry",
+  "type": "object",
+  "properties": {
+    "content_id": {"type": "string"},
+    "topic": {"type": "string"},
+    "category": {"type": "string"},
+    "script_source": {"type": "string"},
+    "video_source": {"type": "string"},
+    "generator": {"type": "string"},
+    "video_file": {"type": "string"},
+    "artifact_id": {"type": "string"},
+    "production_status": {"type": "string"},
+    "publish_status": {"type": "string"},
+    "platforms": {"type": "object"},
+    "postiz_id": {"type": "string"},
+    "scheduled_time": {"type": "string"},
+    "published_url": {"type": "object"},
+    "analytics_status": {"type": "string"}
+  },
+  "required": ["content_id", "production_status", "publish_status"]
+}
