@@ -7,9 +7,12 @@ class GitHubProductionProvider:
 
     def run(self, task):
         return {
+            "status": "completed",
             "provider": "github",
-            "status": "started",
-            "workflow": task.get("workflow")
+            "output": {
+                "workflow": task.get("workflow"),
+                "execution": "github_actions"
+            }
         }
 
     def get_status(self):
