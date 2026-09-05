@@ -1,168 +1,68 @@
-# Remote Pay Guide — Content Registry
+# Content Registry
 
 ## Purpose
 
-This document is the single source of truth for video content production and publishing status.
+The Content Registry manages Remote Pay Guide content assets.
 
-It separates:
-
-- planned content
-- produced videos
-- published platforms
-- attribution tracking
-
-Do not infer publishing status from tracking parameter examples.
-
-Production process reference:
-
-```
-docs/VIDEO_PRODUCTION_PIPELINE.md
-```
-
-This registry records assets and status.
-The production pipeline document explains how assets are created.
-
----
-
-# Content Plan
-
-Planned content range:
-
-```
-short01 - short10
-```
-
-Total planned videos:
-
-```
-10
-```
-
----
-
-# Production Status
-
-## Completed
-
-### short01
-
-Status:
-
-```
-DONE
-```
-
----
-
-### short02
-
-Status:
-
-```
-DONE
-```
-
----
-
-### short03
-
-Status:
-
-```
-DONE
-```
-
----
-
-### short04
-
-Status:
-
-```
-DONE
-```
-
-Role:
-
-```
-Architecture validation video
-```
-
-Validated:
-
-```
-GitHub Pages public media
-        ↓
-Postiz
-        ↓
-Social platforms
-```
-
----
-
-# Publishing Platforms
-
-Current active publishing workflow:
-
-```
-Facebook Reels
-Instagram Reels
-YouTube Shorts
-```
-
-TikTok:
-
-```
-Not currently part of publishing workflow
-```
-
----
-
-# Publishing Matrix
-
-Current confirmed production:
-
-| Content ID | Facebook | Instagram | YouTube | Status |
-|---|---|---|---|---|
-| short01 | Published workflow | Published workflow | Published workflow | DONE |
-| short02 | Published workflow | Published workflow | Published workflow | DONE |
-| short03 | Published workflow | Published workflow | Published workflow | DONE |
-| short04 | Validation | Validation | Validation | DONE |
-
----
-
-# Attribution Model
-
-Each future video should map:
+It tracks:
 
 ```
 content_id
     ↓
-platform
+content topic
     ↓
-UTM/source
+production status
     ↓
-GA4
+publish status
     ↓
-binance_referral_click
+tracking status
 ```
 
-Example:
+This registry is for internal AI/developer handoff and content lifecycle management.
+
+## Registry
+
+| content_id | topic | target user | production | publish | tracking |
+|------------|-------|-------------|------------|---------|----------|
+| short04 | UNKNOWN | UNKNOWN | DONE | Published workflow | UNKNOWN |
+| short05 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+| short06 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+| short07 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+| short08 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+| short09 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
+| short10 | UNKNOWN | UNKNOWN | UNKNOWN | Published workflow | UNKNOWN |
+
+## Data Source Rules
+
+Only confirmed repository data should be used to populate fields:
+
+- task JSONL definitions
+- content assets
+- render metadata
+- publish-state records
+
+If a field cannot be confirmed from repository data, keep the value as `UNKNOWN`.
+
+## Publishing Reference
+
+Current publishing platforms:
+
+- Facebook Reels
+- Instagram Reels
+- YouTube Shorts
+
+Publishing workflow reference:
 
 ```
-short05
-platform: youtube
-content_id: short05
+render
+↓
+artifact
+↓
+publish workflow
+↓
+media hosting
+↓
+Postiz
+↓
+platform post
 ```
-
----
-
-# Future Updates
-
-When creating a new video, update this file with:
-
-- content ID
-- production status
-- publishing platforms
-- tracking parameters
-- performance data
