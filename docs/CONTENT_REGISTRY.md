@@ -24,13 +24,16 @@ This registry is for internal AI/developer handoff and content lifecycle managem
 
 | content_id | topic | target user | production | publish | tracking |
 |------------|-------|-------------|------------|---------|----------|
-| short04 | UNKNOWN | UNKNOWN | DONE | Published workflow | UNKNOWN |
-| short05 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| short06 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| short07 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| short08 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| short09 | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| short10 | UNKNOWN | UNKNOWN | UNKNOWN | Published workflow | UNKNOWN |
+| short01 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short02 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short03 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short04 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short05 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short06 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short07 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short08 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short09 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
+| short10 | UNKNOWN | UNKNOWN | DONE | Published | UNKNOWN |
 
 ## Data Source Rules
 
@@ -65,4 +68,18 @@ media hosting
 Postiz
 ↓
 platform post
+```
+
+## Batch Status
+
+Batch:
+
+```
+short01-short10
+```
+
+Result:
+
+```
+Published
 ```
