@@ -1,0 +1,49 @@
+name: Migrate Registry Verification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate-registry:
+    name: Registry Migration Runtime Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run registry migration
+        run: |
+          python database/migrate_registry.py
+
+      - name: Verify SQLite output
+        run: |
+          test -f database/content.db
+          python - <<'PY'
+          import sqlite3
+          conn = sqlite3.connect('database/content.db')
+          cursor = conn.cursor()
+          cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='videos'")
+          assert cursor.fetchone(), 'videos table missing'
+          cursor.execute('SELECT COUNT(*) FROM videos')
+          print('videos_count=', cursor.fetchone()[0])
+          conn.close()
+          PY
+
+      - name: Verify migration report
+        run: |
+          test -f database/migration_report.json
+          cat database/migration_report.json
+
+      - name: Upload migration output
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-output
+          path: |
+            database/content.db
+            database/migration_report.json
