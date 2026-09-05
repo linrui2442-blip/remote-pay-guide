@@ -17,6 +17,8 @@ from publish.worker import PublishWorker
 from publish.scheduler import PublishScheduler
 from accounts.models import Account
 from accounts.manager import create_account, get_accounts, get_account, update_account_status
+from oauth.models import OAuthToken
+from oauth.manager import create_token, get_token, update_token, delete_token
 
 app = FastAPI(title="Remote Pay Guide OS")
 github_client = GitHubClient()
@@ -49,9 +51,15 @@ class AccountStatusRequest(BaseModel):
     status: str
 
 
+class OAuthUpdateRequest(BaseModel):
+    access_token: str | None = None
+    refresh_token: str | None = None
+    expires_at: str | None = None
+
+
 @app.get("/")
 def root():
-    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4D", "modules": ["production", "publish", "analytics"]}
+    return {"system": "Remote Pay Guide OS", "status": "running", "phase": "15.4E", "modules": ["production", "publish", "analytics"]}
 
 
 @app.get("/health")
@@ -161,3 +169,23 @@ def account(account_id: int):
 def update_account(account_id: int, request: AccountStatusRequest):
     update_account_status(account_id, request.status)
     return get_account(account_id)
+
+
+@app.post("/oauth/tokens")
+def add_oauth_token(token: OAuthToken):
+    return create_token(token.model_dump())
+
+
+@app.get("/oauth/tokens/{account_id}")
+def oauth_token(account_id: int):
+    return get_token(account_id)
+
+
+@app.put("/oauth/tokens/{account_id}")
+def update_oauth_token(account_id: int, request: OAuthUpdateRequest):
+    return update_token(account_id, request.model_dump())
+
+
+@app.delete("/oauth/tokens/{account_id}")
+def delete_oauth_token(account_id: int):
+    return delete_token(account_id)
