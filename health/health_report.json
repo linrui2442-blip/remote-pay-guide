@@ -1,0 +1,25 @@
+{
+  "system_status": "healthy",
+  "checks": [
+    {
+      "component": "registry",
+      "status": "ok"
+    },
+    {
+      "component": "database",
+      "status": "ok"
+    },
+    {
+      "component": "dashboard",
+      "status": "ok"
+    },
+    {
+      "component": "lifecycle",
+      "status": "ok"
+    },
+    {
+      "component": "workflow",
+      "status": "ok"
+    }
+  ]
+}
