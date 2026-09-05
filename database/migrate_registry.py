@@ -11,8 +11,28 @@ def value_or_unknown(value):
     return value if value not in (None, "") else "UNKNOWN"
 
 
+def normalize_records(data):
+    if isinstance(data, list):
+        return data
+
+    if isinstance(data, dict):
+        if isinstance(data.get("assets"), list):
+            return data["assets"]
+
+        if all(isinstance(v, dict) for v in data.values()):
+            records = []
+            for key, value in data.items():
+                item = dict(value)
+                item.setdefault("content_id", key)
+                records.append(item)
+            return records
+
+    raise ValueError(f"Unsupported registry format: {type(data).__name__}")
+
+
 def migrate():
-    records = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    raw = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    records = normalize_records(raw)
 
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
@@ -42,8 +62,13 @@ def migrate():
     failed = []
 
     for item in records:
-        content_id = value_or_unknown(item.get("content_id"))
+        content_id = "UNKNOWN"
         try:
+            if not isinstance(item, dict):
+                raise TypeError(f"record type {type(item).__name__} is not supported")
+
+            content_id = value_or_unknown(item.get("content_id"))
+
             cur.execute("""
             INSERT OR REPLACE INTO videos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
