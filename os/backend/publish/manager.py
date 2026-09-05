@@ -17,6 +17,9 @@ def _init_db():
             account_id INTEGER,
             status TEXT,
             scheduled_time TEXT,
+            platform_video_id TEXT,
+            published_url TEXT,
+            error_message TEXT,
             created_at TEXT,
             updated_at TEXT
         )
@@ -24,8 +27,16 @@ def _init_db():
     )
 
     columns = [row[1] for row in cursor.execute("PRAGMA table_info(publish_tasks)").fetchall()]
-    if "account_id" not in columns:
-        cursor.execute("ALTER TABLE publish_tasks ADD COLUMN account_id INTEGER")
+    migrations = {
+        "account_id": "INTEGER",
+        "platform_video_id": "TEXT",
+        "published_url": "TEXT",
+        "error_message": "TEXT",
+    }
+
+    for name, field_type in migrations.items():
+        if name not in columns:
+            cursor.execute(f"ALTER TABLE publish_tasks ADD COLUMN {name} {field_type}")
 
     conn.commit()
     conn.close()
@@ -60,49 +71,36 @@ def create_publish_task(task):
 def get_publish_tasks():
     _init_db()
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute(
-        "SELECT id, video_id, platform, account_id, status, scheduled_time FROM publish_tasks"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM publish_tasks").fetchall()
     conn.close()
-    return [
-        {
-            "id": row[0],
-            "video_id": row[1],
-            "platform": row[2],
-            "account_id": row[3],
-            "status": row[4],
-            "scheduled_time": row[5],
-        }
-        for row in rows
-    ]
+    return rows
 
 
 def get_publish_task(task_id):
     _init_db()
     conn = sqlite3.connect(DB_PATH)
-    row = conn.execute(
-        "SELECT id, video_id, platform, account_id, status, scheduled_time FROM publish_tasks WHERE id=?",
-        (task_id,),
-    ).fetchone()
+    row = conn.execute("SELECT * FROM publish_tasks WHERE id=?", (task_id,)).fetchone()
     conn.close()
-    if not row:
-        return None
-    return {
-        "id": row[0],
-        "video_id": row[1],
-        "platform": row[2],
-        "account_id": row[3],
-        "status": row[4],
-        "scheduled_time": row[5],
-    }
+    return row
 
 
-def update_publish_status(task_id, status):
+def update_publish_status(task_id, status, platform_video_id=None, published_url=None, error_message=None):
     _init_db()
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
-        "UPDATE publish_tasks SET status=?, updated_at=? WHERE id=?",
-        (status, datetime.utcnow().isoformat(), task_id),
+        """
+        UPDATE publish_tasks
+        SET status=?, platform_video_id=?, published_url=?, error_message=?, updated_at=?
+        WHERE id=?
+        """,
+        (
+            status,
+            platform_video_id,
+            published_url,
+            error_message,
+            datetime.utcnow().isoformat(),
+            task_id,
+        ),
     )
     conn.commit()
     conn.close()
