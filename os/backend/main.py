@@ -46,9 +46,6 @@ class OAuthUpdateRequest(BaseModel):
  access_token:str|None=None
  refresh_token:str|None=None
  expires_at:str|None=None
-class YouTubeCallbackRequest(BaseModel):
- code:str
- account_id:int
 
 @app.get('/')
 def root(): return {'system':'Remote Pay Guide OS','status':'running'}
@@ -129,31 +126,29 @@ def production_task(task_id:int): return get_production_task(task_id)
 def run_production(task_id:int):
  task=get_production_task(task_id)
  provider=get_provider(task['provider']) if task else None
- if provider is None: return {'status':'failed'}
- return provider.run(task)
+ return {'status':'failed'} if provider is None else provider.run(task)
 @app.get('/production/status')
-def production_status():
- return {'status':'ready','providers':list(production_provider_registry.keys())}
+def production_status(): return {'status':'ready','providers':list(production_provider_registry.keys())}
 
 @app.post('/production/runtime/jobs')
-def create_runtime_job(data:dict):
- return create_job(data)
-
+def create_runtime_job(data:dict): return create_job(data)
 @app.get('/production/runtime/jobs')
-def runtime_jobs():
- return get_jobs()
-
+def runtime_jobs(): return get_jobs()
 @app.get('/production/runtime/jobs/{job_id}')
-def runtime_job(job_id:int):
- return get_job(job_id)
-
+def runtime_job(job_id:int): return get_job(job_id)
 @app.post('/production/runtime/jobs/{job_id}/run')
 def run_runtime_job(job_id:int):
  job=get_job(job_id)
- if job is None:
-  return {'status':'not_found'}
- return runtime_worker.run(job)
-
+ return {'status':'not_found'} if job is None else runtime_worker.run(job)
 @app.get('/production/runtime/status')
-def runtime_status():
- return {'status':'ready'}
+def runtime_status(): return {'status':'ready'}
+
+@app.post('/production/ai/test')
+def ai_test(data:dict):
+ provider=get_provider('ai_gateway')
+ return provider.submit_job(data)
+
+@app.get('/production/ai/status')
+def ai_status():
+ provider=get_provider('ai_gateway')
+ return provider.get_provider_status()
