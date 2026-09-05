@@ -11,6 +11,14 @@ def value_or_unknown(value):
     return value if value not in (None, "") else "UNKNOWN"
 
 
+def normalize_sql_value(value):
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    if value is None:
+        return None
+    return value
+
+
 def normalize_records(data):
     if isinstance(data, list):
         return data
@@ -69,23 +77,28 @@ def migrate():
 
             content_id = value_or_unknown(item.get("content_id"))
 
+            values = [
+                item.get("content_id"),
+                item.get("topic"),
+                item.get("category"),
+                item.get("script_source"),
+                item.get("video_source"),
+                item.get("generator"),
+                item.get("video_file"),
+                item.get("artifact_id"),
+                item.get("production_status"),
+                item.get("publish_status"),
+                item.get("platforms", {}),
+                item.get("postiz_id"),
+                item.get("published_url"),
+                item.get("analytics_status"),
+            ]
+
             cur.execute("""
             INSERT OR REPLACE INTO videos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                content_id,
-                value_or_unknown(item.get("topic")),
-                value_or_unknown(item.get("category")),
-                value_or_unknown(item.get("script_source")),
-                value_or_unknown(item.get("video_source")),
-                value_or_unknown(item.get("generator")),
-                value_or_unknown(item.get("video_file")),
-                value_or_unknown(item.get("artifact_id")),
-                value_or_unknown(item.get("production_status")),
-                value_or_unknown(item.get("publish_status")),
-                json.dumps(item.get("platforms", {})),
-                value_or_unknown(item.get("postiz_id")),
-                value_or_unknown(item.get("published_url")),
-                value_or_unknown(item.get("analytics_status")),
+            """, tuple(
+                normalize_sql_value(value_or_unknown(value))
+                for value in values
             ))
             imported += 1
         except Exception as exc:
@@ -100,7 +113,8 @@ def migrate():
     REPORT_PATH.write_text(json.dumps({
         "imported_records": imported,
         "skipped_records": skipped,
-        "failed_records": failed
+        "failed_records": failed,
+        "status": "completed" if not failed else "failed"
     }, indent=2), encoding="utf-8")
 
 
