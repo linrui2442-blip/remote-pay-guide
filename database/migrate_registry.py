@@ -39,14 +39,15 @@ def migrate():
 
     imported = 0
     skipped = 0
-    failed = 0
+    failed = []
 
     for item in records:
+        content_id = value_or_unknown(item.get("content_id"))
         try:
             cur.execute("""
             INSERT OR REPLACE INTO videos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
-                value_or_unknown(item.get("content_id")),
+                content_id,
                 value_or_unknown(item.get("topic")),
                 value_or_unknown(item.get("category")),
                 value_or_unknown(item.get("script_source")),
@@ -62,8 +63,11 @@ def migrate():
                 value_or_unknown(item.get("analytics_status")),
             ))
             imported += 1
-        except Exception:
-            failed += 1
+        except Exception as exc:
+            failed.append({
+                "content_id": content_id,
+                "error": str(exc)
+            })
 
     conn.commit()
     conn.close()
