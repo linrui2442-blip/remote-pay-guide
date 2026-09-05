@@ -1,19 +1,36 @@
-# Remote Pay Guide Analytics
+# Analytics Layer Foundation
 
-Analytics layer for future attribution.
+## Purpose
 
-Purpose:
+Analytics Layer provides a read-only foundation for future content performance tracking.
+
+## Data Flow
 
 ```
 content_id
     ↓
 platform
     ↓
-views
+metrics
     ↓
-clicks
-    ↓
-conversion
+Dashboard
 ```
 
-This module does not replace GA4. It provides a future management layer for connecting content assets with performance data.
+## Current Mode
+
+```
+read_only
+```
+
+## Responsibilities
+
+- analytics source reading preparation
+- structured report generation
+
+## Not Responsible For
+
+- API calls
+- automatic synchronization
+- data collection
+- database writes
+- registry updates
