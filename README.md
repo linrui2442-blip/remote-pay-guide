@@ -2,13 +2,47 @@
 
 An overseas content acquisition MVP for people receiving USDT or USDC payments for the first time.
 
-## Goal
+## Project Definition
 
-Test whether stablecoin payment education content can generate attributable user intent and Binance referral conversions.
+Remote Pay Guide is not a crypto news, trading, or investment content account.
 
-The project is not a crypto news or trading content account.
+It is a scenario-based user acquisition system that uses cross-border payment education as the entry point to help Binance acquire new users.
 
-The focus is:
+The core idea:
+
+```
+Cross-border payment need
+        ↓
+Stablecoin payment education
+        ↓
+User discovers wallet / exchange needs
+        ↓
+Binance user conversion
+```
+
+The project focuses on people who need to receive international payments, not existing crypto traders.
+
+## Target Users
+
+Primary users:
+
+- Overseas freelancers receiving international client payments
+- Remote workers receiving salary through USDT / USDC
+- Cross-border service providers
+- Digital nomads needing global payment tools
+
+The project does not target:
+
+- Crypto speculation users
+- Trading audiences
+- Airdrop users
+- Market prediction audiences
+
+## Business Goal
+
+The goal is to test whether payment education content can generate attributable user intent and Binance referral conversions.
+
+The funnel is:
 
 ```
 Content
@@ -17,8 +51,21 @@ Traffic
   ↓
 User Intent
   ↓
-Referral Conversion
+Binance Referral Conversion
 ```
+
+## Content Strategy
+
+Content focuses on solving real payment problems:
+
+Examples:
+
+- How freelancers can receive USDT from overseas clients
+- TRC20 vs ERC20 explained for first-time users
+- Common mistakes when receiving stablecoin payments
+- International payment options for remote workers
+
+The project does not compete for crypto news or trading traffic.
 
 ## Referral
 
@@ -26,7 +73,7 @@ Binance referral ID: `137553211`
 
 The landing page discloses the referral relationship and reminds users to verify the exact asset and network before transferring funds.
 
-## Current Tracking
+## Tracking
 
 GA4 is connected.
 
@@ -39,7 +86,7 @@ Tracked user behavior includes:
 - `new_to_exchange_identified`
 - `binance_referral_click`
 
-The main measurement goal is:
+The main measurement goal:
 
 ```
 Video
@@ -49,27 +96,11 @@ Landing Page
 User Intent Events
  ↓
 Binance Referral Click
+ ↓
+Conversion
 ```
 
-## Traffic Source Tracking
-
-Content attribution uses source parameters.
-
-Current publishing platforms:
-
-- YouTube Shorts
-- Instagram Reels
-- Facebook Reels
-
-TikTok is not currently part of the publishing workflow.
-
-Example source IDs:
-
-- `yt01`
-- `ig01`
-- `fb01`
-
-Each future content item should map:
+Each content item maps through:
 
 ```
 content_id
@@ -85,7 +116,7 @@ conversion
 
 ## Publishing Architecture
 
-Current workflow:
+Current system:
 
 ```
 Content Factory
@@ -105,33 +136,43 @@ GA4
 Referral Conversion
 ```
 
-## Content Status
+## Current MVP Status
 
-Production plan:
+Completed:
+
+- Content production pipeline
+- Artifact pipeline
+- Media hosting pipeline
+- Automated publishing pipeline
+- Postiz distribution
+- Publish state tracking
+
+Current batch:
 
 ```
 short01 - short10
 ```
 
-Currently completed:
+## Long-Term Asset
+
+The project asset is not individual videos.
+
+The long-term value is:
+
+1. Automated content testing system
+2. Repeatable user acquisition channel
+3. Data model connecting content topics, users, and conversions
+
+The objective is to discover:
 
 ```
-short01
-short02
-short03
-short04
-```
-
-short04 is the first key architecture validation asset for:
-
-```
-Public Video URL
-      ↓
-Postiz
-      ↓
-Social Publishing
-      ↓
-Attribution Validation
+Which content
+ ↓
+Which audience
+ ↓
+Which country
+ ↓
+Creates the highest quality Binance conversions
 ```
 
 ## Deployment
