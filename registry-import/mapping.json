@@ -1,0 +1,19 @@
+{
+  "tasks-launch02.jsonl": {
+    "content_id": "content_id",
+    "topic": "topic",
+    "script_metadata": "script"
+  },
+  "artifact_metadata": {
+    "artifact_id": "artifact_id",
+    "video_file": "output",
+    "production_status": "status"
+  },
+  "publish_state": {
+    "postiz_id": "postiz_post_id",
+    "platform_status": "platforms",
+    "published_url": "published_url"
+  },
+  "missing_value": "UNKNOWN",
+  "write_registry": false
+}
