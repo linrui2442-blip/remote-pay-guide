@@ -19,7 +19,6 @@ permissions:
 
 jobs:
   publish-short08:
-    needs: publish-short08
     runs-on: [self-hosted, windows, x64]
     env:
       POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
