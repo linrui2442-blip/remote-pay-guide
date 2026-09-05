@@ -35,22 +35,6 @@ Status:
 - Publish status integrated into dashboard
 - Dashboard reads publish data through SQLite export layer
 
-Data flow:
-
-```
-publish-state
-    ↓
-publish-sync
-    ↓
-publish_status table
-    ↓
-export_dashboard.py
-    ↓
-dashboard/data/dashboard_data.json
-    ↓
-Dashboard
-```
-
 ## Phase 13A
 
 ### Analytics Layer Foundation
@@ -59,6 +43,27 @@ Status:
 
 - analytics schema foundation created
 - read-only analytics layer initialized
+
+## Phase 13B
+
+### Analytics Database Integration
+
+Status:
+
+- analytics_metrics table created
+- analytics layer remains read-only
+
+Data flow:
+
+```
+analytics source
+    ↓
+analytics_sync
+    ↓
+analytics_metrics table
+    ↓
+Dashboard
+```
 
 ## Implemented
 
