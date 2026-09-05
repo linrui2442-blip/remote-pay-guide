@@ -4,9 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       source_run_id:
+        description: 'Successful Render short02-short10 batch run ID containing the artifact'
         required: true
         type: string
       schedule_at:
+        description: 'Optional ISO 8601 time with timezone; blank = randomized audience-window scheduling'
         required: false
         default: ''
         type: string
@@ -18,9 +20,13 @@ permissions:
 jobs:
   prepare-short09:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+        with:
+          ref: main
+      - name: Download existing rendered batch
+        uses: actions/download-artifact@v4
         with:
           name: remote-pay-guide-short02-short10
           path: source-batch
@@ -36,10 +42,15 @@ jobs:
           cid='short09'
           source=Path('source-batch')/cid
           meta=source/'metadata.json'
+          if not meta.exists(): raise SystemExit('missing metadata')
           data=json.loads(meta.read_text())
-          if data.get('content_id')!=cid or data.get('status')!='succeeded': raise SystemExit('metadata invalid')
-          media=Path('media'); media.mkdir(exist_ok=True)
-          shutil.copy2(source/str(data['output']), media/f'{cid}.mp4')
+          if data.get('content_id') != cid: raise SystemExit('content_id mismatch')
+          if data.get('status') != 'succeeded': raise SystemExit('render failed')
+          video=source/str(data['output'])
+          if not video.exists() or video.stat().st_size <= 0: raise SystemExit('missing video')
+          media=Path('media')
+          media.mkdir(exist_ok=True)
+          shutil.copy2(video, media/f'{cid}.mp4')
           shutil.copy2(meta, media/f'{cid}.json')
           PY
       - name: Commit media
@@ -51,12 +62,17 @@ jobs:
           git add media/short09.mp4 media/short09.json
           git commit -m 'Stage short09 public media for Postiz'
           git push origin HEAD:main
-      - name: Wait Pages
+      - name: Wait for GitHub Pages media URL
         shell: bash
         run: |
           set -e
-          for i in $(seq 1 36); do curl -fsSI --max-time 15 https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4 && exit 0; sleep 5; done
+          url='https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4'
+          for attempt in $(seq 1 36); do
+            curl -fsSI --max-time 15 "$url" && exit 0
+            sleep 5
+          done
           exit 1
+
   publish-short09:
     needs: prepare-short09
     runs-on: [self-hosted, windows, x64]
@@ -65,7 +81,19 @@ jobs:
       POSTIZ_API_BASE_URL: http://localhost:4007/api/public/v1
       SHORT09_MEDIA_URL: https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4
     steps:
-      - name: Publish short09
+      - name: Download publish inputs only
         shell: powershell
         run: |
-          python publish-tools\postiz_publish.py --content-id short09 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url $env:SHORT09_MEDIA_URL
+          New-Item -ItemType Directory -Force -Path publish-tools,publish-input\short09 | Out-Null
+          $raw='https://raw.githubusercontent.com/linrui2442-blip/remote-pay-guide/main'
+          Invoke-WebRequest "$raw/video-factory/postiz_publish.py" -OutFile publish-tools\postiz_publish.py
+          Invoke-WebRequest "$raw/content/posting-pack-01.md" -OutFile publish-tools\posting-pack-01.md
+          Invoke-WebRequest "$raw/media/short09.json" -OutFile publish-input\short09\metadata.json
+          if(!(Test-Path publish-input\short09\metadata.json)){ exit 1 }
+      - name: Publish short09 through Postiz
+        shell: powershell
+        run: |
+          $args=@('publish-tools\postiz_publish.py','--content-id','short09','--artifact-root','publish-input','--posting-pack','publish-tools\posting-pack-01.md','--media-url',$env:SHORT09_MEDIA_URL)
+          $schedule='${{ inputs.schedule_at }}'
+          if(-not [string]::IsNullOrWhiteSpace($schedule)){ $args += @('--schedule-at',$schedule) }
+          python @args
