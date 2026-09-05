@@ -1,7 +1,9 @@
 from .github import GitHubProductionProvider
+from .ai_gateway import AIGatewayProvider
 
 production_provider_registry = {
-    "github": GitHubProductionProvider()
+    "github": GitHubProductionProvider(),
+    "ai_gateway": AIGatewayProvider()
 }
 
 
