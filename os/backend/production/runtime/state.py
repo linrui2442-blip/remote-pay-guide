@@ -1,0 +1,5 @@
+JOB_CREATED = "created"
+JOB_QUEUED = "queued"
+JOB_RUNNING = "running"
+JOB_COMPLETED = "completed"
+JOB_FAILED = "failed"
