@@ -3,16 +3,30 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
+import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 from urllib.parse import urlparse
 
 import requests
 
-
 PLATFORMS = ("facebook", "instagram", "youtube")
+
+# UTC windows chosen to overlap evening usage in South/Southeast Asia, daytime and
+# evening usage in Nigeria, and daytime/evening usage in Brazil. The allocator
+# keeps batches ordered while adding a different random minute gap for every item.
+AUTO_SCHEDULE_WINDOWS_UTC = (
+    (12 * 60 + 45, 16 * 60 + 45),
+    (18 * 60 + 15, 23 * 60 + 45),
+    (0 * 60 + 30, 1 * 60 + 30),
+)
+AUTO_MIN_LEAD_MINUTES = 20
+AUTO_MIN_GAP_MINUTES = 47
+AUTO_MAX_GAP_MINUTES = 173
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,23 +107,137 @@ def parse_posting_pack(path: Path, content_id: str) -> dict[str, Any]:
     }
 
 
-def normalize_schedule(value: str, existing: str | None) -> str:
-    if existing:
-        return existing
-    if not value:
-        dt = datetime.now(timezone.utc) + timedelta(minutes=20)
-    else:
-        raw = value.strip()
-        if raw.endswith("Z"):
-            raw = raw[:-1] + "+00:00"
-        try:
-            dt = datetime.fromisoformat(raw)
-        except ValueError as exc:
-            raise SystemExit(f"Invalid --schedule-at value: {value}") from exc
-        if dt.tzinfo is None:
-            raise SystemExit("--schedule-at must include a timezone offset or Z")
-        dt = dt.astimezone(timezone.utc)
+def parse_schedule(value: str) -> datetime:
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid --schedule-at value: {value}") from exc
+    if dt.tzinfo is None:
+        raise SystemExit("--schedule-at must include a timezone offset or Z")
+    return dt.astimezone(timezone.utc)
+
+
+def format_schedule(dt: datetime) -> str:
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def is_auto_window(dt: datetime) -> bool:
+    utc = dt.astimezone(timezone.utc)
+    minute = utc.hour * 60 + utc.minute
+    return any(start <= minute <= end for start, end in AUTO_SCHEDULE_WINDOWS_UTC)
+
+
+def next_auto_window(dt: datetime, rng: random.Random) -> datetime:
+    source = dt.astimezone(timezone.utc)
+    candidate = source.replace(second=0, microsecond=0)
+    if source.second or source.microsecond:
+        candidate += timedelta(minutes=1)
+    for _ in range(3 * 24 * 60):
+        for start, end in AUTO_SCHEDULE_WINDOWS_UTC:
+            minute = candidate.hour * 60 + candidate.minute
+            if start <= minute <= end:
+                remaining = end - minute
+                return candidate + timedelta(minutes=rng.randint(0, min(59, remaining)))
+        candidate += timedelta(minutes=1)
+    raise RuntimeError("Could not find an automatic publishing window")
+
+
+def scheduled_minutes(state_dir: Path) -> tuple[set[str], list[datetime]]:
+    occupied: set[str] = set()
+    automatic: list[datetime] = []
+    if not state_dir.exists():
+        return occupied, automatic
+    for path in state_dir.glob("short*.json"):
+        try:
+            item = load_json(path)
+            value = str(item.get("scheduled_at") or "")
+            if not value:
+                continue
+            dt = parse_schedule(value)
+        except (OSError, ValueError, TypeError, SystemExit, json.JSONDecodeError):
+            continue
+        occupied.add(dt.strftime("%Y-%m-%dT%H:%M"))
+        if item.get("schedule_source") == "auto":
+            automatic.append(dt)
+    return occupied, automatic
+
+
+def allocate_auto_schedule(
+    state_dir: Path,
+    *,
+    now: datetime | None = None,
+    rng: random.Random | None = None,
+) -> str:
+    clock = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    generator = rng or secrets.SystemRandom()
+    occupied, automatic = scheduled_minutes(state_dir)
+    future_automatic = [item for item in automatic if item >= clock]
+
+    if future_automatic:
+        floor = max(future_automatic) + timedelta(
+            minutes=generator.randint(AUTO_MIN_GAP_MINUTES, AUTO_MAX_GAP_MINUTES)
+        )
+    else:
+        floor = clock + timedelta(
+            minutes=AUTO_MIN_LEAD_MINUTES + generator.randint(0, 52)
+        )
+
+    candidate = next_auto_window(floor, generator)
+    while candidate.strftime("%Y-%m-%dT%H:%M") in occupied:
+        candidate = next_auto_window(
+            candidate + timedelta(minutes=generator.randint(11, 37)), generator
+        )
+    return format_schedule(candidate)
+
+
+class ScheduleLock:
+    def __init__(self, state_dir: Path, timeout_seconds: float = 15.0) -> None:
+        self.path = state_dir / ".schedule.lock"
+        self.timeout_seconds = timeout_seconds
+
+    def __enter__(self) -> Self:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + self.timeout_seconds
+        while True:
+            try:
+                self.path.mkdir()
+                return self
+            except FileExistsError:
+                try:
+                    if time.time() - self.path.stat().st_mtime > 120:
+                        self.path.rmdir()
+                        continue
+                except (FileNotFoundError, OSError):
+                    pass
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Timed out waiting for the publishing schedule lock")
+                time.sleep(0.05)
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        try:
+            self.path.rmdir()
+        except FileNotFoundError:
+            pass
+
+
+def normalize_schedule(
+    value: str,
+    existing: str | None,
+    *,
+    state_dir: Path | None = None,
+    now: datetime | None = None,
+    rng: random.Random | None = None,
+) -> str:
+    # An explicit user value always wins. Automatic scheduling is only allowed
+    # when no manual value and no previously reserved value exist.
+    if value.strip():
+        return format_schedule(parse_schedule(value))
+    if existing:
+        return format_schedule(parse_schedule(existing))
+    return allocate_auto_schedule(state_dir or default_state_dir(), now=now, rng=rng)
 
 
 def external_media(url: str, content_id: str) -> dict[str, str]:
@@ -316,11 +444,20 @@ def main() -> None:
                 print(f"MEDIA CHANGE {previous_path} -> {media_url}; resetting platform delivery state")
             state["media"] = requested_media
             state["platforms"] = {}
-            state.pop("scheduled_at", None)
 
-    scheduled_at = normalize_schedule(args.schedule_at, state.get("scheduled_at"))
-    state.setdefault("scheduled_at", scheduled_at)
-    save_state(state_path, state)
+    had_schedule = bool(state.get("scheduled_at"))
+    with ScheduleLock(state_dir):
+        scheduled_at = normalize_schedule(
+            args.schedule_at,
+            state.get("scheduled_at"),
+            state_dir=state_dir,
+        )
+        state["scheduled_at"] = scheduled_at
+        if args.schedule_at.strip():
+            state["schedule_source"] = "manual"
+        elif not had_schedule:
+            state["schedule_source"] = "auto"
+        save_state(state_path, state)
 
     api_key = os.getenv("POSTIZ_API_KEY", "").strip()
     if not api_key and not args.dry_run:

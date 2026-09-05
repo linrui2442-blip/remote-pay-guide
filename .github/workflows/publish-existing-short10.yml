@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       schedule_at:
-        description: 'Postiz scheduled publish time ISO format'
+        description: 'Optional ISO 8601 time with timezone; blank = randomized audience-window scheduling'
         required: false
         type: string
 permissions:

@@ -116,6 +116,13 @@ The current production workflow does not use MoneyPrinterTurbo Upload-Post cross
 
 Earlier Upload-Post experiments are historical only and are not the active publishing path.
 
+### Publishing schedule
+
+- A non-empty `--schedule-at` value is treated as a manual choice, normalized to UTC, stored as `schedule_source: manual`, and never replaced by automatic scheduling.
+- If the argument is blank, an existing stored schedule is reused so retries remain idempotent.
+- If neither exists, the publisher reserves a randomized time in UTC windows that overlap high-activity hours for freelancers and digital nomads in the Philippines, India, Vietnam, Indonesia, Nigeria, Pakistan, and Brazil.
+- Automatically scheduled videos share the local publish-state directory, use a cross-process lock, avoid occupied minutes, and receive randomized 47–173 minute spacing instead of a fixed batch cadence.
+
 ## Media delivery
 
 Publishing supports:

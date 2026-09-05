@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       schedule_at:
-        description: 'Optional ISO 8601 schedule time with timezone'
+        description: 'Optional ISO 8601 time with timezone; blank = randomized audience-window scheduling'
         required: false
         default: ''
         type: string
@@ -108,8 +108,15 @@ jobs:
       - name: Publish short05 through Postiz
         shell: powershell
         run: |
-          python publish-tools\postiz_publish.py `
-            --content-id short05 `
-            --artifact-root publish-input `
-            --posting-pack publish-tools\posting-pack-01.md `
-            --media-url $env:SHORT05_MEDIA_URL
+          $publishArgs = @(
+            'publish-tools\postiz_publish.py',
+            '--content-id', 'short05',
+            '--artifact-root', 'publish-input',
+            '--posting-pack', 'publish-tools\posting-pack-01.md',
+            '--media-url', $env:SHORT05_MEDIA_URL
+          )
+          $schedule = '${{ inputs.schedule_at }}'
+          if (-not [string]::IsNullOrWhiteSpace($schedule)) {
+            $publishArgs += @('--schedule-at', $schedule)
+          }
+          python @publishArgs

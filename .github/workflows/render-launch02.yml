@@ -9,7 +9,7 @@ on:
         default: false
         type: boolean
       schedule_at:
-        description: 'Optional ISO 8601 schedule time with timezone; blank = 20 minutes after publish job starts'
+        description: 'Optional ISO 8601 time with timezone; blank = randomized audience-window scheduling'
         required: false
         default: ''
         type: string

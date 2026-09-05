@@ -7,6 +7,11 @@ on:
         description: 'Successful Render short02-short10 batch run ID containing the artifact'
         required: true
         type: string
+      schedule_at:
+        description: 'Optional ISO 8601 time with timezone; blank = randomized audience-window scheduling'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -67,4 +72,9 @@ jobs:
       - name: Publish short07
         shell: powershell
         run: |
-          python publish-tools\postiz_publish.py --content-id short07 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url $env:SHORT07_MEDIA_URL
+          $publishArgs = @('publish-tools\postiz_publish.py', '--content-id', 'short07', '--artifact-root', 'publish-input', '--posting-pack', 'publish-tools\posting-pack-01.md', '--media-url', $env:SHORT07_MEDIA_URL)
+          $schedule = '${{ inputs.schedule_at }}'
+          if (-not [string]::IsNullOrWhiteSpace($schedule)) {
+            $publishArgs += @('--schedule-at', $schedule)
+          }
+          python @publishArgs
