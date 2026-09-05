@@ -22,6 +22,7 @@ from production.manager import create_production_task,get_production_tasks,get_p
 from production.providers import get_provider,production_provider_registry
 from production.runtime.manager import create_job,get_jobs,get_job
 from production.runtime.worker import ProductionRuntimeWorker
+from production.results.manager import get_results,get_result,get_result_by_job
 
 app=FastAPI(title="Remote Pay Guide OS")
 github_client=GitHubClient()
@@ -152,3 +153,12 @@ def ai_test(data:dict):
 def ai_status():
  provider=get_provider('ai_gateway')
  return provider.get_provider_status()
+
+@app.get('/production/results')
+def production_results(): return get_results()
+
+@app.get('/production/results/{result_id}')
+def production_result(result_id:int): return get_result(result_id)
+
+@app.get('/production/results/job/{runtime_job_id}')
+def production_result_job(runtime_job_id:int): return get_result_by_job(runtime_job_id)
