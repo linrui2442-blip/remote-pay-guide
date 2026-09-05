@@ -1,0 +1,48 @@
+name: Analytics Dashboard Verification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Migrate registry
+        run: python database/migrate_registry.py
+
+      - name: Migrate publish status
+        run: python database/publish_migration.py
+
+      - name: Migrate analytics metrics
+        run: python database/analytics_migration.py
+
+      - name: Export dashboard
+        run: python database/export_dashboard.py
+
+      - name: Validate dashboard json
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('dashboard/data/dashboard_data.json')
+          assert p.exists()
+          data = json.loads(p.read_text())
+          assert 'total_videos' in data
+          assert 'videos' in data
+          for video in data['videos']:
+              assert 'analytics' in video
+              assert 'platform' in video['analytics']
+          print(data['total_videos'])
+          PY
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-dashboard-output
+          path: dashboard/data/dashboard_data.json
