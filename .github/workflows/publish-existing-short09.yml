@@ -1,4 +1,5 @@
 name: Publish existing short09 through Postiz
+
 on:
   workflow_dispatch:
     inputs:
@@ -9,9 +10,11 @@ on:
         required: false
         default: ''
         type: string
+
 permissions:
   contents: write
   actions: read
+
 jobs:
   prepare-short09:
     runs-on: ubuntu-latest
@@ -24,24 +27,36 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.source_run_id }}
       - name: Stage short09 media
+        shell: bash
         run: |
+          set -e
           python3 - <<'PY'
-          import json,shutil
+          import json, shutil
           from pathlib import Path
-          cid='short09'; source=Path('source-batch')/cid; meta=source/'metadata.json'; data=json.loads(meta.read_text())
+          cid='short09'
+          source=Path('source-batch')/cid
+          meta=source/'metadata.json'
+          data=json.loads(meta.read_text())
           if data.get('content_id')!=cid or data.get('status')!='succeeded': raise SystemExit('metadata invalid')
-          shutil.copy2(source/str(data['output']),Path('media').mkdir(exist_ok=True) or Path('media')/f'{cid}.mp4')
-          shutil.copy2(meta,Path('media')/f'{cid}.json')
+          media=Path('media'); media.mkdir(exist_ok=True)
+          shutil.copy2(source/str(data['output']), media/f'{cid}.mp4')
+          shutil.copy2(meta, media/f'{cid}.json')
           PY
       - name: Commit media
+        shell: bash
         run: |
+          set -e
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add media/short09.mp4 media/short09.json
-          if ! git diff --cached --quiet; then git commit -m 'Stage short09 public media for Postiz'; git push origin HEAD:main; fi
+          git commit -m 'Stage short09 public media for Postiz'
+          git push origin HEAD:main
       - name: Wait Pages
+        shell: bash
         run: |
-          for i in $(seq 1 36); do curl -fsSI --max-time 15 https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4 && exit 0; sleep 5; done; exit 1
+          set -e
+          for i in $(seq 1 36); do curl -fsSI --max-time 15 https://linrui2442-blip.github.io/remote-pay-guide/media/short09.mp4 && exit 0; sleep 5; done
+          exit 1
   publish-short09:
     needs: prepare-short09
     runs-on: [self-hosted, windows, x64]
@@ -52,4 +67,5 @@ jobs:
     steps:
       - name: Publish short09
         shell: powershell
-        run: python publish-tools\postiz_publish.py --content-id short09 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url $env:SHORT09_MEDIA_URL
+        run: |
+          python publish-tools\postiz_publish.py --content-id short09 --artifact-root publish-input --posting-pack publish-tools\posting-pack-01.md --media-url $env:SHORT09_MEDIA_URL
