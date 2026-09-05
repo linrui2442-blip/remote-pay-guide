@@ -17,6 +17,9 @@ from oauth.providers.youtube import YouTubeOAuthProvider
 from analytics.models import AnalyticsMetric
 from analytics.manager import save_metric,get_metrics,get_video_metrics,get_platform_metrics
 from analytics.collector import AnalyticsCollector
+from production.models import ProductionTask
+from production.manager import create_production_task,get_production_tasks,get_production_task,update_production_status
+from production.providers import get_provider,production_provider_registry
 
 app=FastAPI(title="Remote Pay Guide OS")
 github_client=GitHubClient()
@@ -44,6 +47,8 @@ class YouTubeCallbackRequest(BaseModel):
  code:str
  account_id:int
 
+@app.get('/')
+def root(): return {'system':'Remote Pay Guide OS','status':'running'}
 @app.get('/health')
 def health(): return {'status':'healthy'}
 @app.get('/production/github/status')
@@ -99,9 +104,6 @@ def edit_token(account_id:int,request:OAuthUpdateRequest): return update_token(a
 def remove_token(account_id:int): return delete_token(account_id)
 @app.get('/oauth/youtube/authorize')
 def authorize(client_id:str,redirect_uri:str): return youtube_oauth.get_authorization_url(client_id,redirect_uri)
-@app.post('/oauth/youtube/callback')
-def callback(request:YouTubeCallbackRequest):
- token=youtube_oauth.exchange_code(request.code); create_token({'account_id':request.account_id,**token}); update_account_status(request.account_id,'active'); return {'status':'connected','account_id':request.account_id}
 
 @app.post('/analytics/metrics')
 def create_metric(metric:AnalyticsMetric): return save_metric(metric)
@@ -113,3 +115,19 @@ def video_metrics(video_id:str): return get_video_metrics(video_id)
 def platform_metrics(platform:str): return get_platform_metrics(platform)
 @app.post('/analytics/collect')
 def collect(video_id:str,platform:str): return analytics_collector.collect(video_id,platform)
+
+@app.post('/production/tasks')
+def create_production(task:ProductionTask): return create_production_task(task)
+@app.get('/production/tasks')
+def production_tasks(): return get_production_tasks()
+@app.get('/production/tasks/{task_id}')
+def production_task(task_id:int): return get_production_task(task_id)
+@app.post('/production/tasks/{task_id}/run')
+def run_production(task_id:int):
+ task=get_production_task(task_id)
+ provider=get_provider(task['provider']) if task else None
+ if provider is None: return {'status':'failed'}
+ return provider.run(task)
+@app.get('/production/status')
+def production_status():
+ return {'status':'ready','providers':list(production_provider_registry.keys())}
