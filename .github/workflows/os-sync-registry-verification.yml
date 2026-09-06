@@ -1,0 +1,44 @@
+name: OS Sync Registry Verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'os/backend/integrations/sync_registry.py'
+      - 'os/backend/integrations/sync_planner.py'
+      - 'os/backend/integrations/sync_scheduler.py'
+      - 'os/backend/routers/accounts.py'
+      - 'os/backend/analytics/collector.py'
+      - 'os/backend/analytics/errors.py'
+      - 'os/backend/analytics/registry.py'
+      - 'os/backend/analytics/adapters/**'
+      - 'os/backend/tests/r14_sync_registry_smoke.py'
+      - '.github/workflows/os-sync-registry-verification.yml'
+
+jobs:
+  verify-sync-registry:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: pip install -r os/backend/requirements.txt
+
+      - name: Compile backend
+        run: PYTHONPATH=os/backend python -m compileall -q os/backend
+
+      - name: Verify provider-neutral sync registry and scheduler
+        run: python os/backend/tests/r14_sync_registry_smoke.py
+
+      - name: Re-run account analytics regression
+        env:
+          YOUTUBE_OAUTH_CLIENT_ID: verify-client
+          YOUTUBE_OAUTH_CLIENT_SECRET: verify-secret
+        run: python os/backend/tests/r13_account_analytics_smoke.py
