@@ -1,5 +1,5 @@
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
-from publish.manager import get_publish_task
+from publish.manager import get_publish_task, get_publish_tasks
 
 
 class PublishAnalyticsTaskNotFound(LookupError):
@@ -59,3 +59,71 @@ def collect_publish_task_metrics(
         start_date=start_date,
         end_date=end_date,
     )
+
+
+def collect_account_publish_metrics(
+    account_id,
+    *,
+    platform=None,
+    collector=None,
+    start_date=None,
+    end_date=None,
+):
+    """Collect current analytics for every eligible published task on an account.
+
+    This is intentionally platform-neutral. It reuses Publish Center bindings
+    and the existing collector registry, so future platform collectors can use
+    the same account-level entry point without adding platform-specific storage.
+    Individual task failures are returned without aborting successful videos.
+    """
+    normalized_platform = (platform or "").strip().lower() or None
+    tasks = []
+    for task in get_publish_tasks():
+        if task.get("account_id") != account_id:
+            continue
+        if (task.get("status") or "").strip().lower() != "published":
+            continue
+        task_platform = (task.get("platform") or "").strip().lower()
+        if normalized_platform and task_platform != normalized_platform:
+            continue
+        if not task.get("platform_video_id"):
+            continue
+        tasks.append(task)
+
+    active_collector = collector or AnalyticsCollector()
+    collected = []
+    failures = []
+
+    for task in tasks:
+        try:
+            metric = collect_publish_task_metrics(
+                task["id"],
+                collector=active_collector,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            collected.append(
+                {
+                    "task_id": task["id"],
+                    "video_id": task.get("platform_video_id"),
+                    "metric": metric,
+                }
+            )
+        except Exception as exc:
+            failures.append(
+                {
+                    "task_id": task["id"],
+                    "video_id": task.get("platform_video_id"),
+                    "error": str(exc),
+                }
+            )
+
+    return {
+        "account_id": account_id,
+        "platform": normalized_platform,
+        "found": len(tasks),
+        "collected": len(collected),
+        "failed": len(failures),
+        "results": collected,
+        "failures": failures,
+    }
