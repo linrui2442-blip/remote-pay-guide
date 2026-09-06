@@ -1,4 +1,10 @@
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
+from data.sync_state import (
+    mark_sync_failure,
+    mark_sync_partial,
+    mark_sync_started,
+    mark_sync_success,
+)
 from data.tracking import DEFAULT_ACTIVE_LIMIT, get_active_publish_tasks
 from publish.manager import get_publish_task
 
@@ -62,6 +68,16 @@ def collect_publish_task_metrics(
     )
 
 
+def _analytics_cursor(collected, fallback=None):
+    candidates = []
+    for item in collected:
+        metric = item.get("metric") or {}
+        cursor = metric.get("period_end") or metric.get("collected_at")
+        if cursor:
+            candidates.append(str(cursor))
+    return max(candidates) if candidates else fallback
+
+
 def collect_account_publish_metrics(
     account_id,
     *,
@@ -77,6 +93,10 @@ def collect_account_publish_metrics(
     account, plus any manually pinned items. Content that leaves the active
     window becomes historical and keeps its stored metrics / lifecycle summary,
     but it is no longer queried on every account-level Analytics sync.
+
+    Sync state is persisted at the platform-account boundary. A successful or
+    partially successful batch advances an analytics checkpoint using the most
+    recent period_end/collected_at returned by the platform collector.
     """
     normalized_platform = (platform or "").strip().lower() or None
     if not normalized_platform:
@@ -84,48 +104,80 @@ def collect_account_publish_metrics(
             "account-level analytics sync requires a platform"
         )
 
-    tasks = get_active_publish_tasks(
-        account_id,
-        normalized_platform,
-        active_limit=active_limit,
-    )
+    mark_sync_started(account_id, normalized_platform, "analytics")
+    try:
+        tasks = get_active_publish_tasks(
+            account_id,
+            normalized_platform,
+            active_limit=active_limit,
+        )
 
-    active_collector = collector or AnalyticsCollector()
-    collected = []
-    failures = []
+        active_collector = collector or AnalyticsCollector()
+        collected = []
+        failures = []
 
-    for task in tasks:
-        try:
-            metric = collect_publish_task_metrics(
-                task["id"],
-                collector=active_collector,
-                start_date=start_date,
-                end_date=end_date,
+        for task in tasks:
+            try:
+                metric = collect_publish_task_metrics(
+                    task["id"],
+                    collector=active_collector,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                collected.append(
+                    {
+                        "task_id": task["id"],
+                        "video_id": task.get("platform_video_id"),
+                        "metric": metric,
+                    }
+                )
+            except Exception as exc:
+                failures.append(
+                    {
+                        "task_id": task["id"],
+                        "video_id": task.get("platform_video_id"),
+                        "error": str(exc),
+                    }
+                )
+
+        cursor = _analytics_cursor(collected, fallback=end_date)
+        if failures and collected:
+            sync_state = mark_sync_partial(
+                account_id,
+                normalized_platform,
+                "analytics",
+                cursor=cursor,
+                error=f"{len(failures)} of {len(tasks)} analytics items failed",
             )
-            collected.append(
-                {
-                    "task_id": task["id"],
-                    "video_id": task.get("platform_video_id"),
-                    "metric": metric,
-                }
+        elif failures:
+            error = f"all {len(failures)} analytics items failed"
+            sync_state = mark_sync_failure(
+                account_id,
+                normalized_platform,
+                "analytics",
+                error,
             )
-        except Exception as exc:
-            failures.append(
-                {
-                    "task_id": task["id"],
-                    "video_id": task.get("platform_video_id"),
-                    "error": str(exc),
-                }
+        else:
+            sync_state = mark_sync_success(
+                account_id,
+                normalized_platform,
+                "analytics",
+                cursor=cursor,
             )
 
-    return {
-        "account_id": account_id,
-        "platform": normalized_platform,
-        "tracking_policy": "latest_plus_pinned",
-        "active_limit": active_limit,
-        "found": len(tasks),
-        "collected": len(collected),
-        "failed": len(failures),
-        "results": collected,
-        "failures": failures,
-    }
+        return {
+            "account_id": account_id,
+            "platform": normalized_platform,
+            "tracking_policy": "latest_plus_pinned",
+            "active_limit": active_limit,
+            "found": len(tasks),
+            "collected": len(collected),
+            "failed": len(failures),
+            "analytics_cursor": cursor,
+            "results": collected,
+            "failures": failures,
+            "sync_state": sync_state,
+        }
+    except Exception as exc:
+        mark_sync_failure(account_id, normalized_platform, "analytics", exc)
+        raise
