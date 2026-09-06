@@ -2,6 +2,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[3]
 BACKEND = ROOT / "os" / "backend"
@@ -11,7 +12,11 @@ os.chdir(ROOT)
 from accounts.manager import create_account
 from accounts.models import Account
 from assets.manager import create_video_asset
-from oauth.manager import consume_oauth_state, create_oauth_state
+from oauth.manager import (
+    consume_oauth_state,
+    consume_oauth_state_by_state,
+    create_oauth_state,
+)
 from oauth.providers.youtube import (
     YouTubeOAuthConfigurationError,
     YouTubeOAuthProvider,
@@ -141,6 +146,42 @@ def test_oauth_state_is_single_use():
     assert consume_oauth_state(42, state) is False
 
 
+def test_oauth_pkce_verifier_survives_redirect_boundary():
+    provider = YouTubeOAuthProvider(
+        client_id="r3-test.apps.googleusercontent.com",
+        client_secret="r3-test-secret",
+        redirect_uri="http://localhost:5173/oauth/youtube/callback",
+        scope_profile="full",
+    )
+    result = provider.get_authorization_url(state="r3-pkce-state")
+    verifier = result.get("code_verifier")
+    assert verifier
+    assert 43 <= len(verifier) <= 128
+
+    query = parse_qs(urlparse(result["authorization_url"]).query)
+    assert query.get("code_challenge")
+    assert query.get("code_challenge_method") == ["S256"]
+
+    create_oauth_state(
+        43,
+        result["state"],
+        provider="youtube",
+        scope_profile="full",
+        code_verifier=verifier,
+    )
+    record = consume_oauth_state_by_state(result["state"], provider="youtube")
+    assert record["account_id"] == 43
+    assert record["scope_profile"] == "full"
+    assert record["code_verifier"] == verifier
+    assert consume_oauth_state_by_state(result["state"], provider="youtube") is None
+
+    source = (BACKEND / "oauth" / "providers" / "youtube.py").read_text(
+        encoding="utf-8"
+    )
+    assert "code_verifier=code_verifier" in source
+    assert "autogenerate_code_verifier=False" in source
+
+
 def test_oauth_provider_is_not_mocked():
     source = (BACKEND / "oauth" / "providers" / "youtube.py").read_text(
         encoding="utf-8"
@@ -180,6 +221,7 @@ def main():
     test_invalid_asset_id_failure()
     test_uncredentialed_account_failure_without_upload()
     test_oauth_state_is_single_use()
+    test_oauth_pkce_verifier_survives_redirect_boundary()
     test_oauth_provider_is_not_mocked()
     test_no_postiz_import_in_os_publish_path()
     print("R3 readiness smoke tests passed")
@@ -187,6 +229,7 @@ def main():
     print("Invalid asset_id -> failed")
     print("Missing OAuth credential -> failed")
     print("OAuth state -> single-use")
+    print("OAuth PKCE verifier -> persisted across redirect and single-use")
     print("YouTube OAuth provider -> real implementation, no mock tokens")
     print("OS publish path Postiz references -> none")
 
