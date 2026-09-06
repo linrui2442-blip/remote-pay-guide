@@ -165,6 +165,7 @@ jobs:
           collector = AnalyticsCollector()
           youtube_status = collector.readiness('youtube')
           assert youtube_status['ready'] is False
+          assert youtube_status['collector_registered'] is True
           assert youtube_status['requires_reauthorization'] is True
           assert youtube_status['missing_scopes']
           try:
@@ -174,6 +175,17 @@ jobs:
           else:
               raise AssertionError('collector must not fabricate zero metrics when OAuth read scopes are unavailable')
 
+          future_status = collector.readiness('future-platform')
+          assert future_status['ready'] is False
+          assert future_status['collector_registered'] is False
+          assert future_status['analytics_supported'] is True
+          assert 'adapter is not registered' in future_status['reason']
+
+          instagram_status = collector.readiness('instagram')
+          assert instagram_status['ready'] is False
+          assert instagram_status['analytics_supported'] is False
+          assert 'not enabled' in instagram_status['reason']
+
           print(funnel)
           print(statistics)
           print(feedback)
@@ -181,4 +193,6 @@ jobs:
           print(youtube_capability)
           print(future_runtime)
           print(youtube_status)
+          print(future_status)
+          print(instagram_status)
           PY
