@@ -1,6 +1,12 @@
 import requests
 
 from assets.manager import create_video_asset
+from data.sync_state import (
+    get_sync_state,
+    mark_sync_failure,
+    mark_sync_started,
+    mark_sync_success,
+)
 from integrations.google_transport import build_authorized_session
 from oauth.manager import get_token, update_token
 from oauth.providers.youtube import YouTubeOAuthProvider
@@ -9,6 +15,7 @@ from publish.models import PublishTask
 
 
 NETWORK_TIMEOUT_ERRNOS = {60, 110, 10060}
+SYNC_MODES = {"incremental", "full_refresh"}
 
 
 class YouTubeDataAPIRequestsClient:
@@ -75,6 +82,11 @@ class YouTubeContentSync:
     Asset / Publish Center records so existing videos can enter the Analytics
     -> Data Center loop. The default window is the latest 10 published videos;
     older records already known to the OS are retained locally as history.
+
+    Incremental mode stores the newest observed platform video id as the account
+    checkpoint. A later sync only hydrates items that appeared before that
+    checkpoint inside the active tracking window. Full refresh remains available
+    for repair/reconciliation without changing the active-window policy.
     """
 
     def __init__(self, service=None):
@@ -117,6 +129,14 @@ class YouTubeContentSync:
     @staticmethod
     def _video_url(video_id):
         return f"https://www.youtube.com/watch?v={video_id}"
+
+    @staticmethod
+    def _playlist_video_id(item):
+        snippet = item.get("snippet", {})
+        return (
+            item.get("contentDetails", {}).get("videoId")
+            or snippet.get("resourceId", {}).get("videoId")
+        )
 
     def _channel(self, service):
         if isinstance(service, YouTubeDataAPIRequestsClient):
@@ -189,108 +209,158 @@ class YouTubeContentSync:
                 details[item.get("id")] = item
         return details
 
-    def sync(self, account_id, max_results=10):
+    @staticmethod
+    def _items_after_checkpoint(playlist_items, previous_cursor, sync_mode):
+        if sync_mode == "full_refresh" or not previous_cursor:
+            return playlist_items
+
+        for index, item in enumerate(playlist_items):
+            if YouTubeContentSync._playlist_video_id(item) == previous_cursor:
+                return playlist_items[:index]
+
+        # The checkpoint fell outside the bounded active window. Reconcile the
+        # entire current window rather than assuming continuity we cannot prove.
+        return playlist_items
+
+    def sync(self, account_id, max_results=10, sync_mode="incremental"):
         max_results = max(1, min(int(max_results or 10), 200))
-        service = self._service(account_id)
-        channel = self._channel(service)
-        playlist_items = self._playlist_items(
-            service,
-            channel["uploads_playlist_id"],
-            max_results,
-        )
+        normalized_mode = str(sync_mode or "incremental").strip().lower()
+        if normalized_mode not in SYNC_MODES:
+            raise ValueError(f"unsupported content sync mode: {sync_mode}")
 
-        video_ids = [
-            item.get("contentDetails", {}).get("videoId")
-            or item.get("snippet", {}).get("resourceId", {}).get("videoId")
-            for item in playlist_items
-        ]
-        video_ids = [video_id for video_id in video_ids if video_id]
-        details = self._video_details(service, video_ids)
+        platform = "youtube"
+        state = get_sync_state(account_id, platform)
+        previous_cursor = state.get("content_cursor")
+        mark_sync_started(account_id, platform, "content")
 
-        existing_tasks = {
-            task.get("platform_video_id")
-            for task in get_publish_tasks()
-            if str(task.get("platform") or "").lower() == "youtube"
-            and task.get("account_id") == account_id
-            and task.get("platform_video_id")
-        }
-
-        imported = []
-        existing = []
-        for item in playlist_items:
-            snippet = item.get("snippet", {})
-            video_id = (
-                item.get("contentDetails", {}).get("videoId")
-                or snippet.get("resourceId", {}).get("videoId")
-            )
-            if not video_id:
-                continue
-
-            detail = details.get(video_id, {})
-            detail_snippet = detail.get("snippet", {})
-            status = detail.get("status", {})
-            title = detail_snippet.get("title") or snippet.get("title") or video_id
-            published_at = detail_snippet.get("publishedAt") or snippet.get("publishedAt")
-            privacy = status.get("privacyStatus") or "private"
-            if privacy not in {"private", "unlisted", "public"}:
-                privacy = "private"
-
-            asset_id = f"youtube_{account_id}_{video_id}"
-            url = self._video_url(video_id)
-            create_video_asset(
-                {
-                    "asset_id": asset_id,
-                    "video_id": video_id,
-                    "source_provider": "youtube",
-                    "storage_type": "external",
-                    "asset_url": url,
-                    "status": "published",
-                    "metadata": {
-                        "account_id": account_id,
-                        "channel_id": channel.get("channel_id"),
-                        "channel_title": channel.get("channel_title"),
-                        "title": title,
-                        "published_at": published_at,
-                        "privacy_status": privacy,
-                        "synced_from": "youtube_data_api_v3",
-                    },
-                    "source": "youtube",
-                    "location": url,
-                }
+        try:
+            service = self._service(account_id)
+            channel = self._channel(service)
+            playlist_items = self._playlist_items(
+                service,
+                channel["uploads_playlist_id"],
+                max_results,
             )
 
-            if video_id in existing_tasks:
-                existing.append(video_id)
-                continue
+            video_ids = [
+                self._playlist_video_id(item)
+                for item in playlist_items
+            ]
+            video_ids = [video_id for video_id in video_ids if video_id]
+            new_cursor = video_ids[0] if video_ids else previous_cursor
 
-            task = create_publish_task(
-                PublishTask(
-                    asset_id=asset_id,
-                    video_id=video_id,
-                    platform="youtube",
-                    account_id=account_id,
-                    status="published",
-                    title=title,
-                    privacy_status=privacy,
+            existing_tasks = {
+                task.get("platform_video_id")
+                for task in get_publish_tasks()
+                if str(task.get("platform") or "").lower() == platform
+                and task.get("account_id") == account_id
+                and task.get("platform_video_id")
+            }
+            already_present = len(
+                [video_id for video_id in video_ids if video_id in existing_tasks]
+            )
+
+            items_to_process = self._items_after_checkpoint(
+                playlist_items,
+                previous_cursor,
+                normalized_mode,
+            )
+            process_video_ids = [
+                self._playlist_video_id(item)
+                for item in items_to_process
+            ]
+            process_video_ids = [video_id for video_id in process_video_ids if video_id]
+            details = self._video_details(service, process_video_ids)
+
+            imported = []
+            refreshed = []
+            for item in items_to_process:
+                snippet = item.get("snippet", {})
+                video_id = self._playlist_video_id(item)
+                if not video_id:
+                    continue
+
+                detail = details.get(video_id, {})
+                detail_snippet = detail.get("snippet", {})
+                status = detail.get("status", {})
+                title = detail_snippet.get("title") or snippet.get("title") or video_id
+                published_at = detail_snippet.get("publishedAt") or snippet.get("publishedAt")
+                privacy = status.get("privacyStatus") or "private"
+                if privacy not in {"private", "unlisted", "public"}:
+                    privacy = "private"
+
+                asset_id = f"youtube_{account_id}_{video_id}"
+                url = self._video_url(video_id)
+                create_video_asset(
+                    {
+                        "asset_id": asset_id,
+                        "video_id": video_id,
+                        "source_provider": "youtube",
+                        "storage_type": "external",
+                        "asset_url": url,
+                        "status": "published",
+                        "metadata": {
+                            "account_id": account_id,
+                            "channel_id": channel.get("channel_id"),
+                            "channel_title": channel.get("channel_title"),
+                            "title": title,
+                            "published_at": published_at,
+                            "privacy_status": privacy,
+                            "synced_from": "youtube_data_api_v3",
+                        },
+                        "source": "youtube",
+                        "location": url,
+                    }
                 )
-            )
-            update_publish_status(
-                task["id"],
-                "published",
-                platform_video_id=video_id,
-                published_url=url,
-            )
-            imported.append(video_id)
-            existing_tasks.add(video_id)
 
-        return {
-            "platform": "youtube",
-            "account_id": account_id,
-            "channel_id": channel.get("channel_id"),
-            "channel_title": channel.get("channel_title"),
-            "tracking_window": max_results,
-            "found": len(video_ids),
-            "imported": len(imported),
-            "already_present": len(existing),
-            "imported_video_ids": imported,
-        }
+                if video_id in existing_tasks:
+                    refreshed.append(video_id)
+                    continue
+
+                task = create_publish_task(
+                    PublishTask(
+                        asset_id=asset_id,
+                        video_id=video_id,
+                        platform=platform,
+                        account_id=account_id,
+                        status="published",
+                        title=title,
+                        privacy_status=privacy,
+                    )
+                )
+                update_publish_status(
+                    task["id"],
+                    "published",
+                    platform_video_id=video_id,
+                    published_url=url,
+                )
+                imported.append(video_id)
+                existing_tasks.add(video_id)
+
+            sync_state = mark_sync_success(
+                account_id,
+                platform,
+                "content",
+                cursor=new_cursor,
+            )
+            return {
+                "platform": platform,
+                "account_id": account_id,
+                "channel_id": channel.get("channel_id"),
+                "channel_title": channel.get("channel_title"),
+                "tracking_window": max_results,
+                "sync_mode": normalized_mode,
+                "previous_cursor": previous_cursor,
+                "content_cursor": new_cursor,
+                "found": len(video_ids),
+                "processed": len(process_video_ids),
+                "imported": len(imported),
+                "already_present": already_present,
+                "refreshed": len(refreshed),
+                "unchanged": max(0, len(video_ids) - len(process_video_ids)),
+                "imported_video_ids": imported,
+                "sync_state": sync_state,
+            }
+        except Exception as exc:
+            mark_sync_failure(account_id, platform, "content", exc)
+            raise
