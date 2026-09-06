@@ -2,6 +2,7 @@ import React, {useEffect, useState} from "react";
 import {
  apiGet,
  beginYouTubeOAuth,
+ collectPublishTaskAnalytics,
  createAccount,
  createProductionTask,
  getAccounts,
@@ -9,6 +10,7 @@ import {
  getProductionProviders,
  getProductionStatus,
  getProductionTasks,
+ getPublishTasks,
  getYouTubeOAuthStatus,
  runProductionTask,
 } from "./api";
@@ -24,6 +26,7 @@ export default function App(){
  const [tasks,setTasks]=useState([]);
  const [platforms,setPlatforms]=useState([]);
  const [metrics,setMetrics]=useState([]);
+ const [analyticsMessage,setAnalyticsMessage]=useState("");
  const [accounts,setAccounts]=useState([]);
  const [accountReadiness,setAccountReadiness]=useState({});
  const [youtubeOAuthStatus,setYouTubeOAuthStatus]=useState(null);
@@ -38,6 +41,14 @@ export default function App(){
   getProductionStatus().then(setProductionStatus).catch(()=>{});
   getProductionTasks().then(setProductionTasks).catch(()=>{});
   getProductionProviders().then(setProviders).catch(()=>{});
+ };
+
+ const refreshAnalytics=()=>{
+  apiGet('/analytics/metrics/current').then(setMetrics).catch(()=>{});
+ };
+
+ const refreshPublishTasks=()=>{
+  getPublishTasks().then(setTasks).catch(()=>{});
  };
 
  const refreshAccounts=()=>{
@@ -65,9 +76,9 @@ export default function App(){
  useEffect(()=>{
   apiGet('/').then(setSystem).catch(()=>setSystem({status:'offline'}));
   apiGet('/assets').then(setAssets).catch(()=>{});
-  apiGet('/publish/tasks').then(setTasks).catch(()=>{});
+  refreshPublishTasks();
   apiGet('/publish/platforms').then(setPlatforms).catch(()=>{});
-  apiGet('/analytics/metrics/current').then(setMetrics).catch(()=>{});
+  refreshAnalytics();
   getYouTubeOAuthStatus().then(setYouTubeOAuthStatus).catch(error=>{
    setYouTubeOAuthStatus({configured:false,reason:error.message});
   });
@@ -123,6 +134,25 @@ export default function App(){
    .catch(error=>setOAuthMessage(error.message));
  };
 
+ const collectTaskAnalytics=(task)=>{
+  setAnalyticsMessage(`Collecting analytics for publish task ${task.id}...`);
+  collectPublishTaskAnalytics(task.id)
+   .then(result=>{
+    setAnalyticsMessage(
+     `Collected ${result.views ?? 0} views for ${result.video_id || task.platform_video_id}.`
+    );
+    refreshAnalytics();
+   })
+   .catch(error=>setAnalyticsMessage(error.message));
+ };
+
+ const canCollectTask=(task)=>{
+  return String(task.platform || "").toLowerCase() === "youtube"
+   && String(task.status || "").toLowerCase() === "published"
+   && Boolean(task.platform_video_id)
+   && task.account_id != null;
+ };
+
  return <main>
   <h1>Remote Pay Guide OS</h1>
   <h2>System Status</h2><pre>{JSON.stringify(system,null,2)}</pre>
@@ -154,7 +184,18 @@ export default function App(){
   </section>)}
 
   <h2>Video Assets</h2><pre>{JSON.stringify(assets,null,2)}</pre>
-  <h2>Publish Tasks</h2><pre>{JSON.stringify(tasks,null,2)}</pre>
+  <h2>Publish Tasks</h2>
+  {analyticsMessage && <p>{analyticsMessage}</p>}
+  <pre>{JSON.stringify(tasks,null,2)}</pre>
+  {tasks.filter(canCollectTask).map(task=><div key={`analytics-${task.id}`}>
+   <button
+    onClick={()=>collectTaskAnalytics(task)}
+    disabled={accountReadiness[task.account_id]?.ready !== true}
+   >
+    Collect YouTube Analytics — Task {task.id}
+   </button>
+   {accountReadiness[task.account_id]?.ready !== true && <span> — connect this account with analytics access first</span>}
+  </div>)}
   <h2>Platforms</h2><pre>{JSON.stringify(platforms,null,2)}</pre>
   <h2>Current Analytics</h2><pre>{JSON.stringify(metrics,null,2)}</pre>
   <h2>Production Center</h2>
