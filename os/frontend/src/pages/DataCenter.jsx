@@ -8,10 +8,24 @@ const PLATFORM_LABELS = {
   tiktok: "TikTok",
 };
 
+const STRATEGY_LABELS = {
+  scale_conversion_winner: "放大转化赢家",
+  iterate_intent_winner: "优化 Referral 意图赢家",
+  improve_intent_to_referral: "强化意图 → Referral",
+  scale_traffic_winner: "放大流量赢家",
+  revise_underperformer: "重做低表现内容",
+  iterate: "控制变量迭代",
+};
+
 function platformLabel(name) {
   const key = String(name || "").toLowerCase();
   if (PLATFORM_LABELS[key]) return PLATFORM_LABELS[key];
   return key ? key.charAt(0).toUpperCase() + key.slice(1) : "Unknown";
+}
+
+function strategyLabel(name) {
+  const key = String(name || "").toLowerCase();
+  return STRATEGY_LABELS[key] || key || "待分析";
 }
 
 function formatNumber(value) {
@@ -98,6 +112,10 @@ export default function DataCenter() {
   const [sortBy, setSortBy] = useState("views");
   const [query, setQuery] = useState({ summary: {}, rows: [], returned: 0, total_matching: 0 });
   const [accountMetrics, setAccountMetrics] = useState([]);
+  const [intelligenceSnapshots, setIntelligenceSnapshots] = useState([]);
+  const [loadingIntelligence, setLoadingIntelligence] = useState(false);
+  const [materializingId, setMaterializingId] = useState(null);
+  const [intelligenceMessage, setIntelligenceMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pinningKey, setPinningKey] = useState("");
@@ -123,6 +141,45 @@ export default function DataCenter() {
       setAccountMetrics(snapshots || []);
     } catch (_) {
       setAccountMetrics([]);
+    }
+  };
+
+  const loadIntelligence = async () => {
+    if (!accounts.length) {
+      setIntelligenceSnapshots([]);
+      return;
+    }
+
+    setLoadingIntelligence(true);
+    try {
+      const targetAccounts = accounts.filter((account) => {
+        if (accountId && String(account.id) !== String(accountId)) return false;
+        if (platform && String(account.platform || "").toLowerCase() !== platform) return false;
+        return true;
+      });
+
+      const batches = await Promise.all(
+        targetAccounts.map(async (account) => {
+          const params = new URLSearchParams();
+          const accountPlatform = String(account.platform || "").toLowerCase();
+          if (accountPlatform) params.set("platform", accountPlatform);
+          params.set("limit", "100");
+          try {
+            return await apiGet(
+              `/intelligence/feedback/account/${encodeURIComponent(account.id)}?${params.toString()}`
+            );
+          } catch (_) {
+            return [];
+          }
+        })
+      );
+
+      const snapshots = batches
+        .flat()
+        .sort((a, b) => Number(b.priority_score || 0) - Number(a.priority_score || 0));
+      setIntelligenceSnapshots(snapshots);
+    } finally {
+      setLoadingIntelligence(false);
     }
   };
 
@@ -156,6 +213,10 @@ export default function DataCenter() {
   useEffect(() => {
     loadQuery();
   }, [accountId, platform, scope, sortBy]);
+
+  useEffect(() => {
+    loadIntelligence();
+  }, [accounts, accountId, platform]);
 
   const accountMap = useMemo(
     () => Object.fromEntries(accounts.map((account) => [String(account.id), account])),
@@ -193,6 +254,27 @@ export default function DataCenter() {
       setError(pinError.message || "持续跟踪状态更新失败");
     } finally {
       setPinningKey("");
+    }
+  };
+
+  const materializeStrategy = async (snapshot) => {
+    setMaterializingId(snapshot.id);
+    setIntelligenceMessage("");
+    try {
+      const result = await apiPost(
+        `/intelligence/feedback/${encodeURIComponent(snapshot.id)}/materialize`,
+        {}
+      );
+      const task = result.production_task || {};
+      setIntelligenceMessage(
+        result.created
+          ? `已创建生产任务 #${task.id}，当前状态为 created；不会自动运行或发布。`
+          : `生产任务 #${task.id} 已存在，未重复创建。`
+      );
+    } catch (materializeError) {
+      setIntelligenceMessage(materializeError.message || "生产任务创建失败");
+    } finally {
+      setMaterializingId(null);
     }
   };
 
@@ -278,6 +360,87 @@ export default function DataCenter() {
         <MetricCard label="Conversions" value={formatNumber(summary.conversions)} />
         <MetricCard label="Conversion Value" value={formatMoney(summary.conversion_value)} />
       </div>
+
+      <section className="panel dc-table-panel">
+        <div className="panel-header dc-table-header">
+          <div>
+            <span className="section-kicker">AI INTELLIGENCE</span>
+            <h2>下一轮生产策略</h2>
+          </div>
+          <span className="muted">
+            {loadingIntelligence ? "读取中…" : `${intelligenceSnapshots.length} 条最新策略`}
+          </span>
+        </div>
+
+        {intelligenceMessage ? <div className="notice">{intelligenceMessage}</div> : null}
+
+        {loadingIntelligence ? (
+          <div className="dc-loading">正在读取 Intelligence 策略快照…</div>
+        ) : intelligenceSnapshots.length === 0 ? (
+          <div className="dc-empty">
+            <strong>还没有 Intelligence 策略快照</strong>
+            <span>在“平台账号”执行“同步全部”后，Analytics 会自动进入 Data Center，再生成下一轮策略建议；不会自动生产或发布。</span>
+          </div>
+        ) : (
+          <div className="table-wrap dc-table-wrap">
+            <table className="dc-table">
+              <thead>
+                <tr>
+                  <th>内容</th>
+                  <th>平台 / 账号</th>
+                  <th>策略</th>
+                  <th>评分</th>
+                  <th>业务信号</th>
+                  <th>建议</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {intelligenceSnapshots.map((snapshot) => {
+                  const account = accountMap[String(snapshot.account_id)] || {};
+                  const feedback = snapshot.feedback || {};
+                  const strategy = snapshot.strategy || {};
+                  const recommendation = feedback.recommendations?.[0] || strategy.objective || "—";
+                  return (
+                    <tr key={`intelligence-${snapshot.id}`}>
+                      <td className="dc-content-cell">
+                        <strong>{snapshot.content_id || snapshot.platform_video_id || "—"}</strong>
+                        <span>{snapshot.platform_video_id || "—"}</span>
+                      </td>
+                      <td className="dc-platform-cell">
+                        <strong>{platformLabel(snapshot.platform)}</strong>
+                        <span>{account.account_name || `Account #${snapshot.account_id}`}</span>
+                      </td>
+                      <td>
+                        <strong>{strategyLabel(snapshot.strategy_type)}</strong>
+                        <div className="muted">{strategy.reasoning_summary || "基于当前 Data Center 信号"}</div>
+                      </td>
+                      <td className="dc-number">{formatNumber(snapshot.performance_score)}</td>
+                      <td>
+                        <div>Intent {formatNumber(feedback.intent_events)}</div>
+                        <div>Referral {formatNumber(feedback.referral_clicks)}</div>
+                        <div>Conversion {formatNumber(feedback.conversions)}</div>
+                        <div>Value {formatMoney(feedback.conversion_value)}</div>
+                      </td>
+                      <td title={recommendation}>{recommendation}</td>
+                      <td className="dc-action-cell">
+                        <button
+                          className="secondary-button"
+                          onClick={() => materializeStrategy(snapshot)}
+                          disabled={materializingId === snapshot.id}
+                          title="只创建 ProductionTask，不自动运行、不发布"
+                        >
+                          {materializingId === snapshot.id ? "创建中…" : "创建下一轮生产任务"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="panel dc-table-panel">
         <div className="panel-header dc-table-header">
@@ -430,7 +593,7 @@ export default function DataCenter() {
 
       <div className="dc-footnote">
         <strong>数据规则：</strong>
-        ACTIVE 只同步最新 10 条 + 你手动持续跟踪的内容；HISTORICAL 不再频繁请求平台，但保留其最后表现和转化结果。评论这里只显示数量，不读取评论正文。
+        ACTIVE 只同步最新 10 条 + 你手动持续跟踪的内容；HISTORICAL 不再频繁请求平台，但保留其最后表现和转化结果。评论这里只显示数量，不读取评论正文。Intelligence 同步只生成策略快照，只有点击“创建下一轮生产任务”才会创建任务，而且不会自动运行或发布。
       </div>
     </>
   );
