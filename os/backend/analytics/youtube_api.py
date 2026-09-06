@@ -14,6 +14,10 @@ YOUTUBE_ANALYTICS_METRICS = (
     "comments",
     "shares",
 )
+YOUTUBE_CHANNEL_ANALYTICS_METRICS = YOUTUBE_ANALYTICS_METRICS + (
+    "subscribersGained",
+    "subscribersLost",
+)
 
 
 class YouTubeAnalyticsAPIClient:
@@ -95,6 +99,18 @@ class YouTubeAnalyticsAPIClient:
             "shares": cls._int(row.get("shares")),
         }
 
+    @classmethod
+    def normalize_channel_response(cls, response):
+        normalized = cls.normalize_response(response)
+        row = cls._row_map(response or {})
+        normalized.update(
+            {
+                "subscribers_gained": cls._int(row.get("subscribersGained")),
+                "subscribers_lost": cls._int(row.get("subscribersLost")),
+            }
+        )
+        return normalized
+
     @staticmethod
     def _error_detail(response):
         try:
@@ -125,6 +141,11 @@ class YouTubeAnalyticsAPIClient:
             raise RuntimeError(f"Google YouTube Analytics request failed: {exc}") from exc
         return response.json()
 
+    def _query(self, params):
+        if self.service is not None:
+            return self.service.reports().query(**params).execute()
+        return self._query_via_requests(params)
+
     def collect_video_metrics(self, video_id, start_date=None, end_date=None):
         if not self.service and not self.session:
             raise RuntimeError("YouTube Analytics API client is not initialized")
@@ -139,13 +160,30 @@ class YouTubeAnalyticsAPIClient:
             "metrics": ",".join(YOUTUBE_ANALYTICS_METRICS),
             "filters": f"video=={video_id}",
         }
-
-        if self.service is not None:
-            response = self.service.reports().query(**params).execute()
-        else:
-            response = self._query_via_requests(params)
+        response = self._query(params)
 
         metrics = self.normalize_response(response)
+        metrics.update(
+            {
+                "start_date": resolved_start,
+                "end_date": resolved_end,
+            }
+        )
+        return metrics
+
+    def collect_channel_metrics(self, start_date=None, end_date=None):
+        if not self.service and not self.session:
+            raise RuntimeError("YouTube Analytics API client is not initialized")
+
+        resolved_start, resolved_end = self._resolve_window(start_date, end_date)
+        params = {
+            "ids": "channel==MINE",
+            "startDate": resolved_start,
+            "endDate": resolved_end,
+            "metrics": ",".join(YOUTUBE_CHANNEL_ANALYTICS_METRICS),
+        }
+        response = self._query(params)
+        metrics = self.normalize_channel_response(response)
         metrics.update(
             {
                 "start_date": resolved_start,
