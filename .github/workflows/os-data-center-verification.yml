@@ -7,9 +7,11 @@ on:
       - 'os/backend/data/**'
       - 'os/backend/analytics/**'
       - 'os/backend/intelligence/**'
+      - 'os/backend/oauth/**'
       - 'os/backend/production/**'
       - 'os/backend/routers/data.py'
       - 'os/backend/routers/analytics.py'
+      - 'os/backend/routers/oauth.py'
       - '.github/workflows/os-data-center-verification.yml'
 
 jobs:
@@ -54,6 +56,18 @@ jobs:
           from data.platform_capabilities import register_platform_capability
           from intelligence.feedback import analyze_feedback
           from intelligence.strategy import build_production_strategy
+          from oauth.manager import (
+              consume_oauth_state,
+              create_oauth_state,
+              create_token,
+              get_token,
+          )
+          from oauth.providers.youtube import (
+              YOUTUBE_ANALYTICS_SCOPE,
+              YOUTUBE_READ_SCOPE,
+              YOUTUBE_UPLOAD_SCOPE,
+              YouTubeOAuthProvider,
+          )
 
           db_path = Path('os/database/os.db')
           db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -162,6 +176,51 @@ jobs:
               'metric_types': ['clicks', 'views'],
           }
 
+          publish_provider = YouTubeOAuthProvider(
+              client_id='verify-client',
+              client_secret='verify-secret',
+              redirect_uri='http://localhost/callback',
+              scope_profile='publish',
+          )
+          full_provider = YouTubeOAuthProvider(
+              client_id='verify-client',
+              client_secret='verify-secret',
+              redirect_uri='http://localhost/callback',
+              scope_profile='full',
+          )
+          assert publish_provider.scopes == [YOUTUBE_UPLOAD_SCOPE]
+          assert set(full_provider.scopes) == {
+              YOUTUBE_UPLOAD_SCOPE,
+              YOUTUBE_READ_SCOPE,
+              YOUTUBE_ANALYTICS_SCOPE,
+          }
+
+          create_oauth_state(
+              999,
+              'verify-state',
+              provider='youtube',
+              scope_profile='full',
+          )
+          state_record = consume_oauth_state(
+              999,
+              'verify-state',
+              provider='youtube',
+              return_record=True,
+          )
+          assert state_record['scope_profile'] == 'full'
+          assert consume_oauth_state(999, 'verify-state', provider='youtube') is False
+
+          create_token({
+              'account_id': 999,
+              'provider': 'youtube',
+              'access_token': 'verify-access',
+              'refresh_token': 'verify-refresh',
+              'scopes': [YOUTUBE_UPLOAD_SCOPE],
+          })
+          stored_token = get_token(999)
+          assert stored_token['provider'] == 'youtube'
+          assert stored_token['scopes'] == [YOUTUBE_UPLOAD_SCOPE]
+
           collector = AnalyticsCollector()
           youtube_status = collector.readiness('youtube')
           assert youtube_status['ready'] is False
@@ -174,6 +233,28 @@ jobs:
               pass
           else:
               raise AssertionError('collector must not fabricate zero metrics when OAuth read scopes are unavailable')
+
+          account_status = collector.readiness('youtube', account_id=999)
+          assert account_status['credential_found'] is True
+          assert account_status['credential_ready'] is False
+          assert account_status['requires_reauthorization'] is True
+
+          create_token({
+              'account_id': 999,
+              'provider': 'youtube',
+              'access_token': 'verify-access-full',
+              'refresh_token': 'verify-refresh',
+              'scopes': [
+                  YOUTUBE_UPLOAD_SCOPE,
+                  YOUTUBE_READ_SCOPE,
+                  YOUTUBE_ANALYTICS_SCOPE,
+              ],
+          })
+          full_account_status = collector.readiness('youtube', account_id=999)
+          assert full_account_status['credential_ready'] is True
+          assert full_account_status['requires_reauthorization'] is False
+          assert full_account_status['collector_enabled'] is False
+          assert full_account_status['ready'] is False
 
           future_status = collector.readiness('future-platform')
           assert future_status['ready'] is False
@@ -193,6 +274,8 @@ jobs:
           print(youtube_capability)
           print(future_runtime)
           print(youtube_status)
+          print(account_status)
+          print(full_account_status)
           print(future_status)
           print(instagram_status)
           PY
