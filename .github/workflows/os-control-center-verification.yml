@@ -8,11 +8,15 @@ on:
       - 'os/backend/accounts/**'
       - 'os/backend/ai/**'
       - 'os/backend/analytics/**'
+      - 'os/backend/assets/**'
+      - 'os/backend/production/**'
       - 'os/backend/publish/**'
       - 'os/backend/routers/accounts.py'
       - 'os/backend/routers/ai.py'
       - 'os/backend/routers/analytics.py'
+      - 'os/backend/routers/assets.py'
       - 'os/backend/routers/oauth.py'
+      - 'os/backend/routers/production.py'
       - 'os/backend/routers/publish.py'
       - '.github/workflows/os-control-center-verification.yml'
 
@@ -59,6 +63,12 @@ jobs:
               assert '/accounts/{account_id}' in route_paths
               assert '/ai/request' in route_paths
               assert '/ai/status' in route_paths
+              assert '/assets' in route_paths
+              assert '/assets/video/{video_id}' in route_paths
+              assert '/assets/{asset_id}' in route_paths
+              assert '/production/status' in route_paths
+              assert '/production/providers' in route_paths
+              assert '/production/tasks' in route_paths
               assert '/publish/tasks' in route_paths
               assert '/publish/tasks/{task_id}' in route_paths
               assert '/publish/platforms' in route_paths
