@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from intelligence.feedback_bridge import (
     get_content_feedback_history,
     get_latest_account_feedback,
+    materialize_feedback_task,
     refresh_account_feedback,
 )
 from intelligence.insights import get_insights, get_video_insight
@@ -69,10 +70,21 @@ def content_intelligence(content_id: str, limit: int = 100):
     return get_content_feedback_history(content_id, limit=limit)
 
 
+@router.post('/intelligence/feedback/{snapshot_id}/materialize')
+def materialize_intelligence_task(snapshot_id: int):
+    try:
+        return materialize_feedback_task(snapshot_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get('/intelligence/status')
 def status():
     return {
         'status': 'ready',
         'data_center_feedback_bridge': True,
         'auto_execute_production': False,
+        'explicit_task_materialization': True,
     }
