@@ -41,7 +41,7 @@ jobs:
           from pathlib import Path
 
           from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
-          from analytics.manager import save_metric
+          from analytics.manager import get_latest_metrics, get_metrics, save_metric
           from analytics.models import AnalyticsMetric
           from data.manager import (
               get_content_funnel_data,
@@ -89,6 +89,25 @@ jobs:
                   shares=1,
               )
           )
+          save_metric(
+              AnalyticsMetric(
+                  video_id='verify-video',
+                  content_id='verify-content',
+                  platform='youtube',
+                  source='verification',
+                  impressions=1200,
+                  views=120,
+                  clicks=12,
+                  watch_time=600,
+                  likes=6,
+                  comments=3,
+                  shares=2,
+              )
+          )
+          assert len(get_metrics()) == 2
+          assert len(get_latest_metrics()) == 1
+          assert get_latest_metrics()[0]['views'] == 120
+
           record_intent_event(
               IntentEvent(
                   content_id='verify-content',
@@ -116,15 +135,17 @@ jobs:
           )
 
           funnel = get_content_funnel_data('verify-content')
-          assert funnel['traffic']['impressions'] == 1000
-          assert funnel['traffic']['views'] == 100
-          assert funnel['traffic']['clicks'] == 10
+          assert funnel['traffic']['records'] == 1
+          assert funnel['traffic']['impressions'] == 1200
+          assert funnel['traffic']['views'] == 120
+          assert funnel['traffic']['clicks'] == 12
           assert funnel['intent']['total'] == 2
           assert funnel['intent']['by_type']['binance_referral_click'] == 1
           assert funnel['conversion']['total'] == 1
           assert funnel['conversion']['value'] == 1
 
           statistics = get_statistics()
+          assert statistics['total_metrics'] == 2
           assert statistics['intent_events'] == 2
           assert statistics['referral_clicks'] == 1
           assert statistics['conversions'] == 1
@@ -132,13 +153,7 @@ jobs:
           feedback = analyze_feedback(
               {
                   'video_id': 'verify-video',
-                  'performance': [{
-                      'views': 100,
-                      'likes': 5,
-                      'comments': 2,
-                      'watch_time': 500,
-                      'shares': 1,
-                  }],
+                  'performance': get_latest_metrics(),
                   'funnel': funnel,
               }
           )
