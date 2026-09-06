@@ -2,6 +2,7 @@ from analytics.collector import AnalyticsCollector
 from analytics.publish_bridge import collect_account_publish_metrics
 from integrations.sync_planner import build_account_sync_plan
 from integrations.sync_registry import run_content_sync
+from intelligence.feedback_bridge import refresh_account_feedback
 
 
 def execute_account_sync(
@@ -13,12 +14,14 @@ def execute_account_sync(
     start_date: str | None = None,
     end_date: str | None = None,
     analytics_collector=None,
+    intelligence_refresher=None,
 ):
     """Execute a provider-neutral account sync plan in deterministic order.
 
     The scheduler owns orchestration only. Provider-specific API behavior stays
-    behind the content and analytics registries. A later timer/worker can invoke
-    this same function without changing platform adapters.
+    behind the content and analytics registries. Once Analytics succeeds, the
+    latest Data Center rows flow into Intelligence strategy snapshots without
+    automatically executing or publishing a production task.
     """
     plan = build_account_sync_plan(
         account_id,
@@ -29,10 +32,25 @@ def execute_account_sync(
     normalized = plan.get('platform') or ''
     results = []
     failures = []
+    skipped = []
     collector = analytics_collector or AnalyticsCollector()
+    feedback_refresh = intelligence_refresher or refresh_account_feedback
 
     for operation in plan['operations']:
         operation_name = operation['operation']
+
+        if operation_name == 'intelligence_feedback' and any(
+            item.get('operation') == 'analytics_sync' for item in failures
+        ):
+            skipped.append(
+                {
+                    'operation': operation_name,
+                    'status': 'skipped',
+                    'reason': 'analytics_sync failed; intelligence snapshot was not refreshed from stale data',
+                }
+            )
+            continue
+
         try:
             if operation_name == 'content_sync':
                 result = run_content_sync(
@@ -49,6 +67,12 @@ def execute_account_sync(
                     start_date=start_date,
                     end_date=end_date,
                     active_limit=operation['active_limit'],
+                )
+            elif operation_name == 'intelligence_feedback':
+                result = feedback_refresh(
+                    account_id,
+                    platform=normalized,
+                    limit=operation['active_limit'],
                 )
             else:
                 raise RuntimeError(f'unsupported sync operation: {operation_name}')
@@ -69,7 +93,7 @@ def execute_account_sync(
                 }
             )
 
-    if failures and results:
+    if failures and (results or skipped):
         status = 'partial'
     elif failures:
         status = 'failed'
@@ -83,7 +107,9 @@ def execute_account_sync(
         'planned': len(plan['operations']),
         'completed': len(results),
         'failed': len(failures),
+        'skipped': len(skipped),
         'plan': plan,
         'results': results,
         'failures': failures,
+        'skipped_operations': skipped,
     }
