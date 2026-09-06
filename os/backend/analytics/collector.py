@@ -1,9 +1,13 @@
+from analytics.manager import save_metric
+from analytics.models import AnalyticsMetric
+from analytics.youtube_api import YouTubeAnalyticsAPIClient
 from data.platform_capabilities import get_platform_capability
-from oauth.manager import get_token
+from oauth.manager import get_token, update_token
 from oauth.providers.youtube import (
     YOUTUBE_ANALYTICS_SCOPE,
     YOUTUBE_READ_SCOPE,
     YOUTUBE_UPLOAD_SCOPE,
+    YouTubeOAuthProvider,
 )
 
 
@@ -36,26 +40,30 @@ def _youtube_readiness(account_id=None):
 
     missing_scopes = sorted(required_scopes - configured_scopes)
     credential_ready = not missing_scopes
+    collector_enabled = True
+    ready = bool(account_id is not None and credential_found and credential_ready)
 
-    if account_id is not None and not credential_found:
+    if account_id is None:
+        reason = "account_id is required to evaluate a stored YouTube analytics credential."
+    elif not credential_found:
         reason = "YouTube OAuth credential was not found for this account."
     elif missing_scopes:
         reason = "YouTube OAuth credential does not include analytics read scopes."
     else:
-        reason = "YouTube analytics credential is ready; live collection adapter is not enabled yet."
+        reason = None
 
     return {
-        "ready": False,
+        "ready": ready,
         "credential_ready": credential_ready,
         "collector_registered": True,
-        "collector_enabled": False,
+        "collector_enabled": collector_enabled,
         "credential_mode": "oauth",
         "credential_source": credential_source,
         "credential_found": credential_found,
         "configured_scopes": sorted(configured_scopes),
         "required_scopes": sorted(required_scopes),
         "missing_scopes": missing_scopes,
-        "requires_reauthorization": bool(missing_scopes),
+        "requires_reauthorization": bool(account_id is not None and credential_found and missing_scopes),
         "legacy_scope_assumption": legacy_scope_assumption,
         "reason": reason,
     }
@@ -76,6 +84,9 @@ class AnalyticsCollector:
     A collector that is unavailable or not authorized must fail explicitly;
     it must never fabricate zero traffic and persist that as real analytics.
     """
+
+    def __init__(self, youtube_client_factory=YouTubeAnalyticsAPIClient):
+        self.youtube_client_factory = youtube_client_factory
 
     def readiness(self, platform, account_id=None):
         normalized = (platform or "").strip().lower()
@@ -112,13 +123,73 @@ class AnalyticsCollector:
         base["metric_types"] = capability["metric_types"]
         return base
 
+    def _collect_youtube(
+        self,
+        video_id,
+        *,
+        account_id,
+        content_id=None,
+        start_date=None,
+        end_date=None,
+    ):
+        token = get_token(account_id)
+        if not token:
+            raise AnalyticsCollectionNotReady(
+                f"YouTube OAuth credential not found for account_id {account_id}"
+            )
+
+        oauth_provider = YouTubeOAuthProvider(scope_profile="analytics")
+        valid_token, refreshed = oauth_provider.ensure_valid_token(token)
+        if refreshed:
+            update_token(
+                account_id,
+                {
+                    "provider": "youtube",
+                    **valid_token,
+                },
+            )
+
+        credentials = oauth_provider.build_google_credentials(valid_token)
+        client = self.youtube_client_factory()
+        client.initialize(credentials)
+        result = client.collect_video_metrics(
+            video_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        metric = AnalyticsMetric(
+            video_id=video_id,
+            content_id=content_id or video_id,
+            platform="youtube",
+            source="youtube_analytics_api",
+            views=result.get("views", 0),
+            watch_time=result.get("watch_time", 0),
+            average_view_duration=result.get("average_view_duration"),
+            retention=result.get("retention"),
+            likes=result.get("likes", 0),
+            comments=result.get("comments", 0),
+            shares=result.get("shares", 0),
+        )
+        return save_metric(metric)
+
     def collect(self, video_id, platform, account_id=None, **kwargs):
-        status = self.readiness(platform, account_id=account_id)
+        normalized = (platform or "").strip().lower()
+        status = self.readiness(normalized, account_id=account_id)
         if not status.get("ready"):
             raise AnalyticsCollectionNotReady(
                 status.get("reason") or "analytics collection is not ready"
             )
 
+        if normalized == "youtube":
+            return self._collect_youtube(
+                video_id,
+                account_id=account_id,
+                content_id=kwargs.get("content_id"),
+                start_date=kwargs.get("start_date"),
+                end_date=kwargs.get("end_date"),
+            )
+
         raise AnalyticsCollectionNotReady(
-            "analytics credential is ready but the live platform collector has not been enabled"
+            f"analytics collection adapter is not implemented for platform {normalized}"
         )
