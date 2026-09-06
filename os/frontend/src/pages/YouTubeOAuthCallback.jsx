@@ -3,6 +3,7 @@ import { apiPost } from "../api";
 
 export default function YouTubeOAuthCallback() {
   const [status, setStatus] = useState("Connecting YouTube...");
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -27,7 +28,8 @@ export default function YouTubeOAuthCallback() {
       .then((result) => {
         if (result?.status === "connected") {
           const profile = result.scope_profile ? ` (${result.scope_profile})` : "";
-          setStatus(`YouTube connected${profile}`);
+          setStatus(`YouTube connected${profile}. Account ${result.account_id}.`);
+          setConnected(true);
         } else {
           setStatus(result?.detail || "YouTube connection failed");
         }
@@ -37,10 +39,17 @@ export default function YouTubeOAuthCallback() {
       });
   }, []);
 
+  const returnToOS = () => {
+    window.location.assign("/");
+  };
+
   return (
     <main>
       <h1>YouTube OAuth</h1>
       <p>{status}</p>
+      <button onClick={returnToOS}>
+        {connected ? "Return to Remote Pay Guide OS" : "Back to Remote Pay Guide OS"}
+      </button>
     </main>
   );
 }
