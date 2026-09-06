@@ -1,0 +1,79 @@
+name: R17 Generic OAuth Callback Migration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/r17-generic-oauth-callback-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-callback:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update App callback routing
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('os/frontend/src/App.jsx')
+          text = path.read_text(encoding='utf-8')
+
+          old_import = 'import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";'
+          new_import = 'import PlatformOAuthCallback from "./pages/PlatformOAuthCallback.jsx";'
+          if text.count(old_import) != 1:
+              raise SystemExit(f'expected one callback import, found {text.count(old_import)}')
+          text = text.replace(old_import, new_import, 1)
+
+          old_route = '''  if (window.location.pathname === "/oauth/youtube/callback") {
+            return <YouTubeOAuthCallback />;
+          }'''
+          new_route = '''  const oauthCallbackMatch = window.location.pathname.match(/^\\/oauth\\/([^/]+)\\/callback\\/?$/i);
+          if (oauthCallbackMatch) {
+            return (
+              <PlatformOAuthCallback
+                platform={decodeURIComponent(oauthCallbackMatch[1]).toLowerCase()}
+              />
+            );
+          }'''
+          if text.count(old_route) != 1:
+              raise SystemExit(f'expected one callback route, found {text.count(old_route)}')
+          text = text.replace(old_route, new_route, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: os/frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: os/frontend
+        run: npm run build
+
+      - name: Verify generic callback routing
+        run: |
+          grep -q 'PlatformOAuthCallback' os/frontend/src/App.jsx
+          grep -q 'oauthCallbackMatch' os/frontend/src/App.jsx
+          ! grep -q 'import YouTubeOAuthCallback' os/frontend/src/App.jsx
+          grep -q 'exchangePlatformOAuth' os/frontend/src/pages/PlatformOAuthCallback.jsx
+
+      - name: Commit migration and remove one-shot workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/r17-generic-oauth-callback-migration.yml
+          git add os/frontend/src/App.jsx
+          git commit -m 'Route OAuth callbacks through platform runtime'
+          git push origin HEAD:main
