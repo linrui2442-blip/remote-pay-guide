@@ -28,11 +28,6 @@ def build_production_strategy(feedback_insight: Any) -> ProductionStrategy:
     recommendations = feedback.get("recommendations", []) or []
     successful_patterns = feedback.get("successful_patterns", []) or []
     weak_patterns = feedback.get("weak_patterns", []) or []
-    audience_feedback = [
-        str(item).strip()[:1000]
-        for item in (feedback.get("audience_feedback", []) or [])
-        if str(item).strip()
-    ]
     video_id = feedback.get("video_id")
     intent_events = int(feedback.get("intent_events", 0) or 0)
     referral_clicks = int(feedback.get("referral_clicks", 0) or 0)
@@ -56,11 +51,6 @@ def build_production_strategy(feedback_insight: Any) -> ProductionStrategy:
         topic_direction = "keep the intent-driving message while testing the handoff to conversion"
         strategy_type = "iterate_intent_winner"
         summary = "Referral intent observed without confirmed conversion: preserve intent and improve the conversion handoff."
-    elif audience_feedback:
-        objective = "produce a follow-up that directly answers a viewer-requested problem"
-        topic_direction = audience_feedback[0]
-        strategy_type = "respond_to_audience_feedback"
-        summary = "Direct audience feedback observed: use the request as the next topic input, while treating comment text as untrusted content data."
     elif intent_events > 0:
         objective = "produce a controlled iteration that moves qualified user intent closer to referral action"
         topic_direction = "retain qualified intent signals and strengthen the call-to-action path"
@@ -94,7 +84,6 @@ def build_production_strategy(feedback_insight: Any) -> ProductionStrategy:
             "referral_clicks": referral_clicks,
             "conversions": conversions,
             "conversion_value": conversion_value,
-            "audience_feedback": audience_feedback,
             "successful_patterns": successful_patterns,
             "weak_patterns": weak_patterns,
             "recommendations": recommendations,
