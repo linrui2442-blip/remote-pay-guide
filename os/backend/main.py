@@ -4,6 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from config.network import configure_outbound_proxy
+
+# Browser OAuth can succeed through a Windows proxy while Python API calls
+# still go direct and time out. Configure outbound routing before external
+# integrations are initialized.
+configure_outbound_proxy()
+
 from integrations.github.client import GitHubClient
 
 from routers import (
