@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { apiPost } from "../api";
 
 export default function YouTubeOAuthCallback() {
-  const [status, setStatus] = useState("Connecting YouTube...");
+  const [status, setStatus] = useState("正在连接 YouTube…");
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
@@ -12,7 +12,7 @@ export default function YouTubeOAuthCallback() {
     const accountId = params.get("account_id");
 
     if (!code || !state) {
-      setStatus("OAuth callback missing required parameters.");
+      setStatus("OAuth 回调缺少必要参数。");
       return;
     }
 
@@ -20,36 +20,39 @@ export default function YouTubeOAuthCallback() {
       authorization_code: code,
       state,
     };
-    // Legacy callback links may still include account_id. New flows resolve
-    // the account securely from the server-side OAuth state record.
     if (accountId) payload.account_id = Number(accountId);
 
     apiPost("/oauth/youtube/exchange", payload)
       .then((result) => {
         if (result?.status === "connected") {
-          const profile = result.scope_profile ? ` (${result.scope_profile})` : "";
-          setStatus(`YouTube connected${profile}. Account ${result.account_id}.`);
+          setStatus("YouTube 已连接，发布与 Analytics 权限已经写入本地 OS。");
           setConnected(true);
         } else {
-          setStatus(result?.detail || "YouTube connection failed");
+          setStatus(result?.detail || "YouTube 连接失败");
         }
       })
       .catch((error) => {
-        setStatus(error.message || "YouTube connection failed");
+        setStatus(error.message || "YouTube 连接失败");
       });
   }, []);
 
   const returnToOS = () => {
-    window.location.assign("/");
+    window.location.assign("/?view=accounts");
   };
 
   return (
-    <main>
-      <h1>YouTube OAuth</h1>
-      <p>{status}</p>
-      <button onClick={returnToOS}>
-        {connected ? "Return to Remote Pay Guide OS" : "Back to Remote Pay Guide OS"}
-      </button>
+    <main className="oauth-callback-shell">
+      <section className="oauth-callback-card">
+        <div className={`oauth-callback-icon ${connected ? "success" : ""}`}>
+          {connected ? "✓" : "YT"}
+        </div>
+        <span className="eyebrow">YOUTUBE OAUTH</span>
+        <h1>{connected ? "授权完成" : "正在完成授权"}</h1>
+        <p>{status}</p>
+        <button className="primary-button" onClick={returnToOS}>
+          返回平台账号
+        </button>
+      </section>
     </main>
   );
 }
