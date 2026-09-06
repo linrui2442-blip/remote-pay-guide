@@ -16,6 +16,9 @@ on:
 jobs:
   verify-account-analytics:
     runs-on: ubuntu-latest
+    env:
+      YOUTUBE_OAUTH_CLIENT_ID: verify-client
+      YOUTUBE_OAUTH_CLIENT_SECRET: verify-secret
 
     steps:
       - name: Checkout repository
