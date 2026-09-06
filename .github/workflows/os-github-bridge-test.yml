@@ -2,20 +2,19 @@ name: OS GitHub Completion Bridge Test
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/os-github-bridge-test.yml'
-      - 'os/backend/production/**'
-      - 'os/backend/assets/**'
-      - 'os/backend/publish/**'
-      - 'os/backend/integrations/github/**'
-      - 'os/backend/tests/r2_github_bridge_smoke.py'
+    inputs:
+      mode:
+        description: Run the full online bridge smoke, or only create its safe fixture artifact
+        required: true
+        default: fixture
+        type: choice
+        options:
+          - fixture
+          - bridge_smoke
 
 jobs:
   dispatch-through-os-provider:
-    if: github.event_name == 'push'
+    if: inputs.mode == 'bridge_smoke'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -45,7 +44,7 @@ jobs:
         run: python os/backend/tests/r2_github_bridge_smoke.py
 
   produce-safe-test-artifact:
-    if: github.event_name == 'workflow_dispatch'
+    if: inputs.mode == 'fixture'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
