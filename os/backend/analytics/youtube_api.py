@@ -38,12 +38,21 @@ class YouTubeAnalyticsAPIClient:
 
     @staticmethod
     def _resolve_window(start_date=None, end_date=None):
-        resolved_end = end_date or date.today().isoformat()
-        if start_date:
-            resolved_start = start_date
-        else:
-            resolved_start = (date.fromisoformat(resolved_end) - timedelta(days=28)).isoformat()
-        return resolved_start, resolved_end
+        # Use complete days by default. The range is 28 calendar days,
+        # inclusive of both start and end dates.
+        resolved_end_date = (
+            date.fromisoformat(end_date)
+            if end_date
+            else date.today() - timedelta(days=1)
+        )
+        resolved_start_date = (
+            date.fromisoformat(start_date)
+            if start_date
+            else resolved_end_date - timedelta(days=27)
+        )
+        if resolved_start_date > resolved_end_date:
+            raise ValueError("start_date must be on or before end_date")
+        return resolved_start_date.isoformat(), resolved_end_date.isoformat()
 
     @staticmethod
     def _row_map(response):
