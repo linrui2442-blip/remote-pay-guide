@@ -1,12 +1,20 @@
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from accounts.manager import get_account
-from oauth.manager import create_oauth_state
+from accounts.manager import get_account, update_account_status
+from oauth.manager import (
+    consume_oauth_state_by_state,
+    create_oauth_state,
+    create_token,
+)
 from oauth.providers.youtube import (
     YouTubeOAuthConfigurationError,
     YouTubeOAuthProvider,
 )
+
+
+class AccountConnectorConfigurationError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -15,6 +23,8 @@ class AccountConnectorRegistration:
     connector_id: str
     status_factory: Callable[[], dict[str, Any]]
     authorize_factory: Callable[[int, str], dict[str, Any]]
+    exchange_factory: Callable[[dict[str, Any], str, str], dict[str, Any]]
+    state_provider: str
 
 
 _ACCOUNT_CONNECTORS: dict[str, AccountConnectorRegistration] = {}
@@ -30,6 +40,8 @@ def register_account_connector(
     connector_id: str,
     status_factory: Callable[[], dict[str, Any]],
     authorize_factory: Callable[[int, str], dict[str, Any]],
+    exchange_factory: Callable[[dict[str, Any], str, str], dict[str, Any]],
+    state_provider: str | None = None,
     replace: bool = False,
 ) -> AccountConnectorRegistration:
     normalized = _normalize_platform(platform)
@@ -43,6 +55,8 @@ def register_account_connector(
         connector_id=str(connector_id or normalized).strip() or normalized,
         status_factory=status_factory,
         authorize_factory=authorize_factory,
+        exchange_factory=exchange_factory,
+        state_provider=_normalize_platform(state_provider) or normalized,
     )
     _ACCOUNT_CONNECTORS[normalized] = registration
     return registration
@@ -61,6 +75,7 @@ def get_account_connector_status(platform: str | None) -> dict[str, Any] | None:
         'platform': registration.platform,
         'connector_id': registration.connector_id,
         'registered': True,
+        'exchange_registered': True,
         **status,
     }
 
@@ -102,6 +117,72 @@ def begin_account_connection(
     }
 
 
+def complete_account_connection(
+    platform: str,
+    *,
+    authorization_code: str,
+    state: str,
+    account_id: int | None = None,
+) -> dict[str, Any]:
+    normalized = _normalize_platform(platform)
+    registration = get_account_connector(normalized)
+    if registration is None:
+        raise LookupError(
+            f'account connector is not registered for platform {normalized or "unknown"}'
+        )
+    if not authorization_code:
+        raise ValueError('authorization_code is required')
+    if not state:
+        raise ValueError('state is required')
+
+    state_record = consume_oauth_state_by_state(
+        state,
+        provider=registration.state_provider,
+    )
+    if not state_record:
+        raise ValueError('invalid or expired OAuth state')
+
+    resolved_account_id = state_record.get('account_id')
+    if account_id is not None and account_id != resolved_account_id:
+        raise ValueError('OAuth state/account mismatch')
+
+    account = get_account(resolved_account_id)
+    if not account:
+        raise LookupError('account not found')
+    account_platform = _normalize_platform(account.get('platform'))
+    if account_platform != normalized:
+        raise ValueError(
+            f'account {resolved_account_id} belongs to {account_platform or "unknown"}, not {normalized}'
+        )
+
+    token = dict(
+        registration.exchange_factory(
+            state_record,
+            authorization_code,
+            state,
+        )
+        or {}
+    )
+    stored = create_token(
+        {
+            'account_id': resolved_account_id,
+            'provider': normalized,
+            **token,
+        }
+    )
+    update_account_status(resolved_account_id, 'connected')
+    return {
+        'platform': normalized,
+        'connector_id': registration.connector_id,
+        'account_id': resolved_account_id,
+        'status': 'connected',
+        'scope_profile': state_record.get('scope_profile'),
+        'scopes': stored.get('scopes') if stored else [],
+        'expires_at': stored.get('expires_at') if stored else None,
+        'has_refresh_token': bool(stored and stored.get('refresh_token')),
+    }
+
+
 def _youtube_status():
     provider = YouTubeOAuthProvider(scope_profile='full')
     missing = []
@@ -115,6 +196,7 @@ def _youtube_status():
         'configured': not missing,
         'missing_configuration': missing,
         'redirect_uri': provider.redirect_uri,
+        'callback_path': '/oauth/youtube/callback',
         'recommended_local_redirect_uri': 'http://localhost:5173/oauth/youtube/callback',
         'scope_profile': provider.scope_profile,
         'scopes': provider.scopes,
@@ -122,8 +204,12 @@ def _youtube_status():
 
 
 def _youtube_authorize(account_id: int, scope_profile: str):
-    provider = YouTubeOAuthProvider(scope_profile=scope_profile)
-    result = provider.get_authorization_url()
+    try:
+        provider = YouTubeOAuthProvider(scope_profile=scope_profile)
+        result = provider.get_authorization_url()
+    except YouTubeOAuthConfigurationError as exc:
+        raise AccountConnectorConfigurationError(str(exc)) from exc
+
     create_oauth_state(
         account_id,
         result['state'],
@@ -139,18 +225,37 @@ def _youtube_authorize(account_id: int, scope_profile: str):
     }
 
 
+def _youtube_exchange(
+    state_record: dict[str, Any],
+    authorization_code: str,
+    state: str,
+):
+    scope_profile = state_record.get('scope_profile') or 'publish'
+    try:
+        provider = YouTubeOAuthProvider(scope_profile=scope_profile)
+        return provider.exchange_code(
+            authorization_code,
+            state=state,
+            code_verifier=state_record.get('code_verifier'),
+        )
+    except YouTubeOAuthConfigurationError as exc:
+        raise AccountConnectorConfigurationError(str(exc)) from exc
+
+
 register_account_connector(
     'youtube',
     connector_id='google_oauth',
     status_factory=_youtube_status,
     authorize_factory=_youtube_authorize,
+    exchange_factory=_youtube_exchange,
 )
 
 
 __all__ = [
+    'AccountConnectorConfigurationError',
     'AccountConnectorRegistration',
-    'YouTubeOAuthConfigurationError',
     'begin_account_connection',
+    'complete_account_connection',
     'get_account_connector',
     'get_account_connector_status',
     'list_account_connectors',
