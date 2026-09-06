@@ -21,6 +21,27 @@ class YouTubeOAuthExchangeRequest(BaseModel):
     account_id: int | None = None
 
 
+@router.get("/oauth/youtube/status")
+def youtube_oauth_status():
+    provider = YouTubeOAuthProvider(scope_profile="full")
+    missing = []
+    if not provider.client_id:
+        missing.append("YOUTUBE_OAUTH_CLIENT_ID")
+    if not provider.client_secret:
+        missing.append("YOUTUBE_OAUTH_CLIENT_SECRET")
+    if not provider.redirect_uri:
+        missing.append("YOUTUBE_OAUTH_REDIRECT_URI")
+
+    return {
+        "configured": not missing,
+        "missing_configuration": missing,
+        "redirect_uri": provider.redirect_uri,
+        "recommended_local_redirect_uri": "http://localhost:5173/oauth/youtube/callback",
+        "scope_profile": provider.scope_profile,
+        "scopes": provider.scopes,
+    }
+
+
 @router.get("/oauth/youtube/authorize/{account_id}")
 def youtube_authorize(account_id: int, scope_profile: str = "publish"):
     account = get_account(account_id)
