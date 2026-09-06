@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
 from analytics.manager import (
@@ -43,6 +43,7 @@ class AccountAnalyticsCollectionRequest(BaseModel):
     platform: str | None = None
     start_date: str | None = None
     end_date: str | None = None
+    active_limit: int = Field(default=10, ge=1, le=200)
 
 
 @router.post('/analytics/metrics')
@@ -122,6 +123,7 @@ def collect_account_analytics(
             collector=collector,
             start_date=request.start_date,
             end_date=request.end_date,
+            active_limit=request.active_limit,
         )
     except AnalyticsCollectionNotReady as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
