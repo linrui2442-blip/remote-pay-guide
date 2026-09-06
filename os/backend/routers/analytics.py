@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from analytics.collector import AnalyticsCollector
 from analytics.manager import (
     get_content_metrics,
     get_metrics,
@@ -11,6 +12,7 @@ from analytics.models import AnalyticsMetric
 
 
 router = APIRouter()
+collector = AnalyticsCollector()
 
 
 @router.post('/analytics/metrics')
@@ -21,6 +23,11 @@ def create_metric(metric: AnalyticsMetric):
 @router.get('/analytics/metrics')
 def metrics():
     return get_metrics()
+
+
+@router.get('/analytics/collector/status/{platform}')
+def collector_status(platform: str):
+    return collector.readiness(platform)
 
 
 @router.get('/analytics/metrics/video/{video_id}')
