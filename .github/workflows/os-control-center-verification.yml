@@ -6,7 +6,9 @@ on:
     paths:
       - 'os/backend/main.py'
       - 'os/backend/accounts/**'
+      - 'os/backend/ai/**'
       - 'os/backend/routers/accounts.py'
+      - 'os/backend/routers/ai.py'
       - 'os/backend/routers/oauth.py'
       - '.github/workflows/os-control-center-verification.yml'
 
@@ -51,6 +53,8 @@ jobs:
               route_paths = {route.path for route in main.app.routes}
               assert '/accounts' in route_paths
               assert '/accounts/{account_id}' in route_paths
+              assert '/ai/request' in route_paths
+              assert '/ai/status' in route_paths
               assert '/oauth/youtube/authorize/{account_id}' in route_paths
               assert '/oauth/youtube/exchange' in route_paths
 
