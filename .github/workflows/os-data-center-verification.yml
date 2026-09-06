@@ -1,0 +1,111 @@
+name: OS Data Center Verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'os/backend/data/**'
+      - 'os/backend/analytics/**'
+      - 'os/backend/routers/data.py'
+      - 'os/backend/routers/analytics.py'
+      - '.github/workflows/os-data-center-verification.yml'
+
+jobs:
+  verify-data-center:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: pip install -r os/backend/requirements.txt
+
+      - name: Compile backend
+        run: PYTHONPATH=os/backend python -m compileall -q os/backend
+
+      - name: Verify Data Center funnel
+        env:
+          PYTHONPATH: os/backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from analytics.manager import save_metric
+          from analytics.models import AnalyticsMetric
+          from data.manager import (
+              get_content_funnel_data,
+              get_statistics,
+              record_conversion_event,
+              record_intent_event,
+          )
+          from data.models import ConversionRecord, IntentEvent
+
+          db_path = Path('os/database/os.db')
+          db_path.parent.mkdir(parents=True, exist_ok=True)
+          if db_path.exists():
+              db_path.unlink()
+
+          save_metric(
+              AnalyticsMetric(
+                  video_id='verify-video',
+                  content_id='verify-content',
+                  platform='youtube',
+                  source='verification',
+                  impressions=1000,
+                  views=100,
+                  clicks=10,
+                  watch_time=500,
+                  likes=5,
+                  comments=2,
+                  shares=1,
+              )
+          )
+          record_intent_event(
+              IntentEvent(
+                  content_id='verify-content',
+                  video_id='verify-video',
+                  source='ga4',
+                  event_type='page_view',
+              )
+          )
+          record_intent_event(
+              IntentEvent(
+                  content_id='verify-content',
+                  video_id='verify-video',
+                  source='ga4',
+                  event_type='binance_referral_click',
+              )
+          )
+          record_conversion_event(
+              ConversionRecord(
+                  content_id='verify-content',
+                  video_id='verify-video',
+                  source='verification',
+                  conversion_type='referral_conversion',
+                  value=1,
+              )
+          )
+
+          funnel = get_content_funnel_data('verify-content')
+          assert funnel['traffic']['impressions'] == 1000
+          assert funnel['traffic']['views'] == 100
+          assert funnel['traffic']['clicks'] == 10
+          assert funnel['intent']['total'] == 2
+          assert funnel['intent']['by_type']['binance_referral_click'] == 1
+          assert funnel['conversion']['total'] == 1
+          assert funnel['conversion']['value'] == 1
+
+          statistics = get_statistics()
+          assert statistics['intent_events'] == 2
+          assert statistics['referral_clicks'] == 1
+          assert statistics['conversions'] == 1
+
+          print(funnel)
+          print(statistics)
+          PY
