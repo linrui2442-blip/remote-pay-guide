@@ -1,5 +1,6 @@
+from analytics.account_manager import save_account_metric
 from analytics.manager import save_metric
-from analytics.models import AnalyticsMetric
+from analytics.models import AccountAnalyticsMetric, AnalyticsMetric
 from analytics.youtube_api import YouTubeAnalyticsAPIClient
 from data.platform_capabilities import get_platform_capability
 from oauth.manager import get_token, update_token
@@ -123,15 +124,7 @@ class AnalyticsCollector:
         base["metric_types"] = capability["metric_types"]
         return base
 
-    def _collect_youtube(
-        self,
-        video_id,
-        *,
-        account_id,
-        content_id=None,
-        start_date=None,
-        end_date=None,
-    ):
+    def _youtube_client(self, account_id):
         token = get_token(account_id)
         if not token:
             raise AnalyticsCollectionNotReady(
@@ -152,6 +145,18 @@ class AnalyticsCollector:
         credentials = oauth_provider.build_google_credentials(valid_token)
         client = self.youtube_client_factory()
         client.initialize(credentials)
+        return client
+
+    def _collect_youtube(
+        self,
+        video_id,
+        *,
+        account_id,
+        content_id=None,
+        start_date=None,
+        end_date=None,
+    ):
+        client = self._youtube_client(account_id)
         result = client.collect_video_metrics(
             video_id,
             start_date=start_date,
@@ -176,6 +181,35 @@ class AnalyticsCollector:
         )
         return save_metric(metric)
 
+    def _collect_youtube_account(
+        self,
+        *,
+        account_id,
+        start_date=None,
+        end_date=None,
+    ):
+        client = self._youtube_client(account_id)
+        result = client.collect_channel_metrics(
+            start_date=start_date,
+            end_date=end_date,
+        )
+        metrics = {
+            key: value
+            for key, value in result.items()
+            if key not in {"start_date", "end_date"}
+        }
+        metrics["average_view_percentage"] = metrics.get("retention")
+        return save_account_metric(
+            AccountAnalyticsMetric(
+                platform="youtube",
+                account_id=account_id,
+                source="youtube_analytics_api",
+                period_start=result.get("start_date"),
+                period_end=result.get("end_date"),
+                metrics=metrics,
+            )
+        )
+
     def collect(self, video_id, platform, account_id=None, **kwargs):
         normalized = (platform or "").strip().lower()
         status = self.readiness(normalized, account_id=account_id)
@@ -195,4 +229,23 @@ class AnalyticsCollector:
 
         raise AnalyticsCollectionNotReady(
             f"analytics collection adapter is not implemented for platform {normalized}"
+        )
+
+    def collect_account(self, platform, account_id=None, **kwargs):
+        normalized = (platform or "").strip().lower()
+        status = self.readiness(normalized, account_id=account_id)
+        if not status.get("ready"):
+            raise AnalyticsCollectionNotReady(
+                status.get("reason") or "account analytics collection is not ready"
+            )
+
+        if normalized == "youtube":
+            return self._collect_youtube_account(
+                account_id=account_id,
+                start_date=kwargs.get("start_date"),
+                end_date=kwargs.get("end_date"),
+            )
+
+        raise AnalyticsCollectionNotReady(
+            f"account analytics adapter is not implemented for platform {normalized}"
         )
