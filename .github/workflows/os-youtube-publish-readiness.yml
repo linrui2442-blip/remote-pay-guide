@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - phase-15.9c-r3-youtube-direct
     paths:
       - 'os/backend/publish/**'
       - 'os/backend/oauth/**'
