@@ -1,5 +1,16 @@
 import React, {useEffect, useState} from "react";
-import {apiGet, getProductionTasks, getProductionStatus, getProductionProviders, createProductionTask, runProductionTask} from "./api";
+import {
+ apiGet,
+ beginYouTubeOAuth,
+ createAccount,
+ createProductionTask,
+ getAccounts,
+ getAnalyticsCollectorStatus,
+ getProductionProviders,
+ getProductionStatus,
+ getProductionTasks,
+ runProductionTask,
+} from "./api";
 import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";
 
 export default function App(){
@@ -12,6 +23,10 @@ export default function App(){
  const [tasks,setTasks]=useState([]);
  const [platforms,setPlatforms]=useState([]);
  const [metrics,setMetrics]=useState([]);
+ const [accounts,setAccounts]=useState([]);
+ const [accountReadiness,setAccountReadiness]=useState({});
+ const [newYouTubeAccount,setNewYouTubeAccount]=useState("");
+ const [oauthMessage,setOAuthMessage]=useState("");
  const [productionStatus,setProductionStatus]=useState(null);
  const [productionTasks,setProductionTasks]=useState([]);
  const [providers,setProviders]=useState([]);
@@ -23,12 +38,35 @@ export default function App(){
   getProductionProviders().then(setProviders).catch(()=>{});
  };
 
+ const refreshAccounts=()=>{
+  getAccounts()
+   .then(async records=>{
+    setAccounts(records);
+    const youtubeAccounts=records.filter(
+     account=>String(account.platform || "").toLowerCase() === "youtube"
+    );
+    const statuses=await Promise.all(
+     youtubeAccounts.map(async account=>{
+      try {
+       const status=await getAnalyticsCollectorStatus("youtube", account.id);
+       return [account.id,status];
+      } catch (error) {
+       return [account.id,{ready:false,reason:error.message}];
+      }
+     })
+    );
+    setAccountReadiness(Object.fromEntries(statuses));
+   })
+   .catch(error=>setOAuthMessage(error.message));
+ };
+
  useEffect(()=>{
   apiGet('/').then(setSystem).catch(()=>setSystem({status:'offline'}));
   apiGet('/assets').then(setAssets).catch(()=>{});
   apiGet('/publish/tasks').then(setTasks).catch(()=>{});
   apiGet('/publish/platforms').then(setPlatforms).catch(()=>{});
   apiGet('/analytics/metrics/current').then(setMetrics).catch(()=>{});
+  refreshAccounts();
   refreshProduction();
  },[]);
 
@@ -43,9 +81,58 @@ export default function App(){
 
  const runTask=(id)=>runProductionTask(id).then(refreshProduction);
 
+ const addYouTubeAccount=()=>{
+  const accountName=newYouTubeAccount.trim();
+  if (!accountName) {
+   setOAuthMessage("Enter a YouTube account name first.");
+   return;
+  }
+  createAccount({platform:"youtube",account_name:accountName,status:"inactive"})
+   .then(()=>{
+    setNewYouTubeAccount("");
+    setOAuthMessage("YouTube account added. Connect it to authorize publishing and analytics.");
+    refreshAccounts();
+   })
+   .catch(error=>setOAuthMessage(error.message));
+ };
+
+ const connectYouTube=(accountId)=>{
+  setOAuthMessage("Opening Google authorization...");
+  beginYouTubeOAuth(accountId,"full")
+   .then(result=>{
+    if (!result?.authorization_url) {
+     throw new Error("YouTube authorization URL was not returned");
+    }
+    window.location.assign(result.authorization_url);
+   })
+   .catch(error=>setOAuthMessage(error.message));
+ };
+
  return <main>
   <h1>Remote Pay Guide OS</h1>
   <h2>System Status</h2><pre>{JSON.stringify(system,null,2)}</pre>
+
+  <h2>Platform Accounts</h2>
+  <div>
+   <input
+    value={newYouTubeAccount}
+    onChange={event=>setNewYouTubeAccount(event.target.value)}
+    placeholder="YouTube account name"
+   />
+   <button onClick={addYouTubeAccount}>Add YouTube Account</button>
+  </div>
+  {oauthMessage && <p>{oauthMessage}</p>}
+  {accounts.map(account=><section key={account.id}>
+   <strong>{account.platform}: {account.account_name}</strong>
+   <span> — {account.status}</span>
+   {String(account.platform || "").toLowerCase() === "youtube" && <>
+    <button onClick={()=>connectYouTube(account.id)}>
+     Connect YouTube (Publish + Analytics)
+    </button>
+    <pre>{JSON.stringify(accountReadiness[account.id] || {status:"checking"},null,2)}</pre>
+   </>}
+  </section>)}
+
   <h2>Video Assets</h2><pre>{JSON.stringify(assets,null,2)}</pre>
   <h2>Publish Tasks</h2><pre>{JSON.stringify(tasks,null,2)}</pre>
   <h2>Platforms</h2><pre>{JSON.stringify(platforms,null,2)}</pre>
