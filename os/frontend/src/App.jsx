@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   apiGet,
   beginYouTubeOAuth,
+  collectAccountAnalytics,
   collectPublishTaskAnalytics,
   createAccount,
   createProductionTask,
@@ -163,6 +164,7 @@ function App() {
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [connectingPlatform, setConnectingPlatform] = useState("");
   const [syncingAccountId, setSyncingAccountId] = useState(null);
+  const [collectingAnalyticsAccountId, setCollectingAnalyticsAccountId] = useState(null);
   const [proxySettings, setProxySettings] = useState({ mode: "system", proxy_url: "" });
   const [proxyMode, setProxyMode] = useState("system");
   const [proxyUrl, setProxyUrl] = useState("");
@@ -303,6 +305,30 @@ function App() {
     }
   };
 
+  const syncAccountAnalytics = async (account) => {
+    const platform = String(account.platform || "").toLowerCase();
+    try {
+      setCollectingAnalyticsAccountId(account.id);
+      setOAuthMessage(`正在通过 ${platformLabel(platform)} 官方 Analytics API 同步数据…`);
+      const result = await collectAccountAnalytics(account.id, platform);
+      if ((result.failed ?? 0) > 0) {
+        const firstError = result.failures?.[0]?.error;
+        setOAuthMessage(
+          `数据同步完成：成功 ${result.collected ?? 0} 个，失败 ${result.failed ?? 0} 个${firstError ? `。首个错误：${firstError}` : ""}`
+        );
+      } else {
+        setOAuthMessage(
+          `数据同步完成：已更新 ${result.collected ?? 0} 个视频的 Analytics 数据。`
+        );
+      }
+      refreshAnalytics();
+    } catch (error) {
+      setOAuthMessage(error.message);
+    } finally {
+      setCollectingAnalyticsAccountId(null);
+    }
+  };
+
   const saveProxy = async () => {
     try {
       setSavingProxy(true);
@@ -410,7 +436,7 @@ function App() {
   const renderAccounts = () => (
     <>
       <div className="page-heading compact">
-        <div><span className="eyebrow">ACCOUNTS</span><h1>平台账号</h1><p>选择平台并授权，然后通过官方 API 同步已发布内容。</p></div>
+        <div><span className="eyebrow">ACCOUNTS</span><h1>平台账号</h1><p>选择平台并授权，然后通过官方 API 同步已发布内容和 Analytics 数据。</p></div>
         <button className="primary-button add-platform-button" onClick={() => setShowPlatformPicker(true)}>+ 添加平台账号</button>
       </div>
 
@@ -425,6 +451,7 @@ function App() {
           const connectable = Boolean(PLATFORM_CONNECTORS[platform]);
           const connected = platform === "youtube" ? readiness?.ready : account.status === "connected";
           const syncing = syncingAccountId === account.id;
+          const collectingAnalytics = collectingAnalyticsAccountId === account.id;
           return (
             <section className="account-card" key={account.id}>
               <div className="account-avatar">{platformMark(platform)}</div>
@@ -438,9 +465,14 @@ function App() {
               </div>
               <div className="account-actions">
                 {platform === "youtube" && connected && (
-                  <button className="secondary-button" onClick={() => syncPlatformAccount(account)} disabled={syncing}>
-                    {syncing ? "同步中…" : "同步内容"}
-                  </button>
+                  <>
+                    <button className="secondary-button" onClick={() => syncPlatformAccount(account)} disabled={syncing || collectingAnalytics}>
+                      {syncing ? "同步中…" : "同步内容"}
+                    </button>
+                    <button className="secondary-button" onClick={() => syncAccountAnalytics(account)} disabled={collectingAnalytics || syncing || readiness?.ready !== true}>
+                      {collectingAnalytics ? "同步数据中…" : "同步数据"}
+                    </button>
+                  </>
                 )}
                 {connectable ? (
                   <button className="primary-button" onClick={() => reconnectAccount(account)} disabled={platform === "youtube" && youtubeOAuthStatus?.configured === false}>
@@ -505,7 +537,7 @@ function App() {
       <div className="stats-grid"><StatCard label="当前观看" value={totalViews.toLocaleString()} /><StatCard label="当前点击" value={totalClicks.toLocaleString()} /><StatCard label="指标快照" value={metrics.length} /><StatCard label="视频资产" value={assets.length} /></div>
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">TRAFFIC</span><h2>平台表现</h2></div></div>
-        {metrics.length === 0 ? <EmptyState title="还没有 Analytics 数据" description="完成 YouTube 授权后，可从发布中心采集真实数据。" /> : (
+        {metrics.length === 0 ? <EmptyState title="还没有 Analytics 数据" description="在平台账号页面点击“同步数据”，即可通过官方 Analytics API 拉取真实数据。" /> : (
           <div className="table-wrap"><table><thead><tr><th>视频</th><th>平台</th><th>观看</th><th>点击</th><th>平均观看</th><th>留存</th></tr></thead><tbody>{metrics.map((item, index) => <tr key={`${item.video_id || "metric"}-${index}`}><td>{item.video_id || item.content_id || "—"}</td><td>{platformLabel(item.platform)}</td><td>{Number(item.views || 0).toLocaleString()}</td><td>{Number(item.clicks || 0).toLocaleString()}</td><td>{item.average_view_duration ?? "—"}</td><td>{item.retention != null ? `${item.retention}%` : "—"}</td></tr>)}</tbody></table></div>
         )}
       </section>
