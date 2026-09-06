@@ -33,6 +33,12 @@ export function getPublishTasks() { return apiGet('/publish/tasks'); }
 export function collectPublishTaskAnalytics(id, data = {}) {
   return apiPost(`/analytics/collector/collect/publish-task/${encodeURIComponent(id)}`, data);
 }
+export function collectAccountAnalytics(accountId, platform, data = {}) {
+  return apiPost(`/analytics/collector/collect/account/${encodeURIComponent(accountId)}`, {
+    platform,
+    ...data,
+  });
+}
 
 export function getAccounts() { return apiGet('/accounts'); }
 export function createAccount(data) { return apiPost('/accounts', data); }
