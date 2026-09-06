@@ -38,6 +38,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
           from analytics.manager import save_metric
           from analytics.models import AnalyticsMetric
           from data.manager import (
@@ -132,8 +133,21 @@ jobs:
           assert strategy.parameters['strategy_type'] == 'scale_conversion_winner'
           assert strategy.parameters['conversions'] == 1
 
+          collector = AnalyticsCollector()
+          youtube_status = collector.readiness('youtube')
+          assert youtube_status['ready'] is False
+          assert youtube_status['requires_reauthorization'] is True
+          assert youtube_status['missing_scopes']
+          try:
+              collector.collect('verify-video', 'youtube')
+          except AnalyticsCollectionNotReady:
+              pass
+          else:
+              raise AssertionError('collector must not fabricate zero metrics when OAuth read scopes are unavailable')
+
           print(funnel)
           print(statistics)
           print(feedback)
           print(strategy)
+          print(youtube_status)
           PY
