@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 from accounts.manager import create_account, get_account, get_accounts
 from accounts.models import Account
 from data.sync_state import get_sync_state
-from integrations.sync_registry import get_content_sync_adapter, run_content_sync
+from integrations.sync_planner import build_account_sync_plan
+from integrations.sync_registry import run_content_sync
+from integrations.sync_scheduler import execute_account_sync
 
 
 router = APIRouter()
@@ -16,6 +18,11 @@ DEFAULT_CONTENT_SYNC_LIMIT = 10
 class AccountSyncRequest(BaseModel):
     max_results: int = Field(default=DEFAULT_CONTENT_SYNC_LIMIT, ge=1, le=200)
     sync_mode: Literal['incremental', 'full_refresh'] = 'incremental'
+
+
+class AccountFullSyncRequest(AccountSyncRequest):
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 @router.get('/accounts')
@@ -68,28 +75,7 @@ def account_sync_plan(account_id: int):
         raise HTTPException(status_code=404, detail='account not found')
 
     platform = str(account.get('platform') or '').strip().lower()
-    adapter = get_content_sync_adapter(platform)
-    if adapter is None:
-        return {
-            'account_id': account_id,
-            'platform': platform or None,
-            'content_sync_registered': False,
-            'operations': [],
-        }
-
-    return {
-        'account_id': account_id,
-        'platform': platform,
-        'content_sync_registered': True,
-        'active_limit': adapter.active_limit,
-        'operations': [
-            {
-                'operation': 'content_sync',
-                'sync_mode': 'incremental',
-                'max_results': adapter.active_limit,
-            }
-        ],
-    }
+    return build_account_sync_plan(account_id, platform)
 
 
 @router.post('/accounts/{account_id}/sync')
@@ -116,3 +102,30 @@ def sync_account(account_id: int, request: AccountSyncRequest | None = None):
             status_code=502,
             detail=f'{platform or "platform"} content sync failed: {exc}',
         ) from exc
+
+
+@router.post('/accounts/{account_id}/sync-all')
+def sync_all_account_data(
+    account_id: int,
+    request: AccountFullSyncRequest | None = None,
+):
+    account = get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail='account not found')
+
+    platform = str(account.get('platform') or '').strip().lower()
+    request = request or AccountFullSyncRequest()
+    result = execute_account_sync(
+        account_id,
+        platform,
+        requested_limit=request.max_results,
+        sync_mode=request.sync_mode,
+        start_date=request.start_date,
+        end_date=request.end_date,
+    )
+    if result['planned'] == 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f'no sync adapters are registered for platform {platform or "unknown"}',
+        )
+    return result
