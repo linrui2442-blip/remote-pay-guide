@@ -63,6 +63,9 @@ export function beginPlatformOAuth(platform, accountId, scopeProfile = 'full') {
     `/oauth/connect/${encodeURIComponent(platform)}/${encodeURIComponent(accountId)}?scope_profile=${encodeURIComponent(scopeProfile)}`
   );
 }
+export function exchangePlatformOAuth(platform, data) {
+  return apiPost(`/oauth/exchange/${encodeURIComponent(platform)}`, data);
+}
 export function getYouTubeOAuthStatus() { return apiGet('/oauth/youtube/status'); }
 export function getAnalyticsCollectorStatus(platform, accountId) {
   const query = accountId == null ? '' : `?account_id=${encodeURIComponent(accountId)}`;
@@ -70,6 +73,9 @@ export function getAnalyticsCollectorStatus(platform, accountId) {
 }
 export function beginYouTubeOAuth(accountId, scopeProfile = 'full') {
   return beginPlatformOAuth('youtube', accountId, scopeProfile);
+}
+export function exchangeYouTubeOAuth(data) {
+  return exchangePlatformOAuth('youtube', data);
 }
 
 export function getNetworkProxySettings() {
