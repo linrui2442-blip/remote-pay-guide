@@ -168,6 +168,7 @@ function App() {
   const [productionTasks, setProductionTasks] = useState([]);
   const [providers, setProviders] = useState([]);
   const [provider, setProvider] = useState("github");
+  const [githubWorkflow, setGithubWorkflow] = useState("");
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [connectingPlatform, setConnectingPlatform] = useState("");
   const [syncingAccountId, setSyncingAccountId] = useState(null);
@@ -234,15 +235,39 @@ function App() {
   }, []);
 
   const createTask = () => {
+    const taskType = provider === "ai_gateway" ? "video_generation" : "video_batch";
     createProductionTask({
-      task_type: provider === "ai_gateway" ? "video_generation" : "video_render",
+      task_type: taskType,
       provider,
-      workflow: "render.yml",
+      workflow: provider === "github" ? githubWorkflow : "",
       branch: "main",
+      parameters: { task_type: taskType },
     }).then(refreshProduction);
   };
 
-  const runTask = (id) => runProductionTask(id).then(refreshProduction);
+  const productionProviderRuntime = (providerName) =>
+    providers.find((item) => item.name === providerName || item.provider === providerName) || {};
+
+  const taskRunBlocker = (task) => {
+    if (task.execution?.ready === false) {
+      return task.execution.reason || "生产任务执行配置不完整";
+    }
+    const runtime = productionProviderRuntime(task.provider);
+    if (task.provider === "ai_gateway" && runtime.configured === false) {
+      const missing = (runtime.missing_configuration || []).join(", ");
+      return missing ? `AI Gateway 尚未配置：${missing}` : "AI Gateway 远程端点尚未配置";
+    }
+    if (task.status && task.status !== "created") {
+      return `当前状态 ${task.status} 不能重复启动`;
+    }
+    return "";
+  };
+
+  const runTask = (task) => {
+    const blocker = taskRunBlocker(task);
+    if (blocker) return;
+    runProductionTask(task.id).then(refreshProduction);
+  };
 
   const runtimeForPlatform = (platformName) => {
     const normalized = String(platformName || "").toLowerCase();
@@ -531,12 +556,39 @@ function App() {
       <div className="page-heading compact"><div><span className="eyebrow">PRODUCTION</span><h1>生产中心</h1><p>统一调度 GitHub 生产线与 AI Gateway 远程生产线。</p></div></div>
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">NEW TASK</span><h2>创建生产任务</h2></div><Badge tone="success">{productionStatus?.status || "ready"}</Badge></div>
-        <div className="form-row"><select value={provider} onChange={(event) => setProvider(event.target.value)}><option value="github">GitHub Actions</option><option value="ai_gateway">AI Gateway（远程）</option></select><button className="primary-button" onClick={createTask}>创建任务</button></div>
+        <div className="form-row">
+          <select value={provider} onChange={(event) => setProvider(event.target.value)}>
+            <option value="github">GitHub Actions</option>
+            <option value="ai_gateway">AI Gateway（远程）</option>
+          </select>
+          {provider === "github" ? (
+            <select value={githubWorkflow} onChange={(event) => setGithubWorkflow(event.target.value)}>
+              <option value="">选择 GitHub Workflow</option>
+              <option value="render-launch02.yml">Legacy 批量生产 · short02-short10</option>
+              <option value="os-github-bridge-test.yml">GitHub Bridge · 验证流程</option>
+            </select>
+          ) : null}
+          <button
+            className="primary-button"
+            onClick={createTask}
+            disabled={provider === "github" && !githubWorkflow}
+          >
+            创建任务
+          </button>
+        </div>
+        {provider === "ai_gateway" && productionProviderRuntime("ai_gateway").configured === false ? (
+          <div className="notice">
+            AI Gateway 当前只走远程 HTTP 生产线；请先配置 {productionProviderRuntime("ai_gateway").missing_configuration?.join(", ") || "远程端点"}，不会回退到本地 GPU / 本地模型。
+          </div>
+        ) : null}
       </section>
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">TASKS</span><h2>生产任务</h2></div><span className="muted">{productionTasks.length} 条</span></div>
         {productionTasks.length === 0 ? <EmptyState title="暂无生产任务" description="创建任务后会显示在这里。" /> : (
-          <div className="table-wrap"><table><thead><tr><th>ID</th><th>类型</th><th>Provider</th><th>状态</th><th></th></tr></thead><tbody>{productionTasks.map((task) => <tr key={task.id}><td>#{task.id}</td><td>{task.task_type || "—"}</td><td>{task.provider || "—"}</td><td><Badge tone={task.status === "completed" ? "success" : "neutral"}>{task.status || "created"}</Badge></td><td className="table-action"><button className="secondary-button" onClick={() => runTask(task.id)}>运行</button></td></tr>)}</tbody></table></div>
+          <div className="table-wrap"><table><thead><tr><th>ID</th><th>类型</th><th>Provider</th><th>状态</th><th>执行</th><th></th></tr></thead><tbody>{productionTasks.map((task) => {
+            const blocker = taskRunBlocker(task);
+            return <tr key={task.id}><td>#{task.id}</td><td>{task.task_type || "—"}</td><td>{task.provider || "—"}</td><td><Badge tone={task.status === "completed" ? "success" : "neutral"}>{task.status || "created"}</Badge></td><td><Badge tone={blocker ? "neutral" : "success"}>{blocker ? "未就绪" : "可运行"}</Badge>{blocker ? <div className="muted" title={blocker}>{blocker}</div> : null}</td><td className="table-action"><button className="secondary-button" onClick={() => runTask(task)} disabled={Boolean(blocker)} title={blocker || "运行任务"}>运行</button></td></tr>;
+          })}</tbody></table></div>
         )}
       </section>
       <JsonDetails title="Provider 技术信息" data={providers} />
