@@ -91,7 +91,7 @@ class MissingAssetGateway(AsyncGateway):
 def make_task(objective='async remote generation'):
     return create_task(
         ProductionTask(
-            source='test',
+            source='ai_intelligence',
             objective=objective,
             provider='ai_gateway',
             template='short_video_template',
