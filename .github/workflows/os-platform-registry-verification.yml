@@ -1,0 +1,34 @@
+name: OS Platform Registry Verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'os/backend/publish/**'
+      - 'os/backend/data/platform_capabilities.py'
+      - 'os/backend/tests/r4_platform_registry_smoke.py'
+      - '.github/workflows/os-platform-registry-verification.yml'
+
+jobs:
+  verify-platform-registry:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: pip install -r os/backend/requirements.txt
+
+      - name: Compile backend
+        run: PYTHONPATH=os/backend python -m compileall -q os/backend
+
+      - name: Verify dynamic platform registry
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r4_platform_registry_smoke.py
