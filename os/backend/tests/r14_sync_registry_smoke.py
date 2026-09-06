@@ -80,6 +80,21 @@ class FakeBatchCollector:
         raise AssertionError('no publish tasks should exist in registry smoke test')
 
 
+def fake_intelligence_refresh(account_id, platform=None, limit=10):
+    assert account_id == 1400
+    assert platform == PLATFORM
+    assert limit == 7
+    return {
+        'account_id': account_id,
+        'platform': platform,
+        'found': 0,
+        'generated': 0,
+        'reused': 0,
+        'top_strategy': None,
+        'snapshots': [],
+    }
+
+
 def reset_test_db():
     Path('os/database').mkdir(parents=True, exist_ok=True)
     db = Path('os/database/os.db')
@@ -133,9 +148,11 @@ def main():
         requested_limit=50,
     )
     assert plan['active_limit'] == 7
+    assert plan['intelligence_feedback_enabled'] is True
     assert [item['operation'] for item in plan['operations']] == [
         'content_sync',
         'analytics_sync',
+        'intelligence_feedback',
     ]
 
     scheduled = execute_account_sync(
@@ -144,23 +161,33 @@ def main():
         requested_limit=50,
         end_date='2026-09-06',
         analytics_collector=FakeBatchCollector(),
+        intelligence_refresher=fake_intelligence_refresh,
     )
     assert scheduled['status'] == 'success'
-    assert scheduled['planned'] == 2
-    assert scheduled['completed'] == 2
+    assert scheduled['planned'] == 3
+    assert scheduled['completed'] == 3
     assert scheduled['failed'] == 0
+    assert scheduled['skipped'] == 0
+    assert [item['operation'] for item in scheduled['results']] == [
+        'content_sync',
+        'analytics_sync',
+        'intelligence_feedback',
+    ]
 
     account_router_source = (BACKEND / 'routers' / 'accounts.py').read_text(encoding='utf-8')
     collector_source = (BACKEND / 'analytics' / 'collector.py').read_text(encoding='utf-8')
+    scheduler_source = (BACKEND / 'integrations' / 'sync_scheduler.py').read_text(encoding='utf-8')
     assert "platform != 'youtube'" not in account_router_source
     assert 'YouTubeContentSync' not in account_router_source
     assert 'if normalized == "youtube"' not in collector_source
     assert "if normalized == 'youtube'" not in collector_source
+    assert 'refresh_account_feedback' in scheduler_source
+    assert 'auto' not in scheduler_source.lower() or 'automatically executing' in scheduler_source
 
     print('Provider-neutral sync registry smoke test passed')
     print('Content registry -> active limit enforced without router platform branching')
     print('Analytics registry -> fake platform collected without collector platform branching')
-    print('Sync planner/scheduler -> content + analytics operations executed in order')
+    print('Sync planner/scheduler -> content + analytics + Intelligence feedback in order')
 
 
 if __name__ == '__main__':
