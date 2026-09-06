@@ -308,10 +308,11 @@ function App() {
     const platform = String(account.platform || "").toLowerCase();
     try {
       setSyncingAccountId(account.id);
-      setOAuthMessage(`正在同步 ${platformLabel(platform)}：内容 → 账号 Analytics → ACTIVE 内容 Analytics…`);
+      setOAuthMessage(`正在同步 ${platformLabel(platform)}：内容 → Analytics → AI Intelligence…`);
       const result = await syncAccountAll(account.id);
       const content = result.results?.find((item) => item.operation === "content_sync")?.result;
       const analytics = result.results?.find((item) => item.operation === "analytics_sync")?.result;
+      const intelligence = result.results?.find((item) => item.operation === "intelligence_feedback")?.result;
       const firstFailure = result.failures?.[0]?.error;
 
       if (result.status === "failed") {
@@ -325,6 +326,12 @@ function App() {
       if (analytics) {
         parts.push(`Analytics 更新 ${analytics.collected ?? 0} 个 ACTIVE 内容`);
         if (analytics.account_metric) parts.push("账号级数据已更新");
+      }
+      if (intelligence) {
+        parts.push(`Intelligence 新策略 ${intelligence.generated ?? 0}，复用 ${intelligence.reused ?? 0}`);
+      }
+      if ((result.skipped ?? 0) > 0) {
+        parts.push("Intelligence 因上游失败未刷新");
       }
       if (result.status === "partial") {
         parts.push(`部分失败${firstFailure ? `：${firstFailure}` : ""}`);
