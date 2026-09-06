@@ -6,6 +6,7 @@ on:
     paths:
       - 'os/backend/data/**'
       - 'os/backend/analytics/**'
+      - 'os/backend/intelligence/**'
       - 'os/backend/production/**'
       - 'os/backend/routers/data.py'
       - 'os/backend/routers/analytics.py'
@@ -46,6 +47,8 @@ jobs:
               record_intent_event,
           )
           from data.models import ConversionRecord, IntentEvent
+          from intelligence.feedback import analyze_feedback
+          from intelligence.strategy import build_production_strategy
 
           db_path = Path('os/database/os.db')
           db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +110,30 @@ jobs:
           assert statistics['referral_clicks'] == 1
           assert statistics['conversions'] == 1
 
+          feedback = analyze_feedback(
+              {
+                  'video_id': 'verify-video',
+                  'performance': [{
+                      'views': 100,
+                      'likes': 5,
+                      'comments': 2,
+                      'watch_time': 500,
+                      'shares': 1,
+                  }],
+                  'funnel': funnel,
+              }
+          )
+          assert feedback.intent_events == 2
+          assert feedback.referral_clicks == 1
+          assert feedback.conversions == 1
+          assert 'attributed conversion observed' in feedback.successful_patterns
+
+          strategy = build_production_strategy(feedback)
+          assert strategy.parameters['strategy_type'] == 'scale_conversion_winner'
+          assert strategy.parameters['conversions'] == 1
+
           print(funnel)
           print(statistics)
+          print(feedback)
+          print(strategy)
           PY
