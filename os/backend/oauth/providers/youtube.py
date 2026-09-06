@@ -108,6 +108,21 @@ class YouTubeOAuthProvider:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)
 
+    @classmethod
+    def _google_expiry(cls, value):
+        """Return UTC expiry in the form expected by google-auth.
+
+        The OS stores timezone-aware ISO 8601 timestamps. Some google-auth
+        versions compare Credentials.expiry against a naive UTC clock, which
+        raises `can't compare offset-naive and offset-aware datetimes` when an
+        aware datetime is passed in. Keep storage/comparison in the OS aware,
+        but hand google-auth a naive UTC datetime for compatibility.
+        """
+        parsed = cls._parse_expiry(value)
+        if parsed is None:
+            return None
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+
     @staticmethod
     def _scope_values(value):
         if not value:
@@ -223,7 +238,7 @@ class YouTubeOAuthProvider:
             client_id=self.client_id,
             client_secret=self.client_secret,
             scopes=scopes,
-            expiry=self._parse_expiry(token_data.get("expires_at")),
+            expiry=self._google_expiry(token_data.get("expires_at")),
         )
 
     def refresh_token(self, refresh_token: str, scopes=None):
