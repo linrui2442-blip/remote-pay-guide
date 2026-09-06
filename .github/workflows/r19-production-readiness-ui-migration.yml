@@ -19,108 +19,7 @@ jobs:
           fetch-depth: 0
 
       - name: Update Production Center readiness UI
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('os/frontend/src/App.jsx')
-          text = path.read_text(encoding='utf-8')
-
-          old_state = '  const [provider, setProvider] = useState("github");\n'
-          new_state = old_state + '  const [githubWorkflow, setGithubWorkflow] = useState("");\n'
-          if text.count(old_state) != 1:
-              raise SystemExit(f'expected provider state once, found {text.count(old_state)}')
-          text = text.replace(old_state, new_state, 1)
-
-          old_create = '''  const createTask = () => {
-            createProductionTask({
-              task_type: provider === "ai_gateway" ? "video_generation" : "video_render",
-              provider,
-              workflow: "render.yml",
-              branch: "main",
-            }).then(refreshProduction);
-          };
-
-          const runTask = (id) => runProductionTask(id).then(refreshProduction);'''
-          new_create = '''  const createTask = () => {
-            const taskType = provider === "ai_gateway" ? "video_generation" : "video_batch";
-            createProductionTask({
-              task_type: taskType,
-              provider,
-              workflow: provider === "github" ? githubWorkflow : "",
-              branch: "main",
-              parameters: { task_type: taskType },
-            }).then(refreshProduction);
-          };
-
-          const productionProviderRuntime = (providerName) =>
-            providers.find((item) => item.name === providerName || item.provider === providerName) || {};
-
-          const taskRunBlocker = (task) => {
-            if (task.execution?.ready === false) {
-              return task.execution.reason || "生产任务执行配置不完整";
-            }
-            const runtime = productionProviderRuntime(task.provider);
-            if (task.provider === "ai_gateway" && runtime.configured === false) {
-              const missing = (runtime.missing_configuration || []).join(", ");
-              return missing ? `AI Gateway 尚未配置：${missing}` : "AI Gateway 远程端点尚未配置";
-            }
-            if (task.status && task.status !== "created") {
-              return `当前状态 ${task.status} 不能重复启动`;
-            }
-            return "";
-          };
-
-          const runTask = (task) => {
-            const blocker = taskRunBlocker(task);
-            if (blocker) return;
-            runProductionTask(task.id).then(refreshProduction);
-          };'''
-          if text.count(old_create) != 1:
-              raise SystemExit(f'expected create/run task block once, found {text.count(old_create)}')
-          text = text.replace(old_create, new_create, 1)
-
-          old_form = '''        <div className="form-row"><select value={provider} onChange={(event) => setProvider(event.target.value)}><option value="github">GitHub Actions</option><option value="ai_gateway">AI Gateway（远程）</option></select><button className="primary-button" onClick={createTask}>创建任务</button></div>'''
-          new_form = '''        <div className="form-row">
-          <select value={provider} onChange={(event) => setProvider(event.target.value)}>
-            <option value="github">GitHub Actions</option>
-            <option value="ai_gateway">AI Gateway（远程）</option>
-          </select>
-          {provider === "github" ? (
-            <select value={githubWorkflow} onChange={(event) => setGithubWorkflow(event.target.value)}>
-              <option value="">选择 GitHub Workflow</option>
-              <option value="render-launch02.yml">Legacy 批量生产 · short02-short10</option>
-              <option value="os-github-bridge-test.yml">GitHub Bridge · 验证流程</option>
-            </select>
-          ) : null}
-          <button
-            className="primary-button"
-            onClick={createTask}
-            disabled={provider === "github" && !githubWorkflow}
-          >
-            创建任务
-          </button>
-        </div>
-        {provider === "ai_gateway" && productionProviderRuntime("ai_gateway").configured === false ? (
-          <div className="notice">
-            AI Gateway 当前只走远程 HTTP 生产线；请先配置 {productionProviderRuntime("ai_gateway").missing_configuration?.join(", ") || "远程端点"}，不会回退到本地 GPU / 本地模型。
-          </div>
-        ) : null}'''
-          if text.count(old_form) != 1:
-              raise SystemExit(f'expected production form once, found {text.count(old_form)}')
-          text = text.replace(old_form, new_form, 1)
-
-          old_table = '''          <div className="table-wrap"><table><thead><tr><th>ID</th><th>类型</th><th>Provider</th><th>状态</th><th></th></tr></thead><tbody>{productionTasks.map((task) => <tr key={task.id}><td>#{task.id}</td><td>{task.task_type || "—"}</td><td>{task.provider || "—"}</td><td><Badge tone={task.status === "completed" ? "success" : "neutral"}>{task.status || "created"}</Badge></td><td className="table-action"><button className="secondary-button" onClick={() => runTask(task.id)}>运行</button></td></tr>)}</tbody></table></div>'''
-          new_table = '''          <div className="table-wrap"><table><thead><tr><th>ID</th><th>类型</th><th>Provider</th><th>状态</th><th>执行</th><th></th></tr></thead><tbody>{productionTasks.map((task) => {
-            const blocker = taskRunBlocker(task);
-            return <tr key={task.id}><td>#{task.id}</td><td>{task.task_type || "—"}</td><td>{task.provider || "—"}</td><td><Badge tone={task.status === "completed" ? "success" : "neutral"}>{task.status || "created"}</Badge></td><td><Badge tone={blocker ? "neutral" : "success"}>{blocker ? "未就绪" : "可运行"}</Badge>{blocker ? <div className="muted" title={blocker}>{blocker}</div> : null}</td><td className="table-action"><button className="secondary-button" onClick={() => runTask(task)} disabled={Boolean(blocker)} title={blocker || "运行任务"}>运行</button></td></tr>;
-          })}</tbody></table></div>'''
-          if text.count(old_table) != 1:
-              raise SystemExit(f'expected production task table once, found {text.count(old_table)}')
-          text = text.replace(old_table, new_table, 1)
-
-          path.write_text(text, encoding='utf-8')
-          PY
+        run: python scripts/r19_production_readiness_ui_migration.py
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -143,11 +42,12 @@ jobs:
           grep -q 'AI_GATEWAY_VIDEO_URL' os/frontend/src/App.jsx
           grep -q 'render-launch02.yml' os/frontend/src/App.jsx
 
-      - name: Commit migration and remove one-shot workflow
+      - name: Commit migration and remove one-shot files
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm .github/workflows/r19-production-readiness-ui-migration.yml
+          git rm scripts/r19_production_readiness_ui_migration.py
           git add os/frontend/src/App.jsx
           git commit -m 'Surface Production execution readiness in UI'
           git push origin HEAD:main
