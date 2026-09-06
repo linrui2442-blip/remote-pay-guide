@@ -10,14 +10,20 @@ on:
       - 'os/backend/routers/accounts.py'
       - 'os/backend/routers/oauth.py'
       - 'os/backend/routers/publish.py'
+      - 'os/backend/routers/intelligence.py'
       - 'os/backend/data/manager.py'
+      - 'os/backend/data/query.py'
       - 'os/backend/oauth/registry.py'
       - 'os/backend/analytics/collector.py'
       - 'os/backend/analytics/errors.py'
       - 'os/backend/analytics/registry.py'
       - 'os/backend/analytics/adapters/**'
+      - 'os/backend/intelligence/feedback.py'
+      - 'os/backend/intelligence/feedback_bridge.py'
+      - 'os/backend/intelligence/strategy.py'
       - 'os/backend/tests/r14_sync_registry_smoke.py'
       - 'os/backend/tests/r15_account_connector_runtime_smoke.py'
+      - 'os/backend/tests/r16_intelligence_feedback_bridge_smoke.py'
       - '.github/workflows/os-sync-registry-verification.yml'
 
 jobs:
@@ -44,6 +50,9 @@ jobs:
 
       - name: Verify account connector runtime registry
         run: python os/backend/tests/r15_account_connector_runtime_smoke.py
+
+      - name: Verify Data Center to Intelligence feedback bridge
+        run: python os/backend/tests/r16_intelligence_feedback_bridge_smoke.py
 
       - name: Re-run account analytics regression
         env:
