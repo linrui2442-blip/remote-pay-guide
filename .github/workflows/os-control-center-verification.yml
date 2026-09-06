@@ -20,6 +20,7 @@ on:
       - 'os/backend/routers/production.py'
       - 'os/backend/routers/publish.py'
       - 'os/backend/routers/settings.py'
+      - 'os/backend/tests/r17_production_execution_contract_smoke.py'
       - '.github/workflows/os-control-center-verification.yml'
 
 jobs:
@@ -40,6 +41,9 @@ jobs:
 
       - name: Compile backend
         run: PYTHONPATH=os/backend python -m compileall -q os/backend
+
+      - name: Verify production execution contract
+        run: python os/backend/tests/r17_production_execution_contract_smoke.py
 
       - name: Verify control center routes and local CORS
         env:
@@ -75,6 +79,7 @@ jobs:
               assert '/production/status' in route_paths
               assert '/production/providers' in route_paths
               assert '/production/tasks' in route_paths
+              assert '/production/tasks/{task_id}/readiness' in route_paths
               assert '/publish/tasks' in route_paths
               assert '/publish/tasks/{task_id}' in route_paths
               assert '/publish/platforms' in route_paths
