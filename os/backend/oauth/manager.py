@@ -105,8 +105,7 @@ def create_token(data):
     provider = data.get("provider") or (existing["provider"] if existing else None)
     scopes = data.get("scopes")
     if scopes is None and existing:
-        stored_scopes = existing["scopes"]
-        scopes_json = stored_scopes
+        scopes_json = existing["scopes"]
     else:
         scopes_json = _normalize_scopes(scopes)
 
@@ -211,6 +210,18 @@ def create_oauth_state(
     return state
 
 
+def _state_record_if_valid(row, now):
+    if not row:
+        return None
+    try:
+        expires_at = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+    return dict(row) if expires_at >= now else None
+
+
 def consume_oauth_state(
     account_id,
     state,
@@ -229,17 +240,7 @@ def consume_oauth_state(
         (state, account_id, provider),
     ).fetchone()
 
-    valid = False
-    if row:
-        try:
-            expires_at = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
-            valid = expires_at >= now
-        except (TypeError, ValueError):
-            valid = False
-
-    record = dict(row) if row and valid else None
+    record = _state_record_if_valid(row, now)
     if row:
         conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
         conn.commit()
@@ -247,4 +248,33 @@ def consume_oauth_state(
 
     if return_record:
         return record
-    return valid
+    return bool(record)
+
+
+def consume_oauth_state_by_state(state, provider="youtube"):
+    """Resolve account/scope metadata from the opaque one-time OAuth state.
+
+    OAuth providers return code + state to the redirect URI; they do not need
+    to echo a separate account_id query parameter. The server-side state row is
+    therefore the source of truth for which account initiated authorization.
+    """
+    if not state:
+        return None
+
+    now = datetime.now(timezone.utc)
+    conn = _connect()
+    row = conn.execute(
+        """
+        SELECT state, account_id, provider, scope_profile, expires_at
+        FROM oauth_states
+        WHERE state=? AND provider=?
+        """,
+        (state, provider),
+    ).fetchone()
+
+    record = _state_record_if_valid(row, now)
+    if row:
+        conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
+        conn.commit()
+    conn.close()
+    return record
