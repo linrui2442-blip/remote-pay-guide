@@ -37,3 +37,14 @@ def run_production(task_id: int):
 @router.get('/production/status')
 def production_status():
     return {'status': 'ready', 'providers': list(production_provider_registry.keys())}
+
+
+@router.get('/production/providers')
+def production_providers():
+    return [
+        {
+            'name': name,
+            'status': 'registered',
+        }
+        for name in production_provider_registry.keys()
+    ]
