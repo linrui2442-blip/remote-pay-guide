@@ -29,6 +29,11 @@ export function getProductionProviders() { return apiGet('/production/providers'
 export function createProductionTask(data) { return apiPost('/production/tasks', data); }
 export function runProductionTask(id) { return apiPost(`/production/tasks/${id}/run`, {}); }
 
+export function getPublishTasks() { return apiGet('/publish/tasks'); }
+export function collectPublishTaskAnalytics(id, data = {}) {
+  return apiPost(`/analytics/collector/collect/publish-task/${encodeURIComponent(id)}`, data);
+}
+
 export function getAccounts() { return apiGet('/accounts'); }
 export function createAccount(data) { return apiPost('/accounts', data); }
 export function getYouTubeOAuthStatus() { return apiGet('/oauth/youtube/status'); }
