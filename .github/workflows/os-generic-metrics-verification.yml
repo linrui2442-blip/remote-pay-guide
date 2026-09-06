@@ -1,0 +1,32 @@
+name: OS Generic Metrics Verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'os/backend/analytics/models.py'
+      - 'os/backend/analytics/manager.py'
+      - 'os/backend/tests/r11_generic_metrics_smoke.py'
+      - '.github/workflows/os-generic-metrics-verification.yml'
+
+jobs:
+  verify-generic-metrics:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: pip install -r os/backend/requirements.txt
+
+      - name: Compile backend
+        run: PYTHONPATH=os/backend python -m compileall -q os/backend
+
+      - name: Verify extensible metric storage
+        run: python os/backend/tests/r11_generic_metrics_smoke.py
