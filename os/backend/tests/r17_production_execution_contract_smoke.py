@@ -9,6 +9,7 @@ os.chdir(ROOT)
 
 from ai.models import AIResponse
 from ai.providers.video import VideoProvider
+from config.ai_gateway import get_ai_gateway_settings, save_ai_gateway_settings
 from production.providers import production_provider_registry
 from production.providers.ai_gateway import AIGatewayProvider
 from production.runtime.manager import get_jobs
@@ -131,10 +132,25 @@ def main():
     assert response.status == 'failed'
     assert 'AI_GATEWAY_VIDEO_URL' in response.error
 
+    # A non-secret relay endpoint can be persisted in OS settings and is picked
+    # up dynamically without recreating the production provider registry.
+    saved = save_ai_gateway_settings('https://relay.example.test/v1/video')
+    assert saved['configured'] is True
+    assert saved['source'] == 'os_settings'
+    assert saved['api_key_configured'] is bool(os.getenv('AI_GATEWAY_API_KEY'))
+    persisted = get_ai_gateway_settings()
+    assert persisted['video_url'] == 'https://relay.example.test/v1/video'
+    dynamic_provider = VideoProvider(api_key='')
+    dynamic_status = dynamic_provider.initialize()
+    assert dynamic_status['configured'] is True
+    assert dynamic_status['endpoint_source'] == 'os_settings'
+    assert dynamic_status['local_inference'] is False
+
     print('Production execution contract smoke test passed')
     print('GitHub missing workflow -> blocked before scheduling')
     print('AI Runtime Job -> normalized AIRequest -> remote gateway provider')
     print('AI video provider -> external HTTP only; no local inference fallback')
+    print('AI Gateway endpoint -> persisted OS setting -> live provider readiness')
 
 
 if __name__ == '__main__':
