@@ -26,6 +26,8 @@ def _ensure_table():
                 platform TEXT,
                 account_id INTEGER,
                 source TEXT,
+                period_start TEXT,
+                period_end TEXT,
                 impressions INTEGER DEFAULT 0,
                 views INTEGER DEFAULT 0,
                 clicks INTEGER DEFAULT 0,
@@ -49,6 +51,8 @@ def _ensure_table():
             "content_id": "TEXT",
             "account_id": "INTEGER",
             "source": "TEXT",
+            "period_start": "TEXT",
+            "period_end": "TEXT",
             "impressions": "INTEGER DEFAULT 0",
             "clicks": "INTEGER DEFAULT 0",
             "ctr": "REAL",
@@ -72,6 +76,9 @@ def _ensure_table():
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_analytics_account ON analytics_metrics(account_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analytics_period ON analytics_metrics(period_start, period_end)"
         )
         conn.commit()
 
@@ -99,10 +106,10 @@ def save_metric(metric):
         cursor = conn.execute(
             """
             INSERT INTO analytics_metrics
-            (video_id, content_id, platform, account_id, source, impressions, views,
-             clicks, ctr, likes, comments, watch_time, average_view_duration,
-             retention, shares, collected_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (video_id, content_id, platform, account_id, source, period_start,
+             period_end, impressions, views, clicks, ctr, likes, comments,
+             watch_time, average_view_duration, retention, shares, collected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 metric.video_id,
@@ -110,6 +117,8 @@ def save_metric(metric):
                 metric.platform,
                 metric.account_id,
                 metric.source,
+                metric.period_start,
+                metric.period_end,
                 metric.impressions,
                 metric.views,
                 metric.clicks,
@@ -220,6 +229,25 @@ def get_account_metrics(account_id, platform=None, latest=False):
     _ensure_table()
     clauses = ["account_id=?"]
     params = [account_id]
+    if platform:
+        clauses.append("platform=?")
+        params.append(str(platform).strip().lower())
+    where_clause = " AND ".join(clauses)
+    if latest:
+        return _latest_query(where_clause, tuple(params))
+
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM analytics_metrics WHERE {where_clause} ORDER BY id",
+            tuple(params),
+        ).fetchall()
+    return [_serialize(row) for row in rows]
+
+
+def get_account_video_metrics(account_id, video_id, platform=None, latest=False):
+    _ensure_table()
+    clauses = ["account_id=?", "video_id=?"]
+    params = [account_id, video_id]
     if platform:
         clauses.append("platform=?")
         params.append(str(platform).strip().lower())
