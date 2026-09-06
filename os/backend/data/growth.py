@@ -189,6 +189,29 @@ def _sum_metric(metrics, key):
     return sum((item.get(key) or 0) for item in metrics)
 
 
+def _feedback_samples(intent, limit=10):
+    samples = []
+    for event in reversed(intent):
+        if event.get("event_type") != "content_feedback":
+            continue
+        value = event.get("event_value")
+        text = value.get("text") if isinstance(value, dict) else value
+        text = str(text or "").strip()
+        if not text:
+            continue
+        samples.append(
+            {
+                "text": text[:1000],
+                "source": event.get("source"),
+                "occurred_at": event.get("occurred_at"),
+                "metadata": event.get("metadata") or {},
+            }
+        )
+        if len(samples) >= limit:
+            break
+    return samples
+
+
 def get_content_funnel(content_id):
     # Platform APIs usually return cumulative snapshots. Use the newest
     # snapshot per video/platform so scheduled collection does not inflate the
@@ -222,6 +245,7 @@ def get_content_funnel(content_id):
         "intent": {
             "total": len(intent),
             "by_type": intent_by_type,
+            "recent_feedback": _feedback_samples(intent),
         },
         "conversion": {
             "total": len(conversions),
@@ -243,6 +267,9 @@ def get_funnel_summary():
         "views": _sum_metric(traffic, "views"),
         "clicks": _sum_metric(traffic, "clicks"),
         "intent_events": len(intent),
+        "content_feedback": len(
+            [item for item in intent if item.get("event_type") == "content_feedback"]
+        ),
         "referral_clicks": len(
             [item for item in intent if item.get("event_type") == "binance_referral_click"]
         ),
