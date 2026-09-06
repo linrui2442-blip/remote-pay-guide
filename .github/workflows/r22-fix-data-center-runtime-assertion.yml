@@ -1,0 +1,37 @@
+name: R22 Fix Data Center Runtime Assertion
+
+on:
+  push:
+    paths:
+      - 'scripts/r22_fix_data_center_runtime_assertion.py'
+      - '.github/workflows/r22-fix-data-center-runtime-assertion.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-data-center-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch stale runtime capability assertion
+        run: python scripts/r22_fix_data_center_runtime_assertion.py
+
+      - name: Verify patched assertion shape
+        run: |
+          grep -q "future_runtime\['content_sync_registered'\] is False" .github/workflows/os-data-center-verification.yml
+          grep -q "future_runtime\['analytics_sync_registered'\] is False" .github/workflows/os-data-center-verification.yml
+          grep -q "future_runtime\['account_connector_registered'\] is False" .github/workflows/os-data-center-verification.yml
+
+      - name: Commit migration and remove one-shot files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/r22-fix-data-center-runtime-assertion.yml scripts/r22_fix_data_center_runtime_assertion.py
+          git add .github/workflows/os-data-center-verification.yml
+          git commit -m 'Keep Data Center runtime capability verification extensible'
+          git push origin HEAD:main
