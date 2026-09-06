@@ -7,6 +7,11 @@ on:
       - main
     paths:
       - '.github/workflows/os-github-bridge-test.yml'
+      - 'os/backend/production/**'
+      - 'os/backend/assets/**'
+      - 'os/backend/publish/**'
+      - 'os/backend/integrations/github/**'
+      - 'os/backend/tests/r2_github_bridge_smoke.py'
 
 jobs:
   dispatch-through-os-provider:
