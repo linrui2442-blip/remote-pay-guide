@@ -1,4 +1,7 @@
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from integrations.github.client import GitHubClient
@@ -14,9 +17,27 @@ from routers import (
     analytics,
     assets,
     oauth,
+    accounts,
 )
 
 app = FastAPI(title="Remote Pay Guide OS")
+
+frontend_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "OS_FRONTEND_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=frontend_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(production.router)
 app.include_router(runtime.router)
@@ -28,6 +49,7 @@ app.include_router(publish.router)
 app.include_router(analytics.router)
 app.include_router(assets.router)
 app.include_router(oauth.router)
+app.include_router(accounts.router)
 
 
 class WorkflowRequest(BaseModel):
