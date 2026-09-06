@@ -45,6 +45,7 @@ jobs:
           from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
           from analytics.manager import get_latest_metrics, get_metrics, save_metric
           from analytics.models import AnalyticsMetric
+          from analytics.publish_bridge import collect_publish_task_metrics
           from analytics.youtube_api import YouTubeAnalyticsAPIClient
           from data.manager import (
               get_content_funnel_data,
@@ -71,6 +72,7 @@ jobs:
               YOUTUBE_UPLOAD_SCOPE,
               YouTubeOAuthProvider,
           )
+          from publish.manager import create_publish_task, update_publish_status
 
           db_path = Path('os/database/os.db')
           db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -344,6 +346,31 @@ jobs:
           assert saved_live_metric['watch_time'] == 930
           assert saved_live_metric['retention'] == 67.25
 
+          publish_task = create_publish_task({
+              'asset_id': 'publish-asset',
+              'video_id': 'publish-content',
+              'platform': 'youtube',
+              'account_id': 1000,
+              'status': 'pending',
+          })
+          published_task = update_publish_status(
+              publish_task['id'],
+              'published',
+              platform_video_id='live-video',
+              published_url='https://www.youtube.com/watch?v=live-video',
+          )
+          assert published_task['platform_video_id'] == 'live-video'
+          bridged_metric = collect_publish_task_metrics(
+              published_task['id'],
+              collector=live_collector,
+              start_date='2026-08-01',
+              end_date='2026-08-31',
+          )
+          assert bridged_metric['video_id'] == 'live-video'
+          assert bridged_metric['content_id'] == 'publish-content'
+          assert bridged_metric['platform'] == 'youtube'
+          assert bridged_metric['views'] == 321
+
           future_status = collector.readiness('future-platform')
           assert future_status['ready'] is False
           assert future_status['collector_registered'] is False
@@ -366,6 +393,7 @@ jobs:
           print(full_account_status)
           print(live_status)
           print(saved_live_metric)
+          print(bridged_metric)
           print(future_status)
           print(instagram_status)
           PY
