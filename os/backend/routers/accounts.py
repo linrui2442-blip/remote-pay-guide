@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 class AccountSyncRequest(BaseModel):
-    max_results: int = Field(default=50, ge=1, le=200)
+    max_results: int = Field(default=10, ge=1, le=200)
 
 
 @router.get('/accounts')
