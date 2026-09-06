@@ -15,6 +15,7 @@ from data.manager import (
     get_platforms,
     get_statistics,
     pin_account_content,
+    query_data_center_view,
     record_conversion_event,
     record_intent_event,
     refresh_account_tracking,
@@ -50,6 +51,28 @@ def overview():
 @router.get('/data/statistics')
 def statistics():
     return get_statistics()
+
+
+@router.get('/data/query')
+def data_query(
+    account_id: int | None = None,
+    platform: str | None = None,
+    scope: str = 'active',
+    sort_by: str = 'views',
+    sort_direction: str = 'desc',
+    limit: int = 100,
+):
+    try:
+        return query_data_center_view(
+            account_id=account_id,
+            platform=platform,
+            scope=scope,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get('/data/performance/summary')
