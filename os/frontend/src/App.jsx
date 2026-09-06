@@ -16,7 +16,7 @@ import {
   saveNetworkProxySettings,
   syncAccountAll,
 } from "./api";
-import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";
+import PlatformOAuthCallback from "./pages/PlatformOAuthCallback.jsx";
 import DataCenter from "./pages/DataCenter.jsx";
 
 const NAV_ITEMS = [
@@ -142,8 +142,13 @@ function PlatformPicker({ platforms, onClose, onSelect, connectingPlatform }) {
 }
 
 function App() {
-  if (window.location.pathname === "/oauth/youtube/callback") {
-    return <YouTubeOAuthCallback />;
+  const oauthCallbackMatch = window.location.pathname.match(/^\/oauth\/([^/]+)\/callback\/?$/i);
+  if (oauthCallbackMatch) {
+    return (
+      <PlatformOAuthCallback
+        platform={decodeURIComponent(oauthCallbackMatch[1]).toLowerCase()}
+      />
+    );
   }
 
   const viewFromUrl = new URLSearchParams(window.location.search).get("view");
