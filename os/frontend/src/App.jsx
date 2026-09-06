@@ -7,12 +7,15 @@ import {
   createProductionTask,
   getAccounts,
   getAnalyticsCollectorStatus,
+  getNetworkProxySettings,
   getProductionProviders,
   getProductionStatus,
   getProductionTasks,
   getPublishTasks,
   getYouTubeOAuthStatus,
   runProductionTask,
+  saveNetworkProxySettings,
+  syncAccount,
 } from "./api";
 import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";
 
@@ -23,6 +26,7 @@ const NAV_ITEMS = [
   ["publishing", "发布中心", "↑"],
   ["analytics", "数据中心", "▥"],
   ["platforms", "平台能力", "◇"],
+  ["settings", "系统设置", "⚙"],
 ];
 
 const PLATFORM_LABELS = {
@@ -32,9 +36,7 @@ const PLATFORM_LABELS = {
   tiktok: "TikTok",
 };
 
-const PLATFORM_CONNECTORS = {
-  youtube: "google_oauth",
-};
+const PLATFORM_CONNECTORS = { youtube: "google_oauth" };
 
 function platformLabel(name) {
   const key = String(name || "").toLowerCase();
@@ -160,6 +162,12 @@ function App() {
   const [provider, setProvider] = useState("github");
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [connectingPlatform, setConnectingPlatform] = useState("");
+  const [syncingAccountId, setSyncingAccountId] = useState(null);
+  const [proxySettings, setProxySettings] = useState({ mode: "system", proxy_url: "" });
+  const [proxyMode, setProxyMode] = useState("system");
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [proxyMessage, setProxyMessage] = useState("");
+  const [savingProxy, setSavingProxy] = useState(false);
 
   const refreshProduction = () => {
     getProductionStatus().then(setProductionStatus).catch(() => {});
@@ -197,6 +205,16 @@ function App() {
       .catch((error) => setOAuthMessage(error.message));
   };
 
+  const refreshProxy = () => {
+    getNetworkProxySettings()
+      .then((settings) => {
+        setProxySettings(settings);
+        setProxyMode(settings.mode || "system");
+        setProxyUrl(settings.proxy_url || "");
+      })
+      .catch((error) => setProxyMessage(error.message));
+  };
+
   useEffect(() => {
     apiGet("/").then(setSystem).catch(() => setSystem({ status: "offline" }));
     apiGet("/assets").then(setAssets).catch(() => {});
@@ -208,6 +226,7 @@ function App() {
       .catch((error) => setYouTubeOAuthStatus({ configured: false, reason: error.message }));
     refreshAccounts();
     refreshProduction();
+    refreshProxy();
   }, []);
 
   const createTask = () => {
@@ -229,9 +248,7 @@ function App() {
       );
     }
     const result = await beginYouTubeOAuth(accountId, "full");
-    if (!result?.authorization_url) {
-      throw new Error("未收到 YouTube 授权地址");
-    }
+    if (!result?.authorization_url) throw new Error("未收到 YouTube 授权地址");
     window.location.assign(result.authorization_url);
   };
 
@@ -269,13 +286,52 @@ function App() {
     }
   };
 
+  const syncPlatformAccount = async (account) => {
+    try {
+      setSyncingAccountId(account.id);
+      setOAuthMessage(`正在通过 ${platformLabel(account.platform)} 官方 API 同步内容…`);
+      const result = await syncAccount(account.id, 50);
+      setOAuthMessage(
+        `同步完成：发现 ${result.found ?? 0} 个视频，新导入 ${result.imported ?? 0} 个，已存在 ${result.already_present ?? 0} 个。`
+      );
+      apiGet("/assets").then(setAssets).catch(() => {});
+      refreshPublishTasks();
+    } catch (error) {
+      setOAuthMessage(error.message);
+    } finally {
+      setSyncingAccountId(null);
+    }
+  };
+
+  const saveProxy = async () => {
+    try {
+      setSavingProxy(true);
+      setProxyMessage("正在应用代理配置…");
+      const result = await saveNetworkProxySettings({
+        mode: proxyMode,
+        proxy_url: proxyMode === "manual" ? proxyUrl.trim() : null,
+      });
+      setProxySettings(result);
+      setProxyUrl(result.proxy_url || proxyUrl);
+      setProxyMessage(
+        proxyMode === "manual"
+          ? "代理已保存并立即应用。以后更换代理，只需要回来修改这里。"
+          : proxyMode === "disabled"
+            ? "已关闭 OS 后端代理。"
+            : "已切换为跟随系统代理。"
+      );
+    } catch (error) {
+      setProxyMessage(error.message);
+    } finally {
+      setSavingProxy(false);
+    }
+  };
+
   const collectTaskAnalytics = (task) => {
     setAnalyticsMessage(`正在采集发布任务 #${task.id} 的 YouTube 数据…`);
     collectPublishTaskAnalytics(task.id)
       .then((result) => {
-        setAnalyticsMessage(
-          `采集完成：${result.video_id || task.platform_video_id}，${result.views ?? 0} 次观看。`
-        );
+        setAnalyticsMessage(`采集完成：${result.video_id || task.platform_video_id}，${result.views ?? 0} 次观看。`);
         refreshAnalytics();
       })
       .catch((error) => setAnalyticsMessage(error.message));
@@ -322,26 +378,19 @@ function App() {
 
       <div className="dashboard-grid">
         <section className="panel panel-wide">
-          <div className="panel-header">
-            <div><span className="section-kicker">BUSINESS LOOP</span><h2>增长闭环</h2></div>
-          </div>
+          <div className="panel-header"><div><span className="section-kicker">BUSINESS LOOP</span><h2>增长闭环</h2></div></div>
           <div className="flow-row">
-            {["内容", "流量", "用户意图", "Binance 转化", "AI Intelligence", "下一轮生产"].map(
-              (item, index, array) => (
-                <React.Fragment key={item}>
-                  <div className="flow-node">{item}</div>
-                  {index < array.length - 1 && <span className="flow-arrow">→</span>}
-                </React.Fragment>
-              )
-            )}
+            {["内容", "流量", "用户意图", "Binance 转化", "AI Intelligence", "下一轮生产"].map((item, index, array) => (
+              <React.Fragment key={item}>
+                <div className="flow-node">{item}</div>
+                {index < array.length - 1 && <span className="flow-arrow">→</span>}
+              </React.Fragment>
+            ))}
           </div>
         </section>
 
         <section className="panel">
-          <div className="panel-header">
-            <div><span className="section-kicker">ACCOUNTS</span><h2>平台连接</h2></div>
-            <button className="text-button" onClick={() => setActiveView("accounts")}>管理账号</button>
-          </div>
+          <div className="panel-header"><div><span className="section-kicker">ACCOUNTS</span><h2>平台连接</h2></div><button className="text-button" onClick={() => setActiveView("accounts")}>管理账号</button></div>
           <div className="status-list">
             <div><span>平台 Registry</span><strong>{platforms.length}</strong></div>
             <div><span>YouTube OAuth</span><Badge tone={youtubeOAuthStatus?.configured ? "success" : "warning"}>{youtubeOAuthStatus?.configured ? "已配置" : "待配置"}</Badge></div>
@@ -350,14 +399,8 @@ function App() {
         </section>
 
         <section className="panel">
-          <div className="panel-header">
-            <div><span className="section-kicker">PRODUCTION</span><h2>生产运行时</h2></div>
-            <button className="text-button" onClick={() => setActiveView("production")}>打开生产中心</button>
-          </div>
-          <div className="provider-pills">
-            <Badge tone="neutral">GitHub Actions</Badge>
-            <Badge tone="info">AI Gateway · Remote</Badge>
-          </div>
+          <div className="panel-header"><div><span className="section-kicker">PRODUCTION</span><h2>生产运行时</h2></div><button className="text-button" onClick={() => setActiveView("production")}>打开生产中心</button></div>
+          <div className="provider-pills"><Badge tone="neutral">GitHub Actions</Badge><Badge tone="info">AI Gateway · Remote</Badge></div>
           <p className="muted">现有 GitHub 生产线保持不变，AI 视频生产通过远程 Gateway 调用外部服务。</p>
         </section>
       </div>
@@ -367,14 +410,8 @@ function App() {
   const renderAccounts = () => (
     <>
       <div className="page-heading compact">
-        <div>
-          <span className="eyebrow">ACCOUNTS</span>
-          <h1>平台账号</h1>
-          <p>先选择平台，再进入对应授权；不再把添加入口写死为 YouTube。</p>
-        </div>
-        <button className="primary-button add-platform-button" onClick={() => setShowPlatformPicker(true)}>
-          + 添加平台账号
-        </button>
+        <div><span className="eyebrow">ACCOUNTS</span><h1>平台账号</h1><p>选择平台并授权，然后通过官方 API 同步已发布内容。</p></div>
+        <button className="primary-button add-platform-button" onClick={() => setShowPlatformPicker(true)}>+ 添加平台账号</button>
       </div>
 
       {oauthMessage && <div className="notice notice-page">{oauthMessage}</div>}
@@ -387,36 +424,39 @@ function App() {
           const readiness = accountReadiness[account.id];
           const connectable = Boolean(PLATFORM_CONNECTORS[platform]);
           const connected = platform === "youtube" ? readiness?.ready : account.status === "connected";
+          const syncing = syncingAccountId === account.id;
           return (
             <section className="account-card" key={account.id}>
               <div className="account-avatar">{platformMark(platform)}</div>
               <div className="account-main">
                 <div className="account-title-row">
                   <strong>{platformLabel(platform)}</strong>
-                  <Badge tone={connected ? "success" : "warning"}>
-                    {connected ? "已连接" : connectable ? "需要授权" : "连接器待接入"}
-                  </Badge>
+                  <Badge tone={connected ? "success" : "warning"}>{connected ? "已连接" : connectable ? "需要授权" : "连接器待接入"}</Badge>
                 </div>
                 <span className="muted">{account.account_name} · Account #{account.id}</span>
                 {readiness?.reason && !readiness.ready && <span className="small-warning">{readiness.reason}</span>}
               </div>
-              {connectable ? (
-                <button className="primary-button" onClick={() => reconnectAccount(account)} disabled={platform === "youtube" && youtubeOAuthStatus?.configured === false}>
-                  {connected ? "重新授权" : `连接 ${platformLabel(platform)}`}
-                </button>
-              ) : (
-                <button className="secondary-button" disabled>授权待接入</button>
-              )}
+              <div className="account-actions">
+                {platform === "youtube" && connected && (
+                  <button className="secondary-button" onClick={() => syncPlatformAccount(account)} disabled={syncing}>
+                    {syncing ? "同步中…" : "同步内容"}
+                  </button>
+                )}
+                {connectable ? (
+                  <button className="primary-button" onClick={() => reconnectAccount(account)} disabled={platform === "youtube" && youtubeOAuthStatus?.configured === false}>
+                    {connected ? "重新授权" : `连接 ${platformLabel(platform)}`}
+                  </button>
+                ) : (
+                  <button className="secondary-button" disabled>授权待接入</button>
+                )}
+              </div>
             </section>
           );
         })}
       </div>
 
       <section className="panel account-platform-summary">
-        <div className="panel-header">
-          <div><span className="section-kicker">REGISTRY</span><h2>可选平台</h2></div>
-          <span className="muted">{platforms.length} 个运行时平台</span>
-        </div>
+        <div className="panel-header"><div><span className="section-kicker">REGISTRY</span><h2>可选平台</h2></div><span className="muted">{platforms.length} 个运行时平台</span></div>
         <div className="provider-pills">
           {platforms.map((item) => (
             <Badge key={item.platform} tone={PLATFORM_CONNECTORS[String(item.platform).toLowerCase()] ? "success" : "neutral"}>
@@ -434,13 +474,7 @@ function App() {
       <div className="page-heading compact"><div><span className="eyebrow">PRODUCTION</span><h1>生产中心</h1><p>统一调度 GitHub 生产线与 AI Gateway 远程生产线。</p></div></div>
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">NEW TASK</span><h2>创建生产任务</h2></div><Badge tone="success">{productionStatus?.status || "ready"}</Badge></div>
-        <div className="form-row">
-          <select value={provider} onChange={(event) => setProvider(event.target.value)}>
-            <option value="github">GitHub Actions</option>
-            <option value="ai_gateway">AI Gateway（远程）</option>
-          </select>
-          <button className="primary-button" onClick={createTask}>创建任务</button>
-        </div>
+        <div className="form-row"><select value={provider} onChange={(event) => setProvider(event.target.value)}><option value="github">GitHub Actions</option><option value="ai_gateway">AI Gateway（远程）</option></select><button className="primary-button" onClick={createTask}>创建任务</button></div>
       </section>
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">TASKS</span><h2>生产任务</h2></div><span className="muted">{productionTasks.length} 条</span></div>
@@ -468,12 +502,7 @@ function App() {
   const renderAnalytics = () => (
     <>
       <div className="page-heading compact"><div><span className="eyebrow">DATA CENTER</span><h1>数据中心</h1><p>当前平台流量快照。历史快照继续保留，但决策使用最新数据。</p></div></div>
-      <div className="stats-grid">
-        <StatCard label="当前观看" value={totalViews.toLocaleString()} />
-        <StatCard label="当前点击" value={totalClicks.toLocaleString()} />
-        <StatCard label="指标快照" value={metrics.length} />
-        <StatCard label="视频资产" value={assets.length} />
-      </div>
+      <div className="stats-grid"><StatCard label="当前观看" value={totalViews.toLocaleString()} /><StatCard label="当前点击" value={totalClicks.toLocaleString()} /><StatCard label="指标快照" value={metrics.length} /><StatCard label="视频资产" value={assets.length} /></div>
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">TRAFFIC</span><h2>平台表现</h2></div></div>
         {metrics.length === 0 ? <EmptyState title="还没有 Analytics 数据" description="完成 YouTube 授权后，可从发布中心采集真实数据。" /> : (
@@ -502,6 +531,62 @@ function App() {
     </>
   );
 
+  const renderSettings = () => (
+    <>
+      <div className="page-heading compact">
+        <div><span className="eyebrow">SETTINGS</span><h1>系统设置</h1><p>配置 Remote Pay Guide OS 后端访问外部平台时使用的网络代理。</p></div>
+      </div>
+
+      <section className="panel settings-panel">
+        <div className="panel-header">
+          <div><span className="section-kicker">NETWORK</span><h2>代理配置</h2></div>
+          <Badge tone={proxySettings.runtime_configured ? "success" : "neutral"}>{proxySettings.runtime_configured ? "代理已启用" : "当前未使用代理"}</Badge>
+        </div>
+
+        <div className="settings-form">
+          <label className="setting-field">
+            <span>代理模式</span>
+            <select value={proxyMode} onChange={(event) => setProxyMode(event.target.value)}>
+              <option value="manual">手动配置</option>
+              <option value="system">跟随系统代理</option>
+              <option value="disabled">不使用代理</option>
+            </select>
+          </label>
+
+          {proxyMode === "manual" && (
+            <label className="setting-field">
+              <span>代理地址</span>
+              <input
+                value={proxyUrl}
+                onChange={(event) => setProxyUrl(event.target.value)}
+                placeholder="例如：http://127.0.0.1:7890"
+              />
+              <small>以后 VPN 或代理软件更换端口，直接修改这里即可，不需要改代码。</small>
+            </label>
+          )}
+
+          <div className="settings-actions">
+            <button className="primary-button" onClick={saveProxy} disabled={savingProxy || (proxyMode === "manual" && !proxyUrl.trim())}>
+              {savingProxy ? "保存中…" : "保存并立即应用"}
+            </button>
+          </div>
+        </div>
+
+        {proxyMessage && <div className="notice">{proxyMessage}</div>}
+
+        <div className="settings-status">
+          <div><span>保存模式</span><strong>{proxySettings.mode || "system"}</strong></div>
+          <div><span>当前代理</span><strong>{proxySettings.proxy_url || proxySettings.effective_proxy || "未配置"}</strong></div>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header"><div><span className="section-kicker">NOTE</span><h2>使用方式</h2></div></div>
+        <p className="muted">这里的代理只用于 OS 后端访问 Google、YouTube 以及未来接入的平台 API，不会改变你整个 Windows 的代理设置。保存后立即生效；下次启动 OS 会继续使用这里保存的配置。</p>
+      </section>
+    </>
+  );
+
   const views = {
     overview: renderOverview,
     accounts: renderAccounts,
@@ -509,35 +594,23 @@ function App() {
     publishing: renderPublishing,
     analytics: renderAnalytics,
     platforms: renderPlatforms,
+    settings: renderSettings,
   };
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand-block">
-          <div className="brand-mark">R</div>
-          <div><strong>Remote Pay</strong><span>Guide OS</span></div>
-        </div>
+        <div className="brand-block"><div className="brand-mark">R</div><div><strong>Remote Pay</strong><span>Guide OS</span></div></div>
         <nav>
           {NAV_ITEMS.map(([key, label, icon]) => (
-            <button key={key} className={activeView === key ? "nav-item active" : "nav-item"} onClick={() => setActiveView(key)}>
-              <span className="nav-icon">{icon}</span>{label}
-            </button>
+            <button key={key} className={activeView === key ? "nav-item active" : "nav-item"} onClick={() => setActiveView(key)}><span className="nav-icon">{icon}</span>{label}</button>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          <span className={system?.status === "running" ? "health-dot online" : "health-dot"} />
-          <div><strong>{system?.status === "running" ? "Local OS Online" : "Local OS Offline"}</strong><span>localhost:8000</span></div>
-        </div>
+        <div className="sidebar-footer"><span className={system?.status === "running" ? "health-dot online" : "health-dot"} /><div><strong>{system?.status === "running" ? "Local OS Online" : "Local OS Offline"}</strong><span>localhost:8000</span></div></div>
       </aside>
       <main className="content-area">{views[activeView]()}</main>
       {showPlatformPicker && (
-        <PlatformPicker
-          platforms={platforms}
-          onClose={() => setShowPlatformPicker(false)}
-          onSelect={addPlatform}
-          connectingPlatform={connectingPlatform}
-        />
+        <PlatformPicker platforms={platforms} onClose={() => setShowPlatformPicker(false)} onSelect={addPlatform} connectingPlatform={connectingPlatform} />
       )}
     </div>
   );
