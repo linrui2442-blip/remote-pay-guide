@@ -25,6 +25,32 @@ const NAV_ITEMS = [
   ["platforms", "平台能力", "◇"],
 ];
 
+const PLATFORM_LABELS = {
+  youtube: "YouTube",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+};
+
+const PLATFORM_CONNECTORS = {
+  youtube: "google_oauth",
+};
+
+function platformLabel(name) {
+  const key = String(name || "").toLowerCase();
+  if (PLATFORM_LABELS[key]) return PLATFORM_LABELS[key];
+  return key ? key.charAt(0).toUpperCase() + key.slice(1) : "Unknown";
+}
+
+function platformMark(name) {
+  const label = platformLabel(name);
+  if (label === "YouTube") return "YT";
+  if (label === "Facebook") return "FB";
+  if (label === "Instagram") return "IG";
+  if (label === "TikTok") return "TK";
+  return label.slice(0, 2).toUpperCase();
+}
+
 function Badge({ tone = "neutral", children }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
@@ -58,12 +84,66 @@ function JsonDetails({ title = "查看原始数据", data }) {
   );
 }
 
+function PlatformPicker({ platforms, onClose, onSelect, connectingPlatform }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section className="modal-card" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <span className="section-kicker">ADD PLATFORM</span>
+            <h2>选择平台</h2>
+            <p>平台列表来自当前运行时 Registry；以后新增 Adapter 会自动出现在这里。</p>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="关闭">×</button>
+        </div>
+        <div className="platform-picker-grid">
+          {platforms.map((item) => {
+            const name = String(item.platform || "").toLowerCase();
+            const capability = item.capabilities || {};
+            const connector = PLATFORM_CONNECTORS[name];
+            const connecting = connectingPlatform === name;
+            return (
+              <button
+                key={name}
+                className={`platform-choice ${connector ? "connectable" : ""}`}
+                onClick={() => connector && onSelect(name)}
+                disabled={!connector || connecting}
+              >
+                <span className="platform-choice-logo">{platformMark(name)}</span>
+                <span className="platform-choice-body">
+                  <strong>{platformLabel(name)}</strong>
+                  <small>
+                    {connector
+                      ? "点击后直接进入授权"
+                      : capability.publish_supported
+                        ? "发布适配器已存在 · 账号授权待接入"
+                        : "当前未启用连接"}
+                  </small>
+                </span>
+                <span className="platform-choice-state">
+                  {connecting ? "正在打开…" : connector ? "连接" : "待接入"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {platforms.length === 0 && (
+          <EmptyState title="正在读取平台 Registry" description="稍后会显示当前可用平台。" />
+        )}
+      </section>
+    </div>
+  );
+}
+
 function App() {
   if (window.location.pathname === "/oauth/youtube/callback") {
     return <YouTubeOAuthCallback />;
   }
 
-  const [activeView, setActiveView] = useState("overview");
+  const viewFromUrl = new URLSearchParams(window.location.search).get("view");
+  const [activeView, setActiveView] = useState(
+    NAV_ITEMS.some(([key]) => key === viewFromUrl) ? viewFromUrl : "overview"
+  );
   const [system, setSystem] = useState(null);
   const [assets, setAssets] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -73,12 +153,13 @@ function App() {
   const [accounts, setAccounts] = useState([]);
   const [accountReadiness, setAccountReadiness] = useState({});
   const [youtubeOAuthStatus, setYouTubeOAuthStatus] = useState(null);
-  const [newYouTubeAccount, setNewYouTubeAccount] = useState("");
   const [oauthMessage, setOAuthMessage] = useState("");
   const [productionStatus, setProductionStatus] = useState(null);
   const [productionTasks, setProductionTasks] = useState([]);
   const [providers, setProviders] = useState([]);
   const [provider, setProvider] = useState("github");
+  const [showPlatformPicker, setShowPlatformPicker] = useState(false);
+  const [connectingPlatform, setConnectingPlatform] = useState("");
 
   const refreshProduction = () => {
     getProductionStatus().then(setProductionStatus).catch(() => {});
@@ -140,39 +221,52 @@ function App() {
 
   const runTask = (id) => runProductionTask(id).then(refreshProduction);
 
-  const addYouTubeAccount = () => {
-    const accountName = newYouTubeAccount.trim();
-    if (!accountName) {
-      setOAuthMessage("请先输入 YouTube 账号名称。");
-      return;
-    }
-    createAccount({ platform: "youtube", account_name: accountName, status: "inactive" })
-      .then(() => {
-        setNewYouTubeAccount("");
-        setOAuthMessage("账号已添加。下一步连接 Google 完成发布与数据权限授权。");
-        refreshAccounts();
-      })
-      .catch((error) => setOAuthMessage(error.message));
-  };
-
-  const connectYouTube = (accountId) => {
+  const connectYouTube = async (accountId) => {
     if (youtubeOAuthStatus && youtubeOAuthStatus.configured === false) {
       const missing = (youtubeOAuthStatus.missing_configuration || []).join(", ");
-      setOAuthMessage(
+      throw new Error(
         missing ? `YouTube OAuth 配置不完整：${missing}` : "YouTube OAuth 配置不完整。"
       );
+    }
+    const result = await beginYouTubeOAuth(accountId, "full");
+    if (!result?.authorization_url) {
+      throw new Error("未收到 YouTube 授权地址");
+    }
+    window.location.assign(result.authorization_url);
+  };
+
+  const addPlatform = async (platformName) => {
+    const platform = String(platformName || "").toLowerCase();
+    const connector = PLATFORM_CONNECTORS[platform];
+    if (!connector) {
+      setOAuthMessage(`${platformLabel(platform)} 已有平台适配器，但账号授权连接器尚未接入。`);
+      setShowPlatformPicker(false);
       return;
     }
 
-    setOAuthMessage("正在打开 Google 授权页面…");
-    beginYouTubeOAuth(accountId, "full")
-      .then((result) => {
-        if (!result?.authorization_url) {
-          throw new Error("未收到 YouTube 授权地址");
-        }
-        window.location.assign(result.authorization_url);
-      })
-      .catch((error) => setOAuthMessage(error.message));
+    try {
+      setConnectingPlatform(platform);
+      setOAuthMessage(`正在创建 ${platformLabel(platform)} 账号连接并打开授权页面…`);
+      const account = await createAccount({
+        platform,
+        account_name: `${platformLabel(platform)} Account`,
+        status: "inactive",
+      });
+      setShowPlatformPicker(false);
+      await connectYouTube(account.id);
+    } catch (error) {
+      setConnectingPlatform("");
+      setOAuthMessage(error.message);
+      refreshAccounts();
+    }
+  };
+
+  const reconnectAccount = (account) => {
+    const platform = String(account.platform || "").toLowerCase();
+    if (platform === "youtube") {
+      setOAuthMessage("正在打开 Google 授权页面…");
+      connectYouTube(account.id).catch((error) => setOAuthMessage(error.message));
+    }
   };
 
   const collectTaskAnalytics = (task) => {
@@ -229,10 +323,7 @@ function App() {
       <div className="dashboard-grid">
         <section className="panel panel-wide">
           <div className="panel-header">
-            <div>
-              <span className="section-kicker">BUSINESS LOOP</span>
-              <h2>增长闭环</h2>
-            </div>
+            <div><span className="section-kicker">BUSINESS LOOP</span><h2>增长闭环</h2></div>
           </div>
           <div className="flow-row">
             {["内容", "流量", "用户意图", "Binance 转化", "AI Intelligence", "下一轮生产"].map(
@@ -248,25 +339,19 @@ function App() {
 
         <section className="panel">
           <div className="panel-header">
-            <div>
-              <span className="section-kicker">YOUTUBE</span>
-              <h2>授权状态</h2>
-            </div>
+            <div><span className="section-kicker">ACCOUNTS</span><h2>平台连接</h2></div>
             <button className="text-button" onClick={() => setActiveView("accounts")}>管理账号</button>
           </div>
           <div className="status-list">
-            <div><span>OAuth 配置</span><Badge tone={youtubeOAuthStatus?.configured ? "success" : "warning"}>{youtubeOAuthStatus?.configured ? "已配置" : "待配置"}</Badge></div>
-            <div><span>Analytics API</span><Badge tone="success">已接入</Badge></div>
-            <div><span>已授权账号</span><strong>{readyAccounts}</strong></div>
+            <div><span>平台 Registry</span><strong>{platforms.length}</strong></div>
+            <div><span>YouTube OAuth</span><Badge tone={youtubeOAuthStatus?.configured ? "success" : "warning"}>{youtubeOAuthStatus?.configured ? "已配置" : "待配置"}</Badge></div>
+            <div><span>可用账号</span><strong>{readyAccounts}</strong></div>
           </div>
         </section>
 
         <section className="panel">
           <div className="panel-header">
-            <div>
-              <span className="section-kicker">PRODUCTION</span>
-              <h2>生产运行时</h2>
-            </div>
+            <div><span className="section-kicker">PRODUCTION</span><h2>生产运行时</h2></div>
             <button className="text-button" onClick={() => setActiveView("production")}>打开生产中心</button>
           </div>
           <div className="provider-pills">
@@ -282,45 +367,65 @@ function App() {
   const renderAccounts = () => (
     <>
       <div className="page-heading compact">
-        <div><span className="eyebrow">ACCOUNTS</span><h1>平台账号</h1><p>连接发布账号并管理数据读取权限。</p></div>
+        <div>
+          <span className="eyebrow">ACCOUNTS</span>
+          <h1>平台账号</h1>
+          <p>先选择平台，再进入对应授权；不再把添加入口写死为 YouTube。</p>
+        </div>
+        <button className="primary-button add-platform-button" onClick={() => setShowPlatformPicker(true)}>
+          + 添加平台账号
+        </button>
       </div>
 
-      <section className="panel">
-        <div className="panel-header">
-          <div><span className="section-kicker">YOUTUBE OAUTH</span><h2>添加 YouTube 账号</h2></div>
-          <Badge tone={youtubeOAuthStatus?.configured ? "success" : "warning"}>{youtubeOAuthStatus?.configured ? "OAuth 已就绪" : "OAuth 未配置"}</Badge>
-        </div>
-        <div className="form-row">
-          <input value={newYouTubeAccount} onChange={(event) => setNewYouTubeAccount(event.target.value)} placeholder="例如：Remote Pay Guide YouTube" />
-          <button className="primary-button" onClick={addYouTubeAccount}>添加账号</button>
-        </div>
-        {oauthMessage && <div className="notice">{oauthMessage}</div>}
-      </section>
+      {oauthMessage && <div className="notice notice-page">{oauthMessage}</div>}
 
       <div className="cards-list">
         {accounts.length === 0 ? (
-          <EmptyState title="还没有平台账号" description="先添加 YouTube 账号，然后完成 Google 授权。" />
+          <EmptyState title="还没有平台账号" description="点击“添加平台账号”，从当前 Platform Registry 选择要连接的平台。" />
         ) : accounts.map((account) => {
+          const platform = String(account.platform || "").toLowerCase();
           const readiness = accountReadiness[account.id];
-          const isYoutube = String(account.platform || "").toLowerCase() === "youtube";
+          const connectable = Boolean(PLATFORM_CONNECTORS[platform]);
+          const connected = platform === "youtube" ? readiness?.ready : account.status === "connected";
           return (
             <section className="account-card" key={account.id}>
-              <div className="account-avatar">YT</div>
+              <div className="account-avatar">{platformMark(platform)}</div>
               <div className="account-main">
-                <div className="account-title-row"><strong>{account.account_name}</strong><Badge tone={readiness?.ready ? "success" : "warning"}>{readiness?.ready ? "发布 + Analytics 已授权" : "需要授权"}</Badge></div>
-                <span className="muted">{account.platform} · Account #{account.id}</span>
+                <div className="account-title-row">
+                  <strong>{platformLabel(platform)}</strong>
+                  <Badge tone={connected ? "success" : "warning"}>
+                    {connected ? "已连接" : connectable ? "需要授权" : "连接器待接入"}
+                  </Badge>
+                </div>
+                <span className="muted">{account.account_name} · Account #{account.id}</span>
                 {readiness?.reason && !readiness.ready && <span className="small-warning">{readiness.reason}</span>}
               </div>
-              {isYoutube && (
-                <button className="primary-button" onClick={() => connectYouTube(account.id)} disabled={youtubeOAuthStatus?.configured === false}>
-                  {readiness?.ready ? "重新授权" : "连接 YouTube"}
+              {connectable ? (
+                <button className="primary-button" onClick={() => reconnectAccount(account)} disabled={platform === "youtube" && youtubeOAuthStatus?.configured === false}>
+                  {connected ? "重新授权" : `连接 ${platformLabel(platform)}`}
                 </button>
+              ) : (
+                <button className="secondary-button" disabled>授权待接入</button>
               )}
             </section>
           );
         })}
       </div>
-      <JsonDetails title="OAuth 技术状态" data={youtubeOAuthStatus || { status: "checking" }} />
+
+      <section className="panel account-platform-summary">
+        <div className="panel-header">
+          <div><span className="section-kicker">REGISTRY</span><h2>可选平台</h2></div>
+          <span className="muted">{platforms.length} 个运行时平台</span>
+        </div>
+        <div className="provider-pills">
+          {platforms.map((item) => (
+            <Badge key={item.platform} tone={PLATFORM_CONNECTORS[String(item.platform).toLowerCase()] ? "success" : "neutral"}>
+              {platformLabel(item.platform)} · {PLATFORM_CONNECTORS[String(item.platform).toLowerCase()] ? "可连接" : "Adapter Ready"}
+            </Badge>
+          ))}
+        </div>
+      </section>
+      <JsonDetails title="YouTube OAuth 技术状态" data={youtubeOAuthStatus || { status: "checking" }} />
     </>
   );
 
@@ -354,7 +459,7 @@ function App() {
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">TASKS</span><h2>发布任务</h2></div><span className="muted">{tasks.length} 条</span></div>
         {tasks.length === 0 ? <EmptyState title="暂无本地发布任务" description="现有 legacy/Postiz 发布记录尚未导入 OS Publish Center。" /> : (
-          <div className="table-wrap"><table><thead><tr><th>ID</th><th>平台</th><th>视频</th><th>状态</th><th></th></tr></thead><tbody>{tasks.map((task) => <tr key={task.id}><td>#{task.id}</td><td className="capitalize">{task.platform}</td><td>{task.platform_video_id || task.video_id || "—"}</td><td><Badge tone={task.status === "published" ? "success" : task.status === "failed" ? "danger" : "neutral"}>{task.status}</Badge></td><td className="table-action">{canCollectTask(task) && <button className="secondary-button" onClick={() => collectTaskAnalytics(task)} disabled={accountReadiness[task.account_id]?.ready !== true}>采集 Analytics</button>}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap"><table><thead><tr><th>ID</th><th>平台</th><th>视频</th><th>状态</th><th></th></tr></thead><tbody>{tasks.map((task) => <tr key={task.id}><td>#{task.id}</td><td>{platformLabel(task.platform)}</td><td>{task.platform_video_id || task.video_id || "—"}</td><td><Badge tone={task.status === "published" ? "success" : task.status === "failed" ? "danger" : "neutral"}>{task.status}</Badge></td><td className="table-action">{canCollectTask(task) && <button className="secondary-button" onClick={() => collectTaskAnalytics(task)} disabled={accountReadiness[task.account_id]?.ready !== true}>采集 Analytics</button>}</td></tr>)}</tbody></table></div>
         )}
       </section>
     </>
@@ -372,7 +477,7 @@ function App() {
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">TRAFFIC</span><h2>平台表现</h2></div></div>
         {metrics.length === 0 ? <EmptyState title="还没有 Analytics 数据" description="完成 YouTube 授权后，可从发布中心采集真实数据。" /> : (
-          <div className="table-wrap"><table><thead><tr><th>视频</th><th>平台</th><th>观看</th><th>点击</th><th>平均观看</th><th>留存</th></tr></thead><tbody>{metrics.map((item, index) => <tr key={`${item.video_id || "metric"}-${index}`}><td>{item.video_id || item.content_id || "—"}</td><td className="capitalize">{item.platform}</td><td>{Number(item.views || 0).toLocaleString()}</td><td>{Number(item.clicks || 0).toLocaleString()}</td><td>{item.average_view_duration ?? "—"}</td><td>{item.retention != null ? `${item.retention}%` : "—"}</td></tr>)}</tbody></table></div>
+          <div className="table-wrap"><table><thead><tr><th>视频</th><th>平台</th><th>观看</th><th>点击</th><th>平均观看</th><th>留存</th></tr></thead><tbody>{metrics.map((item, index) => <tr key={`${item.video_id || "metric"}-${index}`}><td>{item.video_id || item.content_id || "—"}</td><td>{platformLabel(item.platform)}</td><td>{Number(item.views || 0).toLocaleString()}</td><td>{Number(item.clicks || 0).toLocaleString()}</td><td>{item.average_view_duration ?? "—"}</td><td>{item.retention != null ? `${item.retention}%` : "—"}</td></tr>)}</tbody></table></div>
         )}
       </section>
     </>
@@ -384,10 +489,12 @@ function App() {
       <div className="platform-grid">
         {platforms.map((item) => {
           const capability = item.capabilities || {};
+          const name = String(item.platform || "").toLowerCase();
           return <section className="platform-card" key={item.platform}>
-            <div className="platform-card-header"><div className="platform-logo">{String(item.platform || "?").slice(0, 2).toUpperCase()}</div><div><strong className="capitalize">{item.platform}</strong><span>{item.adapter}</span></div><Badge tone="success">ready</Badge></div>
+            <div className="platform-card-header"><div className="platform-logo">{platformMark(name)}</div><div><strong>{platformLabel(name)}</strong><span>{item.adapter}</span></div><Badge tone="success">ready</Badge></div>
             <div className="capability-row"><span>发布</span><Badge tone={capability.publish_supported ? "success" : "neutral"}>{capability.publish_supported ? "支持" : "未启用"}</Badge></div>
             <div className="capability-row"><span>Analytics</span><Badge tone={capability.analytics_supported ? "success" : "neutral"}>{capability.analytics_supported ? "支持" : "未启用"}</Badge></div>
+            <div className="capability-row"><span>账号连接</span><Badge tone={PLATFORM_CONNECTORS[name] ? "success" : "neutral"}>{PLATFORM_CONNECTORS[name] ? "已接入" : "待接入"}</Badge></div>
             <div className="metric-tags">{(capability.metric_types || []).map((metric) => <span key={metric}>{metric}</span>)}</div>
           </section>;
         })}
@@ -424,6 +531,14 @@ function App() {
         </div>
       </aside>
       <main className="content-area">{views[activeView]()}</main>
+      {showPlatformPicker && (
+        <PlatformPicker
+          platforms={platforms}
+          onClose={() => setShowPlatformPicker(false)}
+          onSelect={addPlatform}
+          connectingPlatform={connectingPlatform}
+        />
+      )}
     </div>
   );
 }
