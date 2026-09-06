@@ -26,7 +26,7 @@ Platform Operations:
 
 Remote Pay Guide legacy pipeline: Maintenance / Ready for next batch
 
-Remote Pay Guide OS: local control-center wiring, multi-platform runtime, Publish Center → Data Center analytics bridge, and YouTube Analytics collector code are implemented and verified. The remaining YouTube live-data blocker is external Google OAuth configuration plus explicit user authorization.
+Remote Pay Guide OS: local control center, YouTube official content sync, live YouTube Analytics sync, Data Center active-tracking policy, historical outcome retention, and the unified Data Center query foundation are implemented. The next development unit is the Data Center UI built on the unified query layer, followed by scheduler-driven background sync and additional platform integrations.
 
 ## Production Pipeline
 
@@ -68,9 +68,10 @@ Completed / implemented foundation:
   - clicks / CTR
   - watch time
   - average view duration
-  - retention
-  - likes / comments / shares
-- Raw analytics snapshot history is preserved while current funnel/performance calculations use only the newest snapshot per video/platform, preventing cumulative API snapshots from being double-counted
+  - average view percentage / retention
+  - likes / comments count / shares
+- Analytics snapshots now preserve `account_id`, platform, content/video identity, collection time, and the reporting window (`period_start` / `period_end`) required for future multi-account and time-range queries
+- Raw analytics snapshot history is preserved while current funnel/performance calculations use only the newest snapshot per video/platform/account, preventing cumulative API snapshots from being double-counted
 - User Intent storage implemented
 - Conversion storage implemented
 - Content funnel APIs implemented
@@ -94,14 +95,31 @@ Completed / implemented foundation:
 - Non-secret OAuth configuration readiness is exposed through `GET /oauth/youtube/status`
 - Local account management APIs are implemented and the frontend can add/list YouTube accounts
 - Local frontend-to-backend CORS is configured for `localhost:5173` and `127.0.0.1:5173`, with optional `OS_FRONTEND_ORIGINS` override
-- YouTube Analytics API v2 client implemented for per-video views, watch time, average view duration, retention, likes, comments, and shares
+- OS global proxy configuration is implemented so official platform/API traffic can use a user-configured local HTTP/Mixed proxy without hard-coding a specific proxy provider
+- YouTube existing-content sync uses the official YouTube Data API and does not download or back up video files
+- The current active content-sync policy is capped at the newest 10 published videos per bound account; older records already known to the OS remain in local history
+- YouTube Analytics API v2 live collection is operational for per-video views, watch time, average view duration, average view percentage, likes, comments count, and shares
 - YouTube watch time is normalized to seconds inside the OS
 - Live collection endpoint implemented at `POST /analytics/collector/collect`
 - Collector readiness can be checked per account through `GET /analytics/collector/status/{platform}?account_id=...`
 - Publish Center → Analytics bridge implemented at `POST /analytics/collector/collect/publish-task/{task_id}`; it reuses the published task's platform video ID and account binding instead of duplicating publish metadata
-- The local frontend exposes a **Collect YouTube Analytics** action for eligible published YouTube tasks and refreshes current Data Center metrics after collection
-- Current analytics snapshot endpoints are available separately from raw history
-- A temporary duplicate platform-capability migration under legacy `database/content.db` was removed; OS capability runtime has one storage location
+- Account-level Analytics sync is implemented at `POST /analytics/collector/collect/account/{account_id}`
+- Account Analytics sync now uses an Active Tracking Policy instead of rescanning all historical content on every request
+- Active Tracking Policy:
+  - newest 10 published items per account/platform are `ACTIVE`
+  - older items become `HISTORICAL`
+  - manually pinned older winners remain in the active Analytics query set
+  - `ARCHIVED` is reserved for a later low-detail retention tier; no destructive automatic archive/prune is enabled yet
+- When content leaves the active window, the OS stores a compact historical outcome summary containing traffic, watch quality, engagement, referral-click, conversion, and conversion-value fields
+- Historical metrics are retained; leaving the active window does not delete old content or old outcomes
+- Tracking APIs are exposed under `/data/tracking/account/{account_id}` for refresh, inspection, history, and pin/unpin operations
+- A unified Data Center Query Layer is implemented at `GET /data/query`
+- The unified query supports account, platform, tracking scope, sort field, sort direction, and result limit without platform-specific dashboard schemas
+- Data Center Query output joins platform metrics with title/publish metadata, active/historical state, referral clicks, conversions, and conversion value
+- Active-query summaries include content count, total views, watch time, weighted average view percentage, engagement, referral clicks, conversions, and conversion value
+- The same query boundary is intended to feed both the Data Center UI and AI Intelligence so they do not develop separate calculation rules
+- Current analytics snapshot endpoints remain available separately from raw history
+- No comment-body synchronization is implemented; the previously explored comment-sync change was removed from the repository
 - Local startup and OAuth boundary are documented in `os/README.md` and `os/frontend/YOUTUBE_OAUTH_CONFIG.md`
 
 Verification:
@@ -110,6 +128,7 @@ Verification:
 - OS Platform Registry Verification passes dynamic adapter discovery and future-platform capability registration
 - OS Frontend Verification passes the Vite production build for the current control-center UI
 - OS Control Center Verification passes backend compilation, OpenAPI route visibility, account management, local CORS, Publish Center task routes, analytics collection routes, OAuth routes, and AI Gateway routes
+- OS YouTube Content Sync verification covers existing-content import, account-level Analytics sync, Active Tracking Policy, historical summary retention, pinning, and the unified Data Center query layer
 - Existing four publish adapters remain discoverable through the same `get_adapter()` compatibility entry point
 
 Business feedback loop:
@@ -128,31 +147,42 @@ AI Intelligence
 Next Production Strategy
 ```
 
-## Current External-Integration Breakpoint
+## Current Live Integration State
 
-The local OS code path from published YouTube task to live YouTube Analytics storage is implemented and verified without making a live request.
+The local Remote Pay Guide OS has completed a real YouTube authorization and successfully used official Google/YouTube APIs through the OS-configured proxy route.
 
-The remaining external steps are:
+Confirmed live path:
 
-1. Add `http://localhost:5173/oauth/youtube/callback` to the authorized redirect URIs of the existing Google OAuth Web Application used for YouTube. The existing Postiz redirect can remain configured alongside it.
-2. Start the local backend with `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, and `YOUTUBE_OAUTH_REDIRECT_URI` configured in the local process environment.
-3. In the OS control center, use **Connect YouTube (Publish + Analytics)** and complete Google consent for the explicit `full` scope profile.
+```
+Remote Pay Guide OS
+  ↓
+OS Network / Proxy Layer
+  ↓
+YouTube Data API + YouTube Analytics API
+  ↓
+OS SQLite Data Center
+```
 
-Existing publishing credentials may still be upload-only:
+Current behavior:
 
-- `https://www.googleapis.com/auth/youtube.upload`
-
-YouTube Analytics collection requires:
-
-- `https://www.googleapis.com/auth/youtube.readonly`
-- `https://www.googleapis.com/auth/yt-analytics.readonly`
-
-No credential is silently upgraded. The repository does not store or change Google Console secret values/settings.
+- YouTube content metadata sync: working
+- YouTube Analytics batch sync: working
+- Video file download / backup: disabled by design
+- Comment-body synchronization: disabled / not implemented
+- Current default Analytics reporting window: most recent 28 complete calendar days, ending yesterday, unless an explicit range is supplied
+- Current active observation window: newest 10 published videos per bound account/platform, plus manually pinned older items
 
 GA4 already receives landing-page events, but OS-side GA4 report collection still requires the GA4 property/auth connection before live import can be enabled.
 
 No secret values are stored in project documentation.
-No real OAuth consent flow or live analytics request was executed during this development phase.
+
+## Next Development Unit
+
+1. Rebuild the Data Center frontend on top of `GET /data/query` instead of rendering raw analytics rows directly.
+2. Add global Data Center filters for platform, account, tracking scope, time/reporting range, and sort order.
+3. Show human-readable video titles, platform/account identity, reporting period, active/historical status, and business metrics instead of raw video IDs as the primary label.
+4. Add scheduler-driven incremental content/Analytics synchronization after the manual flow remains stable.
+5. Add future platform integrations through the existing platform registry/adapter boundaries without changing Data Center core schemas.
 
 ## Notes
 
