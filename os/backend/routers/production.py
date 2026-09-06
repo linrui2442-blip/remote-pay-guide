@@ -3,10 +3,10 @@ from dataclasses import asdict
 from fastapi import APIRouter, HTTPException
 
 from production.providers import production_provider_registry
+from production.runtime.orchestrator import execute_production_task
 from production.tasks.execution import get_execution_readiness
 from production.tasks.manager import create_task, get_task, get_tasks
 from production.tasks.models import ProductionTask
-from production.tasks.scheduler import schedule_task
 
 router = APIRouter()
 
@@ -68,7 +68,9 @@ def run_production(task_id: int):
     if task is None:
         raise HTTPException(status_code=404, detail='production task not found')
     try:
-        return schedule_task(task)
+        return execute_production_task(task)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
