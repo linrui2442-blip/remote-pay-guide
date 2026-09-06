@@ -43,8 +43,25 @@ export function collectAccountAnalytics(accountId, platform, data = {}) {
 
 export function getAccounts() { return apiGet('/accounts'); }
 export function createAccount(data) { return apiPost('/accounts', data); }
+export function getAccountSyncPlan(accountId) {
+  return apiGet(`/accounts/${encodeURIComponent(accountId)}/sync-plan`);
+}
 export function syncAccount(accountId, maxResults = 10) {
   return apiPost(`/accounts/${encodeURIComponent(accountId)}/sync`, { max_results: maxResults });
+}
+export function syncAccountAll(accountId, data = {}) {
+  return apiPost(`/accounts/${encodeURIComponent(accountId)}/sync-all`, {
+    max_results: 10,
+    sync_mode: 'incremental',
+    ...data,
+  });
+}
+
+export function getAccountConnectors() { return apiGet('/oauth/connectors'); }
+export function beginPlatformOAuth(platform, accountId, scopeProfile = 'full') {
+  return apiGet(
+    `/oauth/connect/${encodeURIComponent(platform)}/${encodeURIComponent(accountId)}?scope_profile=${encodeURIComponent(scopeProfile)}`
+  );
 }
 export function getYouTubeOAuthStatus() { return apiGet('/oauth/youtube/status'); }
 export function getAnalyticsCollectorStatus(platform, accountId) {
@@ -52,9 +69,7 @@ export function getAnalyticsCollectorStatus(platform, accountId) {
   return apiGet(`/analytics/collector/status/${encodeURIComponent(platform)}${query}`);
 }
 export function beginYouTubeOAuth(accountId, scopeProfile = 'full') {
-  return apiGet(
-    `/oauth/youtube/authorize/${encodeURIComponent(accountId)}?scope_profile=${encodeURIComponent(scopeProfile)}`
-  );
+  return beginPlatformOAuth('youtube', accountId, scopeProfile);
 }
 
 export function getNetworkProxySettings() {
