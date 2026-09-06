@@ -36,3 +36,15 @@ jobs:
           grep -q 'beginPlatformOAuth' os/frontend/src/App.jsx
           grep -q 'syncAccountAll' os/frontend/src/App.jsx
           grep -q 'account_connector_registered' os/frontend/src/App.jsx
+          grep -q 'PlatformOAuthCallback' os/frontend/src/App.jsx
+          grep -q 'oauthCallbackMatch' os/frontend/src/App.jsx
+
+      - name: Verify Data Center Intelligence controls
+        run: |
+          grep -q 'AI INTELLIGENCE' os/frontend/src/pages/DataCenter.jsx
+          grep -q '/intelligence/feedback/account/' os/frontend/src/pages/DataCenter.jsx
+          grep -q '/materialize' os/frontend/src/pages/DataCenter.jsx
+          grep -q '创建下一轮生产任务' os/frontend/src/pages/DataCenter.jsx
+          grep -q '不会自动运行或发布' os/frontend/src/pages/DataCenter.jsx
+          grep -q 'item.operation === "intelligence_feedback"' os/frontend/src/App.jsx
+          grep -q 'Intelligence 新策略' os/frontend/src/App.jsx
