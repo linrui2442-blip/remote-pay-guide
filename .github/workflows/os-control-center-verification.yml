@@ -1,0 +1,73 @@
+name: OS Control Center Verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'os/backend/main.py'
+      - 'os/backend/accounts/**'
+      - 'os/backend/routers/accounts.py'
+      - 'os/backend/routers/oauth.py'
+      - '.github/workflows/os-control-center-verification.yml'
+
+jobs:
+  verify-control-center:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: pip install -r os/backend/requirements.txt
+
+      - name: Compile backend
+        run: PYTHONPATH=os/backend python -m compileall -q os/backend
+
+      - name: Verify control center routes and local CORS
+        env:
+          PYTHONPATH: os/backend
+        run: |
+          python - <<'PY'
+          import tempfile
+          from pathlib import Path
+
+          import accounts.manager as accounts_manager
+          import oauth.manager as oauth_manager
+          from accounts.models import Account
+
+          with tempfile.TemporaryDirectory() as tmpdir:
+              db_path = str(Path(tmpdir) / 'os.db')
+              accounts_manager.DB_PATH = db_path
+              oauth_manager.DB_PATH = db_path
+
+              import main
+
+              route_paths = {route.path for route in main.app.routes}
+              assert '/accounts' in route_paths
+              assert '/accounts/{account_id}' in route_paths
+              assert '/oauth/youtube/authorize/{account_id}' in route_paths
+              assert '/oauth/youtube/exchange' in route_paths
+
+              middleware_names = {
+                  middleware.cls.__name__ for middleware in main.app.user_middleware
+              }
+              assert 'CORSMiddleware' in middleware_names
+              assert 'http://localhost:5173' in main.frontend_origins
+              assert 'http://127.0.0.1:5173' in main.frontend_origins
+
+              created = accounts_manager.create_account(
+                  Account(platform='youtube', account_name='verification-account')
+              )
+              assert created['platform'] == 'youtube'
+              assert created['account_name'] == 'verification-account'
+              assert accounts_manager.get_account(created['id'])['id'] == created['id']
+              assert len(accounts_manager.get_accounts()) == 1
+
+          print('control center verification passed')
+          PY
