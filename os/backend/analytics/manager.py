@@ -24,6 +24,7 @@ def _ensure_table():
                 video_id TEXT,
                 content_id TEXT,
                 platform TEXT,
+                account_id INTEGER,
                 source TEXT,
                 impressions INTEGER DEFAULT 0,
                 views INTEGER DEFAULT 0,
@@ -46,6 +47,7 @@ def _ensure_table():
         }
         migrations = {
             "content_id": "TEXT",
+            "account_id": "INTEGER",
             "source": "TEXT",
             "impressions": "INTEGER DEFAULT 0",
             "clicks": "INTEGER DEFAULT 0",
@@ -68,6 +70,9 @@ def _ensure_table():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_analytics_platform ON analytics_metrics(platform)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analytics_account ON analytics_metrics(account_id)"
+        )
         conn.commit()
 
 
@@ -83,8 +88,8 @@ def save_metric(metric):
     """Append one analytics snapshot.
 
     Raw history is intentionally preserved. Data Center funnel calculations use
-    the newest snapshot per video/platform so periodic collection does not
-    double-count cumulative platform metrics.
+    the newest snapshot per video/platform/account so periodic collection does
+    not double-count cumulative platform metrics.
     """
     _ensure_table()
     metric = _coerce_metric(metric)
@@ -94,15 +99,16 @@ def save_metric(metric):
         cursor = conn.execute(
             """
             INSERT INTO analytics_metrics
-            (video_id, content_id, platform, source, impressions, views,
+            (video_id, content_id, platform, account_id, source, impressions, views,
              clicks, ctr, likes, comments, watch_time, average_view_duration,
              retention, shares, collected_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 metric.video_id,
                 metric.content_id,
                 metric.platform,
+                metric.account_id,
                 metric.source,
                 metric.impressions,
                 metric.views,
@@ -146,10 +152,10 @@ def _latest_query(where_clause="", params=()):
             SELECT a.*
             FROM analytics_metrics a
             JOIN (
-                SELECT video_id, platform, MAX(id) AS max_id
+                SELECT video_id, platform, account_id, MAX(id) AS max_id
                 FROM analytics_metrics
                 {filter_sql}
-                GROUP BY video_id, platform
+                GROUP BY video_id, platform, account_id
             ) latest ON latest.max_id = a.id
             ORDER BY a.id
             """,
@@ -159,7 +165,7 @@ def _latest_query(where_clause="", params=()):
 
 
 def get_latest_metrics():
-    """Return the newest snapshot for each video/platform pair."""
+    """Return the newest snapshot for each video/platform/account tuple."""
     return _latest_query()
 
 
@@ -208,3 +214,22 @@ def get_platform_metrics(platform):
 
 def get_latest_platform_metrics(platform):
     return _latest_query("platform=?", (platform,))
+
+
+def get_account_metrics(account_id, platform=None, latest=False):
+    _ensure_table()
+    clauses = ["account_id=?"]
+    params = [account_id]
+    if platform:
+        clauses.append("platform=?")
+        params.append(str(platform).strip().lower())
+    where_clause = " AND ".join(clauses)
+    if latest:
+        return _latest_query(where_clause, tuple(params))
+
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM analytics_metrics WHERE {where_clause} ORDER BY id",
+            tuple(params),
+        ).fetchall()
+    return [_serialize(row) for row in rows]
