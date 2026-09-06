@@ -80,6 +80,12 @@ def _coerce_metric(metric):
 
 
 def save_metric(metric):
+    """Append one analytics snapshot.
+
+    Raw history is intentionally preserved. Data Center funnel calculations use
+    the newest snapshot per video/platform so periodic collection does not
+    double-count cumulative platform metrics.
+    """
     _ensure_table()
     metric = _coerce_metric(metric)
     collected_at = metric.collected_at or datetime.now(timezone.utc).isoformat()
@@ -124,10 +130,37 @@ def _serialize(row):
 
 
 def get_metrics():
+    """Return raw analytics snapshot history."""
     _ensure_table()
     with _connect() as conn:
         rows = conn.execute("SELECT * FROM analytics_metrics ORDER BY id").fetchall()
     return [_serialize(row) for row in rows]
+
+
+def _latest_query(where_clause="", params=()):
+    _ensure_table()
+    filter_sql = f"WHERE {where_clause}" if where_clause else ""
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT a.*
+            FROM analytics_metrics a
+            JOIN (
+                SELECT video_id, platform, MAX(id) AS max_id
+                FROM analytics_metrics
+                {filter_sql}
+                GROUP BY video_id, platform
+            ) latest ON latest.max_id = a.id
+            ORDER BY a.id
+            """,
+            params,
+        ).fetchall()
+    return [_serialize(row) for row in rows]
+
+
+def get_latest_metrics():
+    """Return the newest snapshot for each video/platform pair."""
+    return _latest_query()
 
 
 def get_video_metrics(video_id):
@@ -138,6 +171,10 @@ def get_video_metrics(video_id):
             (video_id,),
         ).fetchall()
     return [_serialize(row) for row in rows]
+
+
+def get_latest_video_metrics(video_id):
+    return _latest_query("video_id=?", (video_id,))
 
 
 def get_content_metrics(content_id=None):
@@ -153,6 +190,12 @@ def get_content_metrics(content_id=None):
     return [_serialize(row) for row in rows]
 
 
+def get_latest_content_metrics(content_id=None):
+    if content_id is None:
+        return get_latest_metrics()
+    return _latest_query("content_id=?", (content_id,))
+
+
 def get_platform_metrics(platform):
     _ensure_table()
     with _connect() as conn:
@@ -161,3 +204,7 @@ def get_platform_metrics(platform):
             (platform,),
         ).fetchall()
     return [_serialize(row) for row in rows]
+
+
+def get_latest_platform_metrics(platform):
+    return _latest_query("platform=?", (platform,))
