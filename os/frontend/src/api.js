@@ -31,6 +31,7 @@ export function runProductionTask(id) { return apiPost(`/production/tasks/${id}/
 
 export function getAccounts() { return apiGet('/accounts'); }
 export function createAccount(data) { return apiPost('/accounts', data); }
+export function getYouTubeOAuthStatus() { return apiGet('/oauth/youtube/status'); }
 export function getAnalyticsCollectorStatus(platform, accountId) {
   const query = accountId == null ? '' : `?account_id=${encodeURIComponent(accountId)}`;
   return apiGet(`/analytics/collector/status/${encodeURIComponent(platform)}${query}`);
