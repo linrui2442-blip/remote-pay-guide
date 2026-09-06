@@ -26,7 +26,7 @@ Platform Operations:
 
 Remote Pay Guide legacy pipeline: Maintenance / Ready for next batch
 
-Remote Pay Guide OS: Data Center integration and growth feedback loop
+Remote Pay Guide OS: Data Center internal integration complete; live external traffic collection blocked on analytics credentials/scopes
 
 ## Production Pipeline
 
@@ -74,9 +74,23 @@ Completed / implemented foundation:
 - Conversion storage implemented
 - Content funnel APIs implemented
 - Data Center overview expanded to include traffic, intent, referral clicks, conversions, and conversion value
-- OS Data Center verification workflow added
+- AI Intelligence now receives the full growth funnel instead of judging only platform metrics
+- Conversion and referral-intent signals take priority over vanity metrics when building the next production strategy
+- Intelligence insight storage now preserves the growth-funnel snapshot
+- Production runtime circular import fixed without changing the existing production pipeline
+- Analytics placeholder no longer fabricates zero traffic when an external collector is unavailable
+- Analytics collector readiness API exposes the exact missing integration capability
+- OS Data Center verification workflow passes end-to-end for:
+  - traffic storage
+  - user intent storage
+  - referral click attribution
+  - conversion storage
+  - funnel aggregation
+  - conversion-aware AI feedback
+  - conversion-aware production strategy
+  - external analytics readiness guard
 
-Business feedback loop remains:
+Business feedback loop:
 
 ```
 Content
@@ -92,12 +106,25 @@ AI Intelligence
 Next Production Strategy
 ```
 
-Current external-integration breakpoint:
+## Current External-Integration Breakpoint
 
-- YouTube traffic collection still needs an analytics/read-capable credential scope before live collection can be enabled.
-- GA4 already receives landing-page events, but OS-side GA4 report collection still needs the GA4 property/auth connection before live import can be enabled.
-- No secret values are stored in project documentation.
-- No OAuth flow is executed as part of this development phase.
+YouTube publishing OAuth is currently configured with upload-only scope:
+
+- `https://www.googleapis.com/auth/youtube.upload`
+
+Live YouTube traffic/analytics collection requires read-capable scopes, including:
+
+- `https://www.googleapis.com/auth/youtube.readonly`
+- `https://www.googleapis.com/auth/yt-analytics.readonly`
+
+The OS now reports this state explicitly through the analytics collector readiness boundary and does not write fake zero metrics.
+
+Enabling live YouTube analytics requires a deliberate OAuth scope expansion and user reauthorization. The existing upload credential must not be silently reinterpreted as an analytics credential.
+
+GA4 already receives landing-page events, but OS-side GA4 report collection still requires the GA4 property/auth connection before live import can be enabled.
+
+No secret values are stored in project documentation.
+No OAuth flow is executed as part of this development phase.
 
 ## Notes
 
