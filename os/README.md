@@ -13,7 +13,32 @@ The current development setup uses:
 - YouTube OAuth callback: `http://localhost:5173/oauth/youtube/callback`
 - OS database: `os/database/os.db`
 
-## Start the Backend
+## Windows Quick Start
+
+From the repository root in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\os\start-windows.ps1
+```
+
+The launcher:
+
+- checks for Python and npm
+- prompts for the YouTube OAuth Client ID and Client Secret when they are not already in the environment
+- sets the callback URI to `http://localhost:5173/oauth/youtube/callback`
+- installs backend and frontend dependencies
+- starts the backend and frontend in separate PowerShell windows
+- opens `http://localhost:5173`
+
+OAuth credentials entered through the launcher are inherited by the child processes only. The launcher does not write secret values into the repository.
+
+After dependencies have already been installed, startup can be shortened with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\os\start-windows.ps1 -SkipInstall
+```
+
+## Start the Backend Manually
 
 From the repository root in PowerShell:
 
@@ -24,7 +49,7 @@ python -m uvicorn main:app --app-dir os/backend --host 127.0.0.1 --port 8000
 
 The backend exposes `/health` and the control-center APIs for production, publish tasks, accounts, OAuth, analytics, and Data Center data.
 
-## Start the Frontend
+## Start the Frontend Manually
 
 Open a second PowerShell window:
 
@@ -50,7 +75,7 @@ Reuse the existing Google OAuth **Web Application** client. Add the OS callback 
 http://localhost:5173/oauth/youtube/callback
 ```
 
-Before starting the backend, set the OAuth configuration in that PowerShell session:
+Before starting the backend manually, set the OAuth configuration in that PowerShell session:
 
 ```powershell
 $env:YOUTUBE_OAUTH_CLIENT_ID="<client-id>"
