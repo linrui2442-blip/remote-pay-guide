@@ -7,6 +7,8 @@ class AnalyticsMetric(BaseModel):
     account_id: int | None = None
     content_id: str | None = None
     source: str | None = None
+    period_start: str | None = None
+    period_end: str | None = None
     impressions: int = 0
     views: int = 0
     clicks: int = 0
