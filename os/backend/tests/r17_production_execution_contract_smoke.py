@@ -13,7 +13,7 @@ from config.ai_gateway import get_ai_gateway_settings, save_ai_gateway_settings
 from production.providers import production_provider_registry
 from production.providers.ai_gateway import AIGatewayProvider
 from production.runtime.manager import get_jobs
-from production.runtime.worker import ProductionRuntimeWorker
+from production.runtime.orchestrator import execute_production_task
 from production.tasks.execution import get_execution_readiness
 from production.tasks.manager import create_task, get_task
 from production.tasks.models import ProductionTask
@@ -41,6 +41,40 @@ class FakeGateway:
                 'remote_job_id': 'remote-job-17',
             },
         )
+
+
+class ReadyAIGatewayProvider(AIGatewayProvider):
+    def get_provider_status(self):
+        return {
+            'provider': 'ai_gateway',
+            'status': 'ready',
+            'configured': True,
+            'transport': 'remote_http',
+            'local_inference': False,
+            'missing_configuration': [],
+        }
+
+
+def make_remote_task(objective='Create a controlled follow-up for the conversion-winning angle'):
+    return create_task(
+        ProductionTask(
+            source='ai_intelligence',
+            objective=objective,
+            provider='ai_gateway',
+            template='short_video_template',
+            parameters={
+                'task_type': 'video_generation',
+                'prompt': 'Create a realistic vertical remote-payment explainer video.',
+                'model': 'auto',
+                'input': {'content_id': 'winner-content'},
+                'options': {'aspect_ratio': '9:16', 'duration_seconds': 30},
+            },
+            resources=['winner-content'],
+            task_type='video_generation',
+            workflow='',
+            branch='main',
+        )
+    )
 
 
 def main():
@@ -74,41 +108,22 @@ def main():
     assert blocked_after.status == 'created'
     assert get_jobs() == []
 
+    # The explicit Run action now means schedule + Runtime Worker execution.
     fake_gateway = FakeGateway()
-    fake_provider = AIGatewayProvider(gateway=fake_gateway)
+    fake_provider = ReadyAIGatewayProvider(gateway=fake_gateway)
     previous_provider = production_provider_registry['ai_gateway']
     production_provider_registry['ai_gateway'] = fake_provider
     try:
-        remote = create_task(
-            ProductionTask(
-                source='ai_intelligence',
-                objective='Create a controlled follow-up for the conversion-winning angle',
-                provider='ai_gateway',
-                template='short_video_template',
-                parameters={
-                    'task_type': 'video_generation',
-                    'prompt': 'Create a realistic vertical remote-payment explainer video.',
-                    'model': 'auto',
-                    'input': {'content_id': 'winner-content'},
-                    'options': {'aspect_ratio': '9:16', 'duration_seconds': 30},
-                },
-                resources=['winner-content'],
-                task_type='video_generation',
-                workflow='',
-                branch='main',
-            )
-        )
+        remote = make_remote_task()
         remote_readiness = get_execution_readiness(remote)
         assert remote_readiness['ready'] is True
 
-        job = schedule_task(remote)
-        assert job['provider'] == 'ai_gateway'
-        assert get_task(remote.id).status == 'scheduled'
-
-        result = ProductionRuntimeWorker().run(job)
-        assert result['status'] == 'completed', result
-        assert get_task(remote.id).status == 'completed'
-        assert result['production_result']['status'] == 'completed'
+        execution_result = execute_production_task(remote)
+        assert execution_result['provider_readiness']['ready'] is True
+        assert execution_result['runtime_job']['status'] == 'completed'
+        assert execution_result['result']['status'] == 'completed'
+        assert execution_result['production_task'].status == 'completed'
+        assert execution_result['result']['production_result']['status'] == 'completed'
 
         assert len(fake_gateway.requests) == 1
         request = fake_gateway.requests[0]
@@ -122,6 +137,18 @@ def main():
         assert request.options['duration_seconds'] == 30
     finally:
         production_provider_registry['ai_gateway'] = previous_provider
+
+    # Provider runtime readiness is also checked before scheduling. With no relay
+    # configured, an explicit AI Run leaves the task in created state.
+    unconfigured_task = make_remote_task('test unconfigured remote provider')
+    jobs_before = len(get_jobs())
+    try:
+        execute_production_task(unconfigured_task)
+        raise AssertionError('unconfigured AI provider should not execute')
+    except ValueError as exc:
+        assert 'not ready' in str(exc).lower()
+    assert get_task(unconfigured_task.id).status == 'created'
+    assert len(get_jobs()) == jobs_before
 
     # The real video provider must fail closed when no external relay is configured.
     unconfigured = VideoProvider(endpoint='', api_key='')
@@ -148,7 +175,9 @@ def main():
 
     print('Production execution contract smoke test passed')
     print('GitHub missing workflow -> blocked before scheduling')
+    print('Production Run -> schedule -> Runtime Worker -> provider -> result')
     print('AI Runtime Job -> normalized AIRequest -> remote gateway provider')
+    print('Unconfigured AI provider -> blocked before lifecycle mutation')
     print('AI video provider -> external HTTP only; no local inference fallback')
     print('AI Gateway endpoint -> persisted OS setting -> live provider readiness')
 
