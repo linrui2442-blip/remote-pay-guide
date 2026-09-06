@@ -1,8 +1,17 @@
 const API_BASE = "http://localhost:8000";
 
+async function parseResponse(response) {
+  const payload = await response.json();
+  if (!response.ok) {
+    const message = payload?.detail || `Request failed with HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload;
+}
+
 export async function apiGet(path) {
   const response = await fetch(`${API_BASE}${path}`);
-  return response.json();
+  return parseResponse(response);
 }
 
 export async function apiPost(path, data) {
@@ -11,7 +20,7 @@ export async function apiPost(path, data) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
   });
-  return response.json();
+  return parseResponse(response);
 }
 
 export function getProductionTasks() { return apiGet('/production/tasks'); }
@@ -19,3 +28,15 @@ export function getProductionStatus() { return apiGet('/production/status'); }
 export function getProductionProviders() { return apiGet('/production/providers'); }
 export function createProductionTask(data) { return apiPost('/production/tasks', data); }
 export function runProductionTask(id) { return apiPost(`/production/tasks/${id}/run`, {}); }
+
+export function getAccounts() { return apiGet('/accounts'); }
+export function createAccount(data) { return apiPost('/accounts', data); }
+export function getAnalyticsCollectorStatus(platform, accountId) {
+  const query = accountId == null ? '' : `?account_id=${encodeURIComponent(accountId)}`;
+  return apiGet(`/analytics/collector/status/${encodeURIComponent(platform)}${query}`);
+}
+export function beginYouTubeOAuth(accountId, scopeProfile = 'full') {
+  return apiGet(
+    `/oauth/youtube/authorize/${encodeURIComponent(accountId)}?scope_profile=${encodeURIComponent(scopeProfile)}`
+  );
+}
