@@ -8,7 +8,7 @@ from production.providers.github_monitor import GitHubRunMonitor
 
 WORKFLOW_INPUTS = {
     "render-launch02.yml": {"publish_short04", "schedule_at"},
-    "os-github-bridge-test.yml": set(),
+    "os-github-bridge-test.yml": {"mode"},
     "promote-video-asset.yml": {
         "source_run_id",
         "artifact_name",
