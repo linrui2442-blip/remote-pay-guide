@@ -1,6 +1,7 @@
 import json
 
 from production.runtime.manager import create_job
+from .execution import require_execution_ready
 from .manager import update_task_status
 
 
@@ -31,9 +32,13 @@ def transition_task(task, target_status):
 
 
 def schedule_task(task):
-    """Persist scheduling state and create a Runtime Job for a canonical task."""
+    """Validate execution, persist scheduling state, and create a Runtime Job."""
     if getattr(task, "id", None) is None:
         raise ValueError("ProductionTask must have a stable id before scheduling")
+
+    # Validate before any lifecycle mutation. A malformed provider task must stay
+    # in `created` instead of being stranded in queued/scheduled state.
+    require_execution_ready(task)
 
     task = transition_task(task, "queued")
     task = transition_task(task, "scheduled")
