@@ -7,6 +7,9 @@ from publish.manager import create_publish_task, get_publish_tasks, update_publi
 from publish.models import PublishTask
 
 
+NETWORK_TIMEOUT_ERRNOS = {60, 110, 10060}
+
+
 class YouTubeContentSync:
     """Import existing videos from an authorized YouTube account into the OS.
 
@@ -17,6 +20,24 @@ class YouTubeContentSync:
 
     def __init__(self, service=None):
         self.service = service
+
+    @staticmethod
+    def _execute(request):
+        try:
+            return request.execute(num_retries=2)
+        except TypeError:
+            # Test doubles and a few lightweight request wrappers do not expose
+            # googleapiclient's optional num_retries argument.
+            return request.execute()
+        except OSError as exc:
+            error_code = getattr(exc, "winerror", None) or getattr(exc, "errno", None)
+            if error_code in NETWORK_TIMEOUT_ERRNOS:
+                raise RuntimeError(
+                    "Google YouTube API network timeout. The OS backend could not reach "
+                    "www.googleapis.com. If Google works in the browser through a VPN/proxy, "
+                    "the backend process must use the same proxy/VPN route."
+                ) from exc
+            raise
 
     def _service(self, account_id):
         if self.service is not None:
@@ -45,10 +66,12 @@ class YouTubeContentSync:
         return f"https://www.youtube.com/watch?v={video_id}"
 
     def _channel(self, service):
-        response = service.channels().list(
-            part="snippet,contentDetails",
-            mine=True,
-        ).execute()
+        response = self._execute(
+            service.channels().list(
+                part="snippet,contentDetails",
+                mine=True,
+            )
+        )
         items = response.get("items") or []
         if not items:
             raise RuntimeError("No YouTube channel was returned for the authorized account")
@@ -70,12 +93,14 @@ class YouTubeContentSync:
         items = []
         page_token = None
         while len(items) < max_results:
-            response = service.playlistItems().list(
-                part="snippet,contentDetails",
-                playlistId=playlist_id,
-                maxResults=min(50, max_results - len(items)),
-                pageToken=page_token,
-            ).execute()
+            response = self._execute(
+                service.playlistItems().list(
+                    part="snippet,contentDetails",
+                    playlistId=playlist_id,
+                    maxResults=min(50, max_results - len(items)),
+                    pageToken=page_token,
+                )
+            )
             items.extend(response.get("items") or [])
             page_token = response.get("nextPageToken")
             if not page_token:
@@ -88,10 +113,12 @@ class YouTubeContentSync:
             batch = video_ids[index:index + 50]
             if not batch:
                 continue
-            response = service.videos().list(
-                part="snippet,status",
-                id=",".join(batch),
-            ).execute()
+            response = self._execute(
+                service.videos().list(
+                    part="snippet,status",
+                    id=",".join(batch),
+                )
+            )
             for item in response.get("items") or []:
                 details[item.get("id")] = item
         return details
