@@ -72,9 +72,11 @@ def _ensure_table():
 
 
 def _coerce_metric(metric):
-    if isinstance(metric, AnalyticsMetric):
-        return metric
-    return AnalyticsMetric(**dict(metric))
+    if not isinstance(metric, AnalyticsMetric):
+        metric = AnalyticsMetric(**dict(metric))
+    if not metric.content_id:
+        metric.content_id = metric.video_id
+    return metric
 
 
 def save_metric(metric):
