@@ -65,6 +65,11 @@ def current_metrics():
     return get_latest_metrics()
 
 
+@router.get('/analytics/accounts/current')
+def current_accounts_metrics(platform: str | None = None):
+    return get_latest_account_metrics(platform=platform)
+
+
 @router.get('/analytics/accounts/{account_id}/metrics')
 def account_metrics(account_id: int, platform: str | None = None):
     return get_account_metric_history(account_id, platform=platform)
