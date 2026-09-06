@@ -15,6 +15,7 @@ from data.platform_capabilities import (
     supports_analytics,
     supports_publish,
 )
+from data.query import query_data_center
 from data.reports import get_overview_report
 from data.tracking import (
     DEFAULT_ACTIVE_LIMIT,
@@ -111,3 +112,22 @@ def pin_account_content(
 
 def get_account_history(account_id, platform=None):
     return get_history_summaries(account_id, platform=platform)
+
+
+def query_data_center_view(
+    *,
+    account_id=None,
+    platform=None,
+    scope="active",
+    sort_by="views",
+    sort_direction="desc",
+    limit=100,
+):
+    return query_data_center(
+        account_id=account_id,
+        platform=platform,
+        scope=scope,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        limit=limit,
+    )
