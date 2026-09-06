@@ -40,12 +40,16 @@ def _init_db():
     columns = {row["name"] for row in cursor.execute("PRAGMA table_info(video_assets)").fetchall()}
     migrations = {
         "asset_id": "TEXT",
+        "video_id": "TEXT",
         "production_result_id": "TEXT",
         "source_provider": "TEXT",
         "storage_type": "TEXT",
         "asset_url": "TEXT",
         "file_path": "TEXT",
+        "status": "TEXT",
         "metadata": "TEXT",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
         "source": "TEXT",
         "location": "TEXT",
     }

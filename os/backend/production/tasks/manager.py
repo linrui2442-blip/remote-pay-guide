@@ -110,6 +110,11 @@ def create_task(task: ProductionTask | Dict[str, Any]) -> ProductionTask:
     if isinstance(task, dict):
         task = ProductionTask(**task)
 
+    # Preserve the old Production Center API contract while normalizing into
+    # the canonical lifecycle before validation/persistence.
+    if task.status == "pending":
+        task.status = "created"
+
     task.validate()
     now = datetime.utcnow().isoformat()
     conn = _connect()
