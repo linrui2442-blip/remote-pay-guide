@@ -58,8 +58,17 @@ def youtube_authorize(account_id: int, scope_profile: str = "publish"):
             result["state"],
             provider="youtube",
             scope_profile=provider.scope_profile,
+            code_verifier=result.get("code_verifier"),
         )
-        return result
+        # The PKCE verifier is transient server-side state and must never be
+        # exposed to the browser. Only the authorization URL/state metadata is
+        # returned to the frontend.
+        return {
+            "authorization_url": result["authorization_url"],
+            "state": result["state"],
+            "scope_profile": result["scope_profile"],
+            "scopes": result["scopes"],
+        }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except YouTubeOAuthConfigurationError as exc:
@@ -92,6 +101,7 @@ def youtube_exchange(request: YouTubeOAuthExchangeRequest):
         token = provider.exchange_code(
             request.authorization_code,
             state=request.state,
+            code_verifier=state_record.get("code_verifier"),
         )
         stored = create_token(
             {
