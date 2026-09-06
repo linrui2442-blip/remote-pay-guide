@@ -1,13 +1,21 @@
 import json
 import sqlite3
 from datetime import datetime
-from intelligence.models import ContentInsight
+from pathlib import Path
 
-DB_PATH = "os/database/os.db"
+
+DB_PATH = Path("os/database/os.db")
+
+
+def _connect():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def init_insights_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -30,6 +38,7 @@ def init_insights_db():
         "production_source": "TEXT",
         "prompt_version": "TEXT",
         "metrics_snapshot": "TEXT",
+        "growth_funnel": "TEXT",
     }
 
     cursor.execute("PRAGMA table_info(content_insights)")
@@ -43,13 +52,10 @@ def init_insights_db():
     conn.close()
 
 
-init_insights_db()
-
-
 def create_insight(insight):
     init_insights_db()
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     cursor = conn.cursor()
 
     created_at = datetime.utcnow().isoformat()
@@ -59,8 +65,8 @@ def create_insight(insight):
         INSERT INTO content_insights
         (video_id, score, strengths, weaknesses, recommendations,
          content_type, platform, provider, production_source,
-         prompt_version, metrics_snapshot, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         prompt_version, metrics_snapshot, growth_funnel, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             insight.get("video_id"),
@@ -74,6 +80,7 @@ def create_insight(insight):
             insight.get("production_source"),
             insight.get("prompt_version"),
             json.dumps(insight.get("metrics_snapshot", {})),
+            json.dumps(insight.get("growth_funnel", {})),
             created_at,
         ),
     )
@@ -90,8 +97,7 @@ def create_insight(insight):
 def get_insights():
     init_insights_db()
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = _connect()
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM content_insights ORDER BY id DESC")
@@ -104,8 +110,7 @@ def get_insights():
 def get_video_insight(video_id):
     init_insights_db()
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = _connect()
     cursor = conn.cursor()
 
     cursor.execute(
@@ -132,5 +137,6 @@ def _serialize(row):
         "production_source": row["production_source"],
         "prompt_version": row["prompt_version"],
         "metrics_snapshot": json.loads(row["metrics_snapshot"] or "{}"),
+        "growth_funnel": json.loads(row["growth_funnel"] or "{}"),
         "created_at": row["created_at"],
     }
