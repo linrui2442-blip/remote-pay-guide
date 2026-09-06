@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class AnalyticsMetric(BaseModel):
     video_id: str
     platform: str
+    account_id: int | None = None
     content_id: str | None = None
     source: str | None = None
     impressions: int = 0
