@@ -73,7 +73,8 @@ class YouTubeContentSync:
     This does not publish, download, back up, or modify anything on YouTube. It
     only reads metadata from the official API and creates local external Video
     Asset / Publish Center records so existing videos can enter the Analytics
-    -> Data Center loop.
+    -> Data Center loop. The default window is the latest 10 published videos;
+    older records already known to the OS are retained locally as history.
     """
 
     def __init__(self, service=None):
@@ -188,8 +189,8 @@ class YouTubeContentSync:
                 details[item.get("id")] = item
         return details
 
-    def sync(self, account_id, max_results=50):
-        max_results = max(1, min(int(max_results or 50), 200))
+    def sync(self, account_id, max_results=10):
+        max_results = max(1, min(int(max_results or 10), 200))
         service = self._service(account_id)
         channel = self._channel(service)
         playlist_items = self._playlist_items(
@@ -287,6 +288,7 @@ class YouTubeContentSync:
             "account_id": account_id,
             "channel_id": channel.get("channel_id"),
             "channel_title": channel.get("channel_title"),
+            "tracking_window": max_results,
             "found": len(video_ids),
             "imported": len(imported),
             "already_present": len(existing),
