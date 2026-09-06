@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
 
 
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
@@ -80,6 +79,11 @@ class YouTubeOAuthProvider:
         return parsed.astimezone(timezone.utc)
 
     def get_authorization_url(self, client_id=None, redirect_uri=None, state=None):
+        # Keep google-auth-oauthlib optional for unrelated OS paths that only
+        # import the publishing registry. It is required only when OAuth is
+        # actually initiated.
+        from google_auth_oauthlib.flow import Flow
+
         if client_id:
             self.client_id = client_id
         if redirect_uri:
@@ -103,6 +107,8 @@ class YouTubeOAuthProvider:
         }
 
     def exchange_code(self, authorization_code: str, state=None):
+        from google_auth_oauthlib.flow import Flow
+
         if not authorization_code:
             raise ValueError("authorization_code is required")
 
