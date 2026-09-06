@@ -38,10 +38,18 @@ def build_account_sync_plan(
 
     analytics_supported = bool(capability and capability.get('analytics_supported'))
     analytics_registered = analytics_registration is not None
+    intelligence_feedback_enabled = analytics_supported and analytics_registered
     if analytics_supported and analytics_registered:
         operations.append(
             {
                 'operation': 'analytics_sync',
+                'platform': normalized,
+                'active_limit': effective_limit,
+            }
+        )
+        operations.append(
+            {
+                'operation': 'intelligence_feedback',
                 'platform': normalized,
                 'active_limit': effective_limit,
             }
@@ -53,6 +61,7 @@ def build_account_sync_plan(
         'content_sync_registered': content_registered,
         'analytics_supported': analytics_supported,
         'analytics_sync_registered': analytics_registered,
+        'intelligence_feedback_enabled': intelligence_feedback_enabled,
         'active_limit': effective_limit,
         'operations': operations,
     }
