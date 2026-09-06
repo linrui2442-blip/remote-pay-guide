@@ -1,0 +1,71 @@
+.account-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-panel {
+  max-width: 860px;
+}
+
+.settings-form {
+  display: grid;
+  gap: 18px;
+}
+
+.setting-field {
+  display: grid;
+  gap: 8px;
+}
+
+.setting-field > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #344054;
+}
+
+.setting-field select,
+.setting-field input {
+  width: min(520px, 100%);
+}
+
+.setting-field small {
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-status {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f2f4f7;
+}
+
+.settings-status > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  font-size: 12px;
+}
+
+.settings-status span {
+  color: #667085;
+}
+
+.settings-status strong {
+  color: #344054;
+  max-width: 65%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
