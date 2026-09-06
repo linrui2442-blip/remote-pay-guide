@@ -26,8 +26,8 @@ def metrics():
 
 
 @router.get('/analytics/collector/status/{platform}')
-def collector_status(platform: str):
-    return collector.readiness(platform)
+def collector_status(platform: str, account_id: int | None = None):
+    return collector.readiness(platform, account_id=account_id)
 
 
 @router.get('/analytics/metrics/video/{video_id}')
