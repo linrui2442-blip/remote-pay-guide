@@ -8,6 +8,8 @@ sys.path.insert(0, str(BACKEND))
 os.chdir(ROOT)
 
 from assets.manager import get_assets
+from config.network import save_proxy_settings
+from integrations.google_transport import build_authorized_session
 from integrations.youtube import YouTubeContentSync
 from publish.manager import get_publish_tasks
 
@@ -94,6 +96,12 @@ class FakeYouTubeService:
         return FakeVideos()
 
 
+class FakeAuthorizedSession:
+    def __init__(self, credentials):
+        self.credentials = credentials
+        self.proxies = {}
+
+
 def reset_test_db():
     Path("os/database").mkdir(parents=True, exist_ok=True)
     db = Path("os/database/os.db")
@@ -101,7 +109,22 @@ def reset_test_db():
         db.unlink()
 
 
+def verify_manual_proxy_transport():
+    reset_test_db()
+    save_proxy_settings("manual", "http://127.0.0.1:7897")
+    session = build_authorized_session(
+        object(),
+        session_factory=FakeAuthorizedSession,
+    )
+    assert session.proxies == {
+        "http": "http://127.0.0.1:7897",
+        "https": "http://127.0.0.1:7897",
+    }
+    save_proxy_settings("disabled")
+
+
 def main():
+    verify_manual_proxy_transport()
     reset_test_db()
     sync = YouTubeContentSync(service=FakeYouTubeService())
 
@@ -128,7 +151,8 @@ def main():
     assert len(get_publish_tasks()) == 2
 
     print("YouTube content sync smoke test passed")
-    print("Existing uploads -> local assets + published tasks")
+    print("Manual OS proxy -> explicit Google requests transport")
+    print("Existing uploads -> local external assets + published tasks")
     print("Repeated sync -> idempotent")
 
 
