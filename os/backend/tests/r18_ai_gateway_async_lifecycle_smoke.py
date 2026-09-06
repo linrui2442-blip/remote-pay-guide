@@ -14,6 +14,7 @@ from production.providers.ai_gateway import AIGatewayProvider
 from production.results.manager import get_results
 from production.runtime.manager import get_latest_job_for_task
 from production.runtime.orchestrator import execute_production_task, refresh_production_task
+from production.runtime.poller import ProductionRuntimePoller
 from production.tasks.manager import create_task, get_task
 from production.tasks.models import ProductionTask
 
@@ -127,14 +128,21 @@ def main():
         result_id = results[0]['id']
         job_id = started['runtime_job']['id']
 
-        first_poll = refresh_production_task(get_task(task.id))
-        assert first_poll['result']['status'] == 'running'
-        assert first_poll['result']['production_result']['id'] == result_id
+        # Background poller refreshes active jobs without re-submitting them.
+        poller = ProductionRuntimePoller(interval_seconds=999)
+        automatic = poller.poll_once()
+        assert automatic['checked'] == 1
+        assert automatic['refreshed'] == 1
+        assert automatic['failed'] == 0
+        first_result = get_results()[0]
+        assert first_result['id'] == result_id
+        assert first_result['status'] == 'running'
         assert get_task(task.id).status == 'running'
         assert gateway.submit_count == 1
         assert gateway.poll_count == 1
         assert len(get_results()) == 1
 
+        # Explicit UI/API refresh remains available as a deterministic fallback.
         second_poll = refresh_production_task(get_task(task.id))
         assert second_poll['result']['status'] == 'completed', second_poll
         assert second_poll['result']['production_result']['id'] == result_id
@@ -171,9 +179,9 @@ def main():
         production_provider_registry['ai_gateway'] = previous
 
     print('AI Gateway async lifecycle smoke test passed')
-    print('submit once -> running poll -> completed poll -> one ProductionResult')
-    print('completed remote video -> remote VideoAsset URL; no local fallback')
-    print('completed without remote URL -> failed closed')
+    print('submit once -> background running poll -> explicit completed poll')
+    print('one Runtime Job -> one ProductionResult -> one remote VideoAsset')
+    print('completed without remote URL -> failed closed; no local fallback')
 
 
 if __name__ == '__main__':
