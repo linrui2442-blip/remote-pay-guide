@@ -1,5 +1,6 @@
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
-from publish.manager import get_publish_task, get_publish_tasks
+from data.tracking import DEFAULT_ACTIVE_LIMIT, get_active_publish_tasks
+from publish.manager import get_publish_task
 
 
 class PublishAnalyticsTaskNotFound(LookupError):
@@ -68,27 +69,26 @@ def collect_account_publish_metrics(
     collector=None,
     start_date=None,
     end_date=None,
+    active_limit=DEFAULT_ACTIVE_LIMIT,
 ):
-    """Collect current analytics for every eligible published task on an account.
+    """Collect analytics only for the account's active tracking window.
 
-    This is intentionally platform-neutral. It reuses Publish Center bindings
-    and the existing collector registry, so future platform collectors can use
-    the same account-level entry point without adding platform-specific storage.
-    Individual task failures are returned without aborting successful videos.
+    The default policy tracks the newest 10 published items per bound platform
+    account, plus any manually pinned items. Content that leaves the active
+    window becomes historical and keeps its stored metrics / lifecycle summary,
+    but it is no longer queried on every account-level Analytics sync.
     """
     normalized_platform = (platform or "").strip().lower() or None
-    tasks = []
-    for task in get_publish_tasks():
-        if task.get("account_id") != account_id:
-            continue
-        if (task.get("status") or "").strip().lower() != "published":
-            continue
-        task_platform = (task.get("platform") or "").strip().lower()
-        if normalized_platform and task_platform != normalized_platform:
-            continue
-        if not task.get("platform_video_id"):
-            continue
-        tasks.append(task)
+    if not normalized_platform:
+        raise AnalyticsCollectionNotReady(
+            "account-level analytics sync requires a platform"
+        )
+
+    tasks = get_active_publish_tasks(
+        account_id,
+        normalized_platform,
+        active_limit=active_limit,
+    )
 
     active_collector = collector or AnalyticsCollector()
     collected = []
@@ -121,6 +121,8 @@ def collect_account_publish_metrics(
     return {
         "account_id": account_id,
         "platform": normalized_platform,
+        "tracking_policy": "latest_plus_pinned",
+        "active_limit": active_limit,
         "found": len(tasks),
         "collected": len(collected),
         "failed": len(failures),
