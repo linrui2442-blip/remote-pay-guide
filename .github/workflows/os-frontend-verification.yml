@@ -27,3 +27,12 @@ jobs:
       - name: Build frontend
         working-directory: os/frontend
         run: npm run build
+
+      - name: Verify provider-neutral platform account UI
+        run: |
+          ! grep -q 'PLATFORM_CONNECTORS' os/frontend/src/App.jsx
+          ! grep -q 'beginYouTubeOAuth' os/frontend/src/App.jsx
+          ! grep -q 'platform === "youtube"' os/frontend/src/App.jsx
+          grep -q 'beginPlatformOAuth' os/frontend/src/App.jsx
+          grep -q 'syncAccountAll' os/frontend/src/App.jsx
+          grep -q 'account_connector_registered' os/frontend/src/App.jsx
