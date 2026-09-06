@@ -85,9 +85,6 @@ class ProductionRuntimeWorker:
                     result['error'] = error
                 update_job_result(job['id'], output, error)
 
-            # `create_result` can convert a nominally completed result into a
-            # failed result when asset binding fails. Always trust persisted
-            # ProductionResult state as the final source of truth.
             if production_result:
                 result_status = production_result.get('status', result_status)
                 output = production_result.get('output', output)
@@ -161,15 +158,14 @@ class ProductionRuntimeWorker:
             output = production_result.get('output')
         error = result.get('error')
 
-        update_job_result(job['id'], output, error)
+        update_job_result(job['id'], output, None if result_status == 'completed' else error)
         production_result = update_result(
             production_result['id'],
             status=result_status,
             output=output,
-            error=error if result_status == 'failed' else error,
+            error='' if result_status == 'completed' else error,
         )
 
-        # Asset binding can downgrade a completed remote response to failed.
         result_status = production_result.get('status', result_status)
         output = production_result.get('output', output)
         error = production_result.get('error', error)
