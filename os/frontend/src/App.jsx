@@ -9,6 +9,7 @@ import {
  getProductionProviders,
  getProductionStatus,
  getProductionTasks,
+ getYouTubeOAuthStatus,
  runProductionTask,
 } from "./api";
 import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";
@@ -25,6 +26,7 @@ export default function App(){
  const [metrics,setMetrics]=useState([]);
  const [accounts,setAccounts]=useState([]);
  const [accountReadiness,setAccountReadiness]=useState({});
+ const [youtubeOAuthStatus,setYouTubeOAuthStatus]=useState(null);
  const [newYouTubeAccount,setNewYouTubeAccount]=useState("");
  const [oauthMessage,setOAuthMessage]=useState("");
  const [productionStatus,setProductionStatus]=useState(null);
@@ -66,6 +68,9 @@ export default function App(){
   apiGet('/publish/tasks').then(setTasks).catch(()=>{});
   apiGet('/publish/platforms').then(setPlatforms).catch(()=>{});
   apiGet('/analytics/metrics/current').then(setMetrics).catch(()=>{});
+  getYouTubeOAuthStatus().then(setYouTubeOAuthStatus).catch(error=>{
+   setYouTubeOAuthStatus({configured:false,reason:error.message});
+  });
   refreshAccounts();
   refreshProduction();
  },[]);
@@ -97,6 +102,16 @@ export default function App(){
  };
 
  const connectYouTube=(accountId)=>{
+  if (youtubeOAuthStatus && youtubeOAuthStatus.configured === false) {
+   const missing=(youtubeOAuthStatus.missing_configuration || []).join(", ");
+   setOAuthMessage(
+    missing
+     ? `YouTube OAuth configuration is incomplete: ${missing}`
+     : "YouTube OAuth configuration is incomplete."
+   );
+   return;
+  }
+
   setOAuthMessage("Opening Google authorization...");
   beginYouTubeOAuth(accountId,"full")
    .then(result=>{
@@ -113,6 +128,8 @@ export default function App(){
   <h2>System Status</h2><pre>{JSON.stringify(system,null,2)}</pre>
 
   <h2>Platform Accounts</h2>
+  <h3>YouTube OAuth Readiness</h3>
+  <pre>{JSON.stringify(youtubeOAuthStatus || {status:"checking"},null,2)}</pre>
   <div>
    <input
     value={newYouTubeAccount}
@@ -126,7 +143,10 @@ export default function App(){
    <strong>{account.platform}: {account.account_name}</strong>
    <span> — {account.status}</span>
    {String(account.platform || "").toLowerCase() === "youtube" && <>
-    <button onClick={()=>connectYouTube(account.id)}>
+    <button
+     onClick={()=>connectYouTube(account.id)}
+     disabled={youtubeOAuthStatus?.configured === false}
+    >
      Connect YouTube (Publish + Analytics)
     </button>
     <pre>{JSON.stringify(accountReadiness[account.id] || {status:"checking"},null,2)}</pre>
