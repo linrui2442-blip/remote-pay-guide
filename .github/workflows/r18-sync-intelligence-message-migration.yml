@@ -1,0 +1,79 @@
+name: R18 Sync Intelligence Message Migration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/r18-sync-intelligence-message-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-sync-message:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update unified sync message
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('os/frontend/src/App.jsx')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  'setOAuthMessage(`正在同步 ${platformLabel(platform)}：内容 → 账号 Analytics → ACTIVE 内容 Analytics…`);',
+                  'setOAuthMessage(`正在同步 ${platformLabel(platform)}：内容 → Analytics → AI Intelligence…`);',
+              ),
+              (
+                  'const analytics = result.results?.find((item) => item.operation === "analytics_sync")?.result;\n      const firstFailure',
+                  'const analytics = result.results?.find((item) => item.operation === "analytics_sync")?.result;\n      const intelligence = result.results?.find((item) => item.operation === "intelligence_feedback")?.result;\n      const firstFailure',
+              ),
+              (
+                  '      if (result.status === "partial") {',
+                  '      if (intelligence) {\n        parts.push(`Intelligence 新策略 ${intelligence.generated ?? 0}，复用 ${intelligence.reused ?? 0}`);\n      }\n      if ((result.skipped ?? 0) > 0) {\n        parts.push("Intelligence 因上游失败未刷新");\n      }\n      if (result.status === "partial") {',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one App match, found {count}: {old[:80]}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: os/frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: os/frontend
+        run: npm run build
+
+      - name: Verify Intelligence sync messaging
+        run: |
+          grep -q 'item.operation === "intelligence_feedback"' os/frontend/src/App.jsx
+          grep -q 'Intelligence 新策略' os/frontend/src/App.jsx
+          grep -q '内容 → Analytics → AI Intelligence' os/frontend/src/App.jsx
+
+      - name: Commit migration and remove one-shot workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/r18-sync-intelligence-message-migration.yml
+          git add os/frontend/src/App.jsx
+          git commit -m 'Report Intelligence feedback in unified sync'
+          git push origin HEAD:main
