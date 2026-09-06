@@ -50,7 +50,11 @@ jobs:
 
               import main
 
-              route_paths = {route.path for route in main.app.routes}
+              route_paths = {
+                  route.path
+                  for route in main.app.routes
+                  if getattr(route, 'path', None)
+              }
               assert '/accounts' in route_paths
               assert '/accounts/{account_id}' in route_paths
               assert '/ai/request' in route_paths
