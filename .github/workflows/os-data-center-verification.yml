@@ -6,6 +6,7 @@ on:
     paths:
       - 'os/backend/data/**'
       - 'os/backend/analytics/**'
+      - 'os/backend/production/**'
       - 'os/backend/routers/data.py'
       - 'os/backend/routers/analytics.py'
       - '.github/workflows/os-data-center-verification.yml'
