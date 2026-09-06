@@ -18,6 +18,9 @@ from oauth.manager import (
     create_oauth_state,
 )
 from oauth.providers.youtube import (
+    YOUTUBE_ANALYTICS_SCOPE,
+    YOUTUBE_READ_SCOPE,
+    YOUTUBE_UPLOAD_SCOPE,
     YouTubeOAuthConfigurationError,
     YouTubeOAuthProvider,
 )
@@ -161,6 +164,7 @@ def test_oauth_pkce_verifier_survives_redirect_boundary():
     query = parse_qs(urlparse(result["authorization_url"]).query)
     assert query.get("code_challenge")
     assert query.get("code_challenge_method") == ["S256"]
+    assert query.get("include_granted_scopes") == ["false"]
 
     create_oauth_state(
         43,
@@ -180,6 +184,53 @@ def test_oauth_pkce_verifier_survives_redirect_boundary():
     )
     assert "code_verifier=code_verifier" in source
     assert "autogenerate_code_verifier=False" in source
+
+
+def test_oauth_scope_superset_is_accepted_but_required_scopes_are_enforced():
+    provider = YouTubeOAuthProvider(
+        client_id="r3-test.apps.googleusercontent.com",
+        client_secret="r3-test-secret",
+        redirect_uri="http://localhost:5173/oauth/youtube/callback",
+        scope_profile="full",
+    )
+
+    class FakeFlow:
+        def fetch_token(self, code):
+            assert code == "r3-auth-code"
+            assert os.getenv("OAUTHLIB_RELAX_TOKEN_SCOPE") == "1"
+            return {
+                "scope": " ".join(
+                    [
+                        YOUTUBE_UPLOAD_SCOPE,
+                        YOUTUBE_READ_SCOPE,
+                        YOUTUBE_ANALYTICS_SCOPE,
+                        "openid",
+                        "https://www.googleapis.com/auth/userinfo.email",
+                    ]
+                )
+            }
+
+    previous = os.environ.pop("OAUTHLIB_RELAX_TOKEN_SCOPE", None)
+    try:
+        _token, scopes = provider._fetch_token_allowing_scope_superset(
+            FakeFlow(),
+            "r3-auth-code",
+        )
+        assert YOUTUBE_UPLOAD_SCOPE in scopes
+        assert YOUTUBE_READ_SCOPE in scopes
+        assert YOUTUBE_ANALYTICS_SCOPE in scopes
+        assert "openid" in scopes
+        assert os.getenv("OAUTHLIB_RELAX_TOKEN_SCOPE") is None
+    finally:
+        if previous is not None:
+            os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = previous
+
+    try:
+        provider._validate_granted_scopes([YOUTUBE_UPLOAD_SCOPE])
+    except ValueError as exc:
+        assert "missing required scopes" in str(exc)
+    else:
+        raise AssertionError("missing required OAuth scopes must be rejected")
 
 
 def test_oauth_provider_is_not_mocked():
@@ -222,6 +273,7 @@ def main():
     test_uncredentialed_account_failure_without_upload()
     test_oauth_state_is_single_use()
     test_oauth_pkce_verifier_survives_redirect_boundary()
+    test_oauth_scope_superset_is_accepted_but_required_scopes_are_enforced()
     test_oauth_provider_is_not_mocked()
     test_no_postiz_import_in_os_publish_path()
     print("R3 readiness smoke tests passed")
@@ -230,6 +282,7 @@ def main():
     print("Missing OAuth credential -> failed")
     print("OAuth state -> single-use")
     print("OAuth PKCE verifier -> persisted across redirect and single-use")
+    print("OAuth scope superset -> accepted only when all OS-required scopes are present")
     print("YouTube OAuth provider -> real implementation, no mock tokens")
     print("OS publish path Postiz references -> none")
 
