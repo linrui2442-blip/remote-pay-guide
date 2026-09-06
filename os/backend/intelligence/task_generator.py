@@ -1,3 +1,5 @@
+from dataclasses import asdict, is_dataclass
+
 from production.tasks.manager import create_task
 from production.tasks.models import ProductionTask
 
@@ -9,32 +11,53 @@ def select_provider(task_type: str) -> str:
     return "github"
 
 
+def _to_dict(value):
+    if isinstance(value, dict):
+        return value
+    if is_dataclass(value):
+        return asdict(value)
+    return {}
+
+
 def generate_production_task(insight):
-    """Convert Intelligence Insight into a unified ProductionTask."""
+    """Convert Intelligence Insight or ProductionStrategy into ProductionTask."""
+    data = _to_dict(insight)
 
-    recommendations = []
-    if isinstance(insight, dict):
-        recommendations = insight.get("recommendations", []) or []
+    recommendations = data.get("recommendations", []) or []
+    parameters = dict(data.get("parameters", {}) or {})
+    if not recommendations:
+        recommendations = parameters.get("recommendations", []) or []
 
-    text = " ".join(recommendations).lower()
+    text = " ".join(str(item) for item in recommendations).lower()
+    task_type = parameters.get("task_type")
+    if not task_type:
+        task_type = "ai_video" if "ai video" in text or "generate video" in text else "video_batch"
 
-    task_type = "ai_video" if "ai video" in text or "generate video" in text else "video_batch"
-    provider = select_provider(task_type)
+    suggested_provider = data.get("provider_suggestion")
+    provider = (
+        suggested_provider
+        if suggested_provider in {"github", "ai_gateway"}
+        else select_provider(task_type)
+    )
+
+    objective = data.get("objective") or (
+        "create content based on intelligence recommendation"
+        if data
+        else "create short video about remote payment education"
+    )
+    template = data.get("template_recommendation") or data.get("template") or "short_video_template"
+    resources = data.get("resources", []) or []
+
+    parameters.setdefault("task_type", task_type)
+    parameters.setdefault("intelligence_input", data or insight)
 
     task = ProductionTask(
         source="ai_intelligence",
-        objective=(
-            "create short video about remote payment education"
-            if not isinstance(insight, dict)
-            else "create content based on intelligence recommendation"
-        ),
+        objective=objective,
         provider=provider,
-        template="short_video_template",
-        parameters={
-            "task_type": task_type,
-            "insight": insight,
-        },
-        resources=[],
+        template=template,
+        parameters=parameters,
+        resources=resources,
         priority=0,
     )
 
