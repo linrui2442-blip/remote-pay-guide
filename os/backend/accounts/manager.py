@@ -1,11 +1,19 @@
+import os
 import sqlite3
 from datetime import datetime
 
 DB_PATH = "os/database/os.db"
 
 
-def _init_db():
+def _connect():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_db():
+    conn = _connect()
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS accounts (
@@ -27,7 +35,7 @@ def _init_db():
 def create_account(account):
     _init_db()
     now = datetime.utcnow().isoformat()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     cursor = conn.execute(
         """
         INSERT INTO accounts
@@ -52,17 +60,17 @@ def create_account(account):
 
 def get_accounts():
     _init_db()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     rows = conn.execute(
         "SELECT id, platform, account_name, status FROM accounts"
     ).fetchall()
     conn.close()
     return [
         {
-            "id": row[0],
-            "platform": row[1],
-            "account_name": row[2],
-            "status": row[3],
+            "id": row["id"],
+            "platform": row["platform"],
+            "account_name": row["account_name"],
+            "status": row["status"],
         }
         for row in rows
     ]
@@ -70,28 +78,22 @@ def get_accounts():
 
 def get_account(account_id):
     _init_db()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     row = conn.execute(
         "SELECT id, platform, account_name, status FROM accounts WHERE id=?",
         (account_id,),
     ).fetchone()
     conn.close()
-    if not row:
-        return None
-    return {
-        "id": row[0],
-        "platform": row[1],
-        "account_name": row[2],
-        "status": row[3],
-    }
+    return dict(row) if row else None
 
 
 def update_account_status(account_id, status):
     _init_db()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     conn.execute(
         "UPDATE accounts SET status=?, updated_at=? WHERE id=?",
         (status, datetime.utcnow().isoformat(), account_id),
     )
     conn.commit()
     conn.close()
+    return get_account(account_id)

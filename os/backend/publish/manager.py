@@ -1,3 +1,5 @@
+import json
+import os
 import sqlite3
 from datetime import datetime
 
@@ -5,6 +7,7 @@ DB_PATH = "os/database/os.db"
 
 
 def _connect():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -23,6 +26,10 @@ def _init_db():
             account_id INTEGER,
             status TEXT,
             scheduled_time TEXT,
+            title TEXT,
+            description TEXT,
+            tags TEXT,
+            privacy_status TEXT,
             platform_video_id TEXT,
             published_url TEXT,
             error_message TEXT,
@@ -36,20 +43,52 @@ def _init_db():
     migrations = {
         "asset_id": "TEXT",
         "account_id": "INTEGER",
+        "title": "TEXT",
+        "description": "TEXT",
+        "tags": "TEXT",
+        "privacy_status": "TEXT",
         "platform_video_id": "TEXT",
         "published_url": "TEXT",
         "error_message": "TEXT",
+        "created_at": "TEXT",
+        "updated_at": "TEXT",
     }
     for name, field_type in migrations.items():
         if name not in columns:
             cursor.execute(f"ALTER TABLE publish_tasks ADD COLUMN {name} {field_type}")
 
+    cursor.execute("UPDATE publish_tasks SET description='' WHERE description IS NULL")
+    cursor.execute("UPDATE publish_tasks SET tags='[]' WHERE tags IS NULL OR tags=''")
+    cursor.execute(
+        "UPDATE publish_tasks SET privacy_status='private' "
+        "WHERE privacy_status IS NULL OR privacy_status=''"
+    )
     conn.commit()
     conn.close()
 
 
 def _serialize(row):
-    return dict(row) if row else None
+    if not row:
+        return None
+    data = dict(row)
+    raw_tags = data.get("tags")
+    if isinstance(raw_tags, list):
+        data["tags"] = raw_tags
+    else:
+        try:
+            parsed = json.loads(raw_tags or "[]")
+            data["tags"] = parsed if isinstance(parsed, list) else []
+        except (TypeError, ValueError, json.JSONDecodeError):
+            data["tags"] = []
+    data["description"] = data.get("description") or ""
+    data["privacy_status"] = data.get("privacy_status") or "private"
+    return data
+
+
+def _task_value(task, name, default=None):
+    if isinstance(task, dict):
+        return task.get(name, default)
+    return getattr(task, name, default)
 
 
 def create_publish_task(task):
@@ -60,16 +99,20 @@ def create_publish_task(task):
         """
         INSERT INTO publish_tasks
         (asset_id, video_id, platform, account_id, status, scheduled_time,
-         created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         title, description, tags, privacy_status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            getattr(task, "asset_id", None),
-            getattr(task, "video_id", None),
-            task.platform,
-            getattr(task, "account_id", None),
-            task.status,
-            task.scheduled_time,
+            _task_value(task, "asset_id"),
+            _task_value(task, "video_id"),
+            _task_value(task, "platform"),
+            _task_value(task, "account_id"),
+            _task_value(task, "status", "pending"),
+            _task_value(task, "scheduled_time"),
+            _task_value(task, "title"),
+            _task_value(task, "description", "") or "",
+            json.dumps(_task_value(task, "tags", []) or [], ensure_ascii=False),
+            _task_value(task, "privacy_status", "private") or "private",
             now,
             now,
         ),
@@ -96,7 +139,13 @@ def get_publish_task(task_id):
     return _serialize(row)
 
 
-def update_publish_status(task_id, status, platform_video_id=None, published_url=None, error_message=None):
+def update_publish_status(
+    task_id,
+    status,
+    platform_video_id=None,
+    published_url=None,
+    error_message=None,
+):
     _init_db()
     conn = _connect()
     conn.execute(

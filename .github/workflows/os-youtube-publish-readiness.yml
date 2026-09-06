@@ -1,0 +1,62 @@
+name: OS YouTube Publish Readiness
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'os/backend/publish/**'
+      - 'os/backend/oauth/**'
+      - 'os/backend/accounts/manager.py'
+      - 'os/backend/routers/oauth.py'
+      - 'os/backend/tests/r3_youtube_readiness_smoke.py'
+      - '.github/workflows/os-youtube-publish-readiness.yml'
+
+jobs:
+  youtube-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Remote Pay Guide
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: python -m pip install --disable-pip-version-check -r os/backend/requirements.txt
+
+      - name: Run YouTube publishing readiness smoke tests
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r3_youtube_readiness_smoke.py
+
+      - name: Report external OAuth client configuration
+        shell: bash
+        env:
+          YOUTUBE_OAUTH_CLIENT_ID: ${{ secrets.YOUTUBE_OAUTH_CLIENT_ID }}
+          YOUTUBE_OAUTH_CLIENT_SECRET: ${{ secrets.YOUTUBE_OAUTH_CLIENT_SECRET }}
+          YOUTUBE_OAUTH_REDIRECT_URI: ${{ secrets.YOUTUBE_OAUTH_REDIRECT_URI }}
+        run: |
+          missing=0
+          for name in YOUTUBE_OAUTH_CLIENT_ID YOUTUBE_OAUTH_CLIENT_SECRET YOUTUBE_OAUTH_REDIRECT_URI; do
+            if [ -z "${!name}" ]; then
+              echo "$name=NOT_CONFIGURED"
+              missing=1
+            else
+              echo "$name=CONFIGURED"
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "YOUTUBE_OAUTH_CLIENT_CONFIG=NOT_READY"
+            echo "YOUTUBE_OAUTH_EXTERNAL_AUTH=REQUIRED"
+          else
+            echo "YOUTUBE_OAUTH_CLIENT_CONFIG=READY"
+            echo "YOUTUBE_OAUTH_USER_CREDENTIAL=NOT_VERIFIED_IN_EPHEMERAL_RUNNER"
+          fi

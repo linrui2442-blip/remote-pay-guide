@@ -1,11 +1,13 @@
 from assets.manager import get_asset, get_asset_by_asset_id
+from publish.asset_resolver import AssetResolver, AssetResolutionError
 from publish.manager import get_publish_task, update_publish_status
 from publish.registry import get_adapter
 
 
 class PublishWorker:
-    def __init__(self, queue):
+    def __init__(self, queue, asset_resolver=None):
         self.queue = queue
+        self.asset_resolver = asset_resolver or AssetResolver()
 
     def _resolve_asset(self, task):
         asset_id = task.get("asset_id")
@@ -19,6 +21,8 @@ class PublishWorker:
             asset = get_asset(video_id)
             if asset:
                 return asset
+            # Preserve legacy video_id fallback. A real path/URL must still be
+            # resolvable by the platform-specific adapter path.
             return {
                 "asset_id": None,
                 "video_id": video_id,
@@ -27,6 +31,31 @@ class PublishWorker:
                 "location": video_id,
             }
         return None
+
+    def _publish_youtube(self, adapter, asset, task):
+        prepared = None
+        try:
+            prepared = self.asset_resolver.prepare(asset)
+            return adapter.publish_video(
+                asset,
+                task.get("account_id"),
+                video_path=prepared.file_path,
+                title=(
+                    task.get("title")
+                    or asset.get("video_id")
+                    or task.get("video_id")
+                    or task.get("asset_id")
+                    or "Remote Pay Guide"
+                ),
+                description=task.get("description") or "",
+                tags=task.get("tags") or [],
+                privacy_status=task.get("privacy_status") or "private",
+            )
+        except AssetResolutionError as exc:
+            return {"status": "failed", "error": str(exc)}
+        finally:
+            if prepared:
+                prepared.cleanup()
 
     def run_once(self):
         processed = 0
@@ -38,32 +67,29 @@ class PublishWorker:
 
             adapter = get_adapter(task.get("platform"))
             if not adapter:
-                update_publish_status(task_id, "failed", error_message="unsupported platform")
+                update_publish_status(
+                    task_id, "failed", error_message="unsupported platform"
+                )
                 self.queue.remove_task(task_id)
                 processed += 1
                 continue
 
             asset = self._resolve_asset(task)
             if not asset:
-                update_publish_status(task_id, "failed", error_message="video asset not found")
+                update_publish_status(
+                    task_id, "failed", error_message="video asset not found"
+                )
                 self.queue.remove_task(task_id)
                 processed += 1
                 continue
 
             update_publish_status(task_id, "publishing")
-            account_id = task.get("account_id")
 
             try:
                 if task.get("platform") == "youtube":
-                    video_reference = asset.get("file_path") or asset.get("asset_url") or asset.get("location")
-                    result = adapter.publish_video(
-                        asset,
-                        account_id,
-                        video_path=video_reference,
-                        title=asset.get("video_id") or task.get("video_id") or task.get("asset_id"),
-                    )
+                    result = self._publish_youtube(adapter, asset, task)
                 else:
-                    result = adapter.publish_video(asset, account_id)
+                    result = adapter.publish_video(asset, task.get("account_id"))
             except Exception as exc:
                 result = {"status": "failed", "error": str(exc)}
 
