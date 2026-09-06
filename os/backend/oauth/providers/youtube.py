@@ -123,6 +123,7 @@ class YouTubeOAuthProvider:
             self._client_config(),
             scopes=self.scopes,
             state=state,
+            autogenerate_code_verifier=True,
         )
         flow.redirect_uri = self.redirect_uri
         authorization_url, generated_state = flow.authorization_url(
@@ -134,11 +135,12 @@ class YouTubeOAuthProvider:
         return {
             "authorization_url": authorization_url,
             "state": generated_state,
+            "code_verifier": flow.code_verifier,
             "scope_profile": self.scope_profile,
             "scopes": self.scopes,
         }
 
-    def exchange_code(self, authorization_code: str, state=None):
+    def exchange_code(self, authorization_code: str, state=None, code_verifier=None):
         from google_auth_oauthlib.flow import Flow
 
         if not authorization_code:
@@ -148,6 +150,11 @@ class YouTubeOAuthProvider:
             self._client_config(),
             scopes=self.scopes,
             state=state,
+            code_verifier=code_verifier,
+            # A callback constructs a new Flow instance. Never generate a new
+            # verifier here: the verifier must match the challenge from the
+            # authorization request.
+            autogenerate_code_verifier=False,
         )
         flow.redirect_uri = self.redirect_uri
         flow.fetch_token(code=authorization_code)
