@@ -15,6 +15,7 @@ from data.growth import record_conversion, record_intent
 from data.models import ConversionRecord, IntentEvent
 from intelligence.feedback_bridge import (
     get_latest_account_feedback,
+    materialize_feedback_task,
     refresh_account_feedback,
 )
 from production.tasks.manager import get_tasks
@@ -124,10 +125,26 @@ def main():
     assert latest[0]['strategy']['parameters']['strategy_type'] == 'scale_conversion_winner'
     assert get_tasks() == []
 
+    # Materialization is a separate explicit action. It creates a ProductionTask
+    # but does not schedule/run it, and the same snapshot is idempotent.
+    created = materialize_feedback_task(latest[0]['id'])
+    assert created['created'] is True
+    task = created['production_task']
+    assert task['source'] == 'ai_intelligence'
+    assert task['status'] == 'created'
+    assert task['parameters']['intelligence_snapshot_id'] == latest[0]['id']
+    assert task['parameters']['source_content_id'] == 'winner-content'
+
+    reused = materialize_feedback_task(latest[0]['id'])
+    assert reused['created'] is False
+    assert reused['production_task']['id'] == task['id']
+    assert len(get_tasks()) == 1
+
     print('Intelligence feedback bridge smoke test passed')
     print('Data Center ACTIVE rows -> feedback -> strategy snapshot')
     print('Conversion winner outranks higher-traffic vanity winner')
-    print('Unchanged snapshots are de-duplicated; no ProductionTask auto-created')
+    print('Refresh is de-duplicated; ProductionTask requires explicit materialization')
+    print('Explicit materialization is idempotent and leaves task in created state')
 
 
 if __name__ == '__main__':
