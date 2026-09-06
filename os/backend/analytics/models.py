@@ -24,3 +24,13 @@ class AnalyticsMetric(BaseModel):
     # remain first-class fields for compatibility with the current Data Center.
     metrics: dict = Field(default_factory=dict)
     collected_at: str | None = None
+
+
+class AccountAnalyticsMetric(BaseModel):
+    platform: str
+    account_id: int
+    source: str | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+    metrics: dict = Field(default_factory=dict)
+    collected_at: str | None = None
