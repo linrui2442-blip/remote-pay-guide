@@ -6,6 +6,7 @@ import {
   createAccount,
   createProductionTask,
   getAccounts,
+  getAIGatewaySettings,
   getAnalyticsCollectorStatus,
   getNetworkProxySettings,
   getProductionProviders,
@@ -13,6 +14,7 @@ import {
   getProductionTasks,
   getPublishTasks,
   runProductionTask,
+  saveAIGatewaySettings,
   saveNetworkProxySettings,
   syncAccountAll,
 } from "./api";
@@ -177,6 +179,16 @@ function App() {
   const [proxyUrl, setProxyUrl] = useState("");
   const [proxyMessage, setProxyMessage] = useState("");
   const [savingProxy, setSavingProxy] = useState(false);
+  const [aiGatewaySettings, setAIGatewaySettings] = useState({
+    video_url: "",
+    source: "none",
+    configured: false,
+    api_key_configured: false,
+    local_inference: false,
+  });
+  const [aiGatewayUrl, setAIGatewayUrl] = useState("");
+  const [aiGatewayMessage, setAIGatewayMessage] = useState("");
+  const [savingAIGateway, setSavingAIGateway] = useState(false);
 
   const refreshProduction = () => {
     getProductionStatus().then(setProductionStatus).catch(() => {});
@@ -223,6 +235,15 @@ function App() {
       .catch((error) => setProxyMessage(error.message));
   };
 
+  const refreshAIGateway = () => {
+    getAIGatewaySettings()
+      .then((settings) => {
+        setAIGatewaySettings(settings);
+        setAIGatewayUrl(settings.video_url || "");
+      })
+      .catch((error) => setAIGatewayMessage(error.message));
+  };
+
   useEffect(() => {
     apiGet("/").then(setSystem).catch(() => setSystem({ status: "offline" }));
     apiGet("/assets").then(setAssets).catch(() => {});
@@ -232,6 +253,7 @@ function App() {
     refreshAccounts();
     refreshProduction();
     refreshProxy();
+    refreshAIGateway();
   }, []);
 
   const createTask = () => {
@@ -394,6 +416,28 @@ function App() {
       setProxyMessage(error.message);
     } finally {
       setSavingProxy(false);
+    }
+  };
+
+  const saveAIGateway = async () => {
+    try {
+      setSavingAIGateway(true);
+      setAIGatewayMessage("正在保存 AI Gateway 远程端点…");
+      const result = await saveAIGatewaySettings({
+        video_url: aiGatewayUrl.trim() || null,
+      });
+      setAIGatewaySettings(result);
+      setAIGatewayUrl(result.video_url || "");
+      setAIGatewayMessage(
+        result.configured
+          ? "AI Gateway 远程视频端点已保存，生产运行时已立即读取新配置。"
+          : "AI Gateway 远程视频端点已清除；AI 视频任务会保持未就绪，不会回退到本地模型。"
+      );
+      refreshProduction();
+    } catch (error) {
+      setAIGatewayMessage(error.message);
+    } finally {
+      setSavingAIGateway(false);
     }
   };
 
@@ -634,7 +678,7 @@ function App() {
   const renderSettings = () => (
     <>
       <div className="page-heading compact">
-        <div><span className="eyebrow">SETTINGS</span><h1>系统设置</h1><p>配置 Remote Pay Guide OS 后端访问外部平台时使用的网络代理。</p></div>
+        <div><span className="eyebrow">SETTINGS</span><h1>系统设置</h1><p>配置网络代理与 AI Remote Production 的远程网关。敏感 API Key 不在这里保存。</p></div>
       </div>
 
       <section className="panel settings-panel">
@@ -683,6 +727,42 @@ function App() {
       <section className="panel">
         <div className="panel-header"><div><span className="section-kicker">NOTE</span><h2>使用方式</h2></div></div>
         <p className="muted">这里的代理只用于 OS 后端访问 Google、YouTube 以及未来接入的平台 API，不会改变你整个 Windows 的代理设置。保存后立即生效；下次启动 OS 会继续使用这里保存的配置。</p>
+      </section>
+
+
+      <section className="panel">
+        <div className="panel-header">
+          <div><span className="section-kicker">AI REMOTE PRODUCTION</span><h2>AI Gateway</h2></div>
+          <Badge tone={aiGatewaySettings.configured ? "success" : "neutral"}>
+            {aiGatewaySettings.configured ? "远程端点已配置" : "待配置"}
+          </Badge>
+        </div>
+
+        <div className="settings-form">
+          <label className="setting-field">
+            <span>视频生成 Relay / Gateway URL</span>
+            <input
+              value={aiGatewayUrl}
+              onChange={(event) => setAIGatewayUrl(event.target.value)}
+              placeholder="https://your-relay.example/v1/video"
+            />
+            <small>只保存非敏感端点地址。生产请求路径：OS → AI Gateway / Relay → 外部 AI 视频服务。</small>
+          </label>
+
+          <div className="setting-field">
+            <span>运行时安全状态</span>
+            <div className="muted">
+              配置来源：{aiGatewaySettings.source || "none"} · API Key：{aiGatewaySettings.api_key_configured ? "进程环境已配置" : "未配置"} · 本地推理：禁用
+            </div>
+            <small>API Key 只允许通过后端进程环境提供，不写入 SQLite、不回传前端。系统不会使用本地 GPU / 本地模型兜底。</small>
+          </div>
+
+          <button className="primary-button" onClick={saveAIGateway} disabled={savingAIGateway}>
+            {savingAIGateway ? "保存中…" : "保存 AI Gateway"}
+          </button>
+        </div>
+
+        {aiGatewayMessage ? <div className="notice">{aiGatewayMessage}</div> : null}
       </section>
     </>
   );
