@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from analytics.manager import get_account_video_metrics
@@ -10,6 +10,7 @@ from publish.manager import get_publish_tasks
 
 DB_PATH = Path("os/database/os.db")
 DEFAULT_ACTIVE_LIMIT = 10
+DEFAULT_ARCHIVE_AFTER_DAYS = 90
 TRACKING_STATES = {"active", "historical", "archived"}
 
 
@@ -93,6 +94,19 @@ def _iso_timestamp(value):
         return parsed.timestamp()
     except (TypeError, ValueError):
         return 0.0
+
+
+def _parse_datetime(value):
+    if not value:
+        return None
+    try:
+        normalized = str(value).strip().replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 def _task_metadata(task):
@@ -214,13 +228,94 @@ def _upsert_history_summary(record):
         conn.commit()
 
 
-def refresh_tracking_policy(account_id, platform, active_limit=DEFAULT_ACTIVE_LIMIT):
-    """Refresh Active/Historical tracking state for one bound platform account.
+def archive_stale_historical(
+    account_id,
+    platform=None,
+    *,
+    archive_after_days=DEFAULT_ARCHIVE_AFTER_DAYS,
+    now=None,
+):
+    """Move stale, non-converting historical content into ARCHIVED.
+
+    ARCHIVED is deliberately a storage policy, not deletion. The compact
+    lifecycle summary remains available to Data Center / AI, while the item is
+    kept out of active Analytics collection. A historical item is eligible only
+    after it has stayed outside ACTIVE for the configured period and has no
+    referral clicks or attributed conversions. Proven commercial winners are
+    therefore retained as HISTORICAL even when old.
+    """
+    _ensure_tables()
+    normalized_platform = _normalize_platform(platform) or None
+    archive_after_days = max(1, int(archive_after_days or DEFAULT_ARCHIVE_AFTER_DAYS))
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    cutoff = current_time.astimezone(timezone.utc) - timedelta(days=archive_after_days)
+
+    clauses = ["t.account_id=?", "t.state='historical'", "t.pinned=0"]
+    params = [account_id]
+    if normalized_platform:
+        clauses.append("t.platform=?")
+        params.append(normalized_platform)
+
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT t.platform_video_id, t.left_active_at,
+                   COALESCE(h.referral_clicks, 0) AS referral_clicks,
+                   COALESCE(h.conversions, 0) AS conversions
+            FROM content_tracking t
+            LEFT JOIN content_history_summary h
+              ON h.account_id=t.account_id
+             AND h.platform=t.platform
+             AND h.platform_video_id=t.platform_video_id
+            WHERE {' AND '.join(clauses)}
+            """,
+            tuple(params),
+        ).fetchall()
+
+        archived_ids = []
+        updated_at = current_time.astimezone(timezone.utc).isoformat()
+        for row in rows:
+            left_active_at = _parse_datetime(row["left_active_at"])
+            if left_active_at is None or left_active_at > cutoff:
+                continue
+            if int(row["referral_clicks"] or 0) > 0 or int(row["conversions"] or 0) > 0:
+                continue
+            conn.execute(
+                """
+                UPDATE content_tracking
+                SET state='archived', updated_at=?
+                WHERE account_id=? AND platform_video_id=?
+                  AND state='historical' AND pinned=0
+                """,
+                (updated_at, account_id, row["platform_video_id"]),
+            )
+            archived_ids.append(row["platform_video_id"])
+        conn.commit()
+
+    return {
+        "account_id": account_id,
+        "platform": normalized_platform,
+        "archive_after_days": archive_after_days,
+        "archived": len(archived_ids),
+        "archived_video_ids": archived_ids,
+    }
+
+
+def refresh_tracking_policy(
+    account_id,
+    platform,
+    active_limit=DEFAULT_ACTIVE_LIMIT,
+    archive_after_days=DEFAULT_ARCHIVE_AFTER_DAYS,
+):
+    """Refresh Active/Historical/Archived tracking state for one account.
 
     The newest ``active_limit`` published items stay ACTIVE. Manually pinned
     items remain ACTIVE even after they fall outside the newest window. Items
-    leaving ACTIVE become HISTORICAL; their latest traffic/conversion outcome
-    is summarized without deleting raw historical data.
+    leaving ACTIVE become HISTORICAL and receive a compact lifecycle summary.
+    Historical items that remain outside ACTIVE for the archive window and have
+    no referral/conversion signal become ARCHIVED; summaries are never deleted.
     """
     _ensure_tables()
     normalized_platform = _normalize_platform(platform)
@@ -255,7 +350,12 @@ def refresh_tracking_policy(account_id, platform, active_limit=DEFAULT_ACTIVE_LI
             old = existing.get(video_id)
             previous_state = old.get("state") if old else None
             pinned = bool(old.get("pinned")) if old else False
-            state = "active" if video_id in active_ids else "historical"
+            if video_id in active_ids:
+                state = "active"
+            elif previous_state == "archived":
+                state = "archived"
+            else:
+                state = "historical"
             first_tracked_at = old.get("first_tracked_at") if old else now
             last_active_at = now if state == "active" else (old or {}).get("last_active_at")
             left_active_at = (old or {}).get("left_active_at")
@@ -295,7 +395,7 @@ def refresh_tracking_policy(account_id, platform, active_limit=DEFAULT_ACTIVE_LI
                 ),
             )
 
-            if state == "historical" and previous_state != "historical":
+            if state == "historical" and previous_state not in {"historical", "archived"}:
                 transitioned_to_history.append(
                     {
                         "account_id": account_id,
@@ -308,11 +408,18 @@ def refresh_tracking_policy(account_id, platform, active_limit=DEFAULT_ACTIVE_LI
     for record in transitioned_to_history:
         _upsert_history_summary(record)
 
+    archive_stale_historical(
+        account_id,
+        normalized_platform,
+        archive_after_days=archive_after_days,
+    )
+
     records = get_tracking_records(account_id, normalized_platform)
     return {
         "account_id": account_id,
         "platform": normalized_platform,
         "active_limit": active_limit,
+        "archive_after_days": archive_after_days,
         "active": len([item for item in records if item["state"] == "active"]),
         "historical": len([item for item in records if item["state"] == "historical"]),
         "archived": len([item for item in records if item["state"] == "archived"]),
@@ -368,10 +475,11 @@ def set_tracking_pinned(account_id, platform, platform_video_id, pinned=True, ac
         cursor = conn.execute(
             """
             UPDATE content_tracking
-            SET pinned=?, updated_at=?
+            SET pinned=?, state=CASE WHEN ?=1 THEN 'active' ELSE state END, updated_at=?
             WHERE account_id=? AND platform=? AND platform_video_id=?
             """,
             (
+                int(bool(pinned)),
                 int(bool(pinned)),
                 datetime.now(timezone.utc).isoformat(),
                 account_id,
