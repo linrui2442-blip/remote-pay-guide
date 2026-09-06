@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   apiGet,
-  beginYouTubeOAuth,
-  collectAccountAnalytics,
+  beginPlatformOAuth,
   collectPublishTaskAnalytics,
   createAccount,
   createProductionTask,
@@ -13,10 +12,9 @@ import {
   getProductionStatus,
   getProductionTasks,
   getPublishTasks,
-  getYouTubeOAuthStatus,
   runProductionTask,
   saveNetworkProxySettings,
-  syncAccount,
+  syncAccountAll,
 } from "./api";
 import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";
 import DataCenter from "./pages/DataCenter.jsx";
@@ -38,7 +36,6 @@ const PLATFORM_LABELS = {
   tiktok: "TikTok",
 };
 
-const PLATFORM_CONNECTORS = { youtube: "google_oauth" };
 
 function platformLabel(name) {
   const key = String(name || "").toLowerCase();
@@ -104,28 +101,33 @@ function PlatformPicker({ platforms, onClose, onSelect, connectingPlatform }) {
           {platforms.map((item) => {
             const name = String(item.platform || "").toLowerCase();
             const capability = item.capabilities || {};
-            const connector = PLATFORM_CONNECTORS[name];
+            const runtime = item.runtime || {};
+            const connector = runtime.account_connector;
+            const connectable = Boolean(runtime.account_connector_registered);
+            const configured = connector?.configured !== false;
             const connecting = connectingPlatform === name;
             return (
               <button
                 key={name}
-                className={`platform-choice ${connector ? "connectable" : ""}`}
-                onClick={() => connector && onSelect(name)}
-                disabled={!connector || connecting}
+                className={`platform-choice ${connectable && configured ? "connectable" : ""}`}
+                onClick={() => connectable && configured && onSelect(name)}
+                disabled={!connectable || !configured || connecting}
               >
                 <span className="platform-choice-logo">{platformMark(name)}</span>
                 <span className="platform-choice-body">
                   <strong>{platformLabel(name)}</strong>
                   <small>
-                    {connector
-                      ? "点击后直接进入授权"
+                    {connectable
+                      ? configured
+                        ? "点击后直接进入授权"
+                        : "账号连接器已注册 · 配置待完成"
                       : capability.publish_supported
-                        ? "发布适配器已存在 · 账号授权待接入"
+                        ? "发布适配器已存在 · 账号连接器待接入"
                         : "当前未启用连接"}
                   </small>
                 </span>
                 <span className="platform-choice-state">
-                  {connecting ? "正在打开…" : connector ? "连接" : "待接入"}
+                  {connecting ? "正在打开…" : connectable ? configured ? "连接" : "未配置" : "待接入"}
                 </span>
               </button>
             );
@@ -156,7 +158,6 @@ function App() {
   const [analyticsMessage, setAnalyticsMessage] = useState("");
   const [accounts, setAccounts] = useState([]);
   const [accountReadiness, setAccountReadiness] = useState({});
-  const [youtubeOAuthStatus, setYouTubeOAuthStatus] = useState(null);
   const [oauthMessage, setOAuthMessage] = useState("");
   const [productionStatus, setProductionStatus] = useState(null);
   const [productionTasks, setProductionTasks] = useState([]);
@@ -165,7 +166,6 @@ function App() {
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [connectingPlatform, setConnectingPlatform] = useState("");
   const [syncingAccountId, setSyncingAccountId] = useState(null);
-  const [collectingAnalyticsAccountId, setCollectingAnalyticsAccountId] = useState(null);
   const [proxySettings, setProxySettings] = useState({ mode: "system", proxy_url: "" });
   const [proxyMode, setProxyMode] = useState("system");
   const [proxyUrl, setProxyUrl] = useState("");
@@ -190,13 +190,12 @@ function App() {
     getAccounts()
       .then(async (records) => {
         setAccounts(records);
-        const youtubeAccounts = records.filter(
-          (account) => String(account.platform || "").toLowerCase() === "youtube"
-        );
         const statuses = await Promise.all(
-          youtubeAccounts.map(async (account) => {
+          records.map(async (account) => {
+            const platform = String(account.platform || "").toLowerCase();
+            if (!platform) return [account.id, { ready: false, reason: "account has no platform" }];
             try {
-              const status = await getAnalyticsCollectorStatus("youtube", account.id);
+              const status = await getAnalyticsCollectorStatus(platform, account.id);
               return [account.id, status];
             } catch (error) {
               return [account.id, { ready: false, reason: error.message }];
@@ -224,9 +223,6 @@ function App() {
     refreshPublishTasks();
     apiGet("/publish/platforms").then(setPlatforms).catch(() => {});
     refreshAnalytics();
-    getYouTubeOAuthStatus()
-      .then(setYouTubeOAuthStatus)
-      .catch((error) => setYouTubeOAuthStatus({ configured: false, reason: error.message }));
     refreshAccounts();
     refreshProduction();
     refreshProxy();
@@ -243,22 +239,38 @@ function App() {
 
   const runTask = (id) => runProductionTask(id).then(refreshProduction);
 
-  const connectYouTube = async (accountId) => {
-    if (youtubeOAuthStatus && youtubeOAuthStatus.configured === false) {
-      const missing = (youtubeOAuthStatus.missing_configuration || []).join(", ");
+  const runtimeForPlatform = (platformName) => {
+    const normalized = String(platformName || "").toLowerCase();
+    return platforms.find(
+      (item) => String(item.platform || "").toLowerCase() === normalized
+    )?.runtime || {};
+  };
+
+  const connectPlatformAccount = async (accountId, platformName) => {
+    const platform = String(platformName || "").toLowerCase();
+    const runtime = runtimeForPlatform(platform);
+    const connector = runtime.account_connector;
+    if (!runtime.account_connector_registered) {
+      throw new Error(`${platformLabel(platform)} 账号连接器尚未接入。`);
+    }
+    if (connector?.configured === false) {
+      const missing = (connector.missing_configuration || []).join(", ");
       throw new Error(
-        missing ? `YouTube OAuth 配置不完整：${missing}` : "YouTube OAuth 配置不完整。"
+        missing
+          ? `${platformLabel(platform)} 账号连接配置不完整：${missing}`
+          : `${platformLabel(platform)} 账号连接配置不完整。`
       );
     }
-    const result = await beginYouTubeOAuth(accountId, "full");
-    if (!result?.authorization_url) throw new Error("未收到 YouTube 授权地址");
+
+    const result = await beginPlatformOAuth(platform, accountId, "full");
+    if (!result?.authorization_url) throw new Error(`未收到 ${platformLabel(platform)} 授权地址`);
     window.location.assign(result.authorization_url);
   };
 
   const addPlatform = async (platformName) => {
     const platform = String(platformName || "").toLowerCase();
-    const connector = PLATFORM_CONNECTORS[platform];
-    if (!connector) {
+    const runtime = runtimeForPlatform(platform);
+    if (!runtime.account_connector_registered) {
       setOAuthMessage(`${platformLabel(platform)} 已有平台适配器，但账号授权连接器尚未接入。`);
       setShowPlatformPicker(false);
       return;
@@ -273,7 +285,7 @@ function App() {
         status: "inactive",
       });
       setShowPlatformPicker(false);
-      await connectYouTube(account.id);
+      await connectPlatformAccount(account.id, platform);
     } catch (error) {
       setConnectingPlatform("");
       setOAuthMessage(error.message);
@@ -283,50 +295,44 @@ function App() {
 
   const reconnectAccount = (account) => {
     const platform = String(account.platform || "").toLowerCase();
-    if (platform === "youtube") {
-      setOAuthMessage("正在打开 Google 授权页面…");
-      connectYouTube(account.id).catch((error) => setOAuthMessage(error.message));
-    }
+    setOAuthMessage(`正在打开 ${platformLabel(platform)} 授权页面…`);
+    connectPlatformAccount(account.id, platform).catch((error) => setOAuthMessage(error.message));
   };
 
-  const syncPlatformAccount = async (account) => {
+  const syncFullPlatformAccount = async (account) => {
+    const platform = String(account.platform || "").toLowerCase();
     try {
       setSyncingAccountId(account.id);
-      setOAuthMessage(`正在通过 ${platformLabel(account.platform)} 官方 API 同步最新 10 条内容…`);
-      const result = await syncAccount(account.id, 10);
-      setOAuthMessage(
-        `同步完成：发现 ${result.found ?? 0} 个视频，新导入 ${result.imported ?? 0} 个，已存在 ${result.already_present ?? 0} 个。当前主动观察窗口：最新 10 条。`
-      );
+      setOAuthMessage(`正在同步 ${platformLabel(platform)}：内容 → 账号 Analytics → ACTIVE 内容 Analytics…`);
+      const result = await syncAccountAll(account.id);
+      const content = result.results?.find((item) => item.operation === "content_sync")?.result;
+      const analytics = result.results?.find((item) => item.operation === "analytics_sync")?.result;
+      const firstFailure = result.failures?.[0]?.error;
+
+      if (result.status === "failed") {
+        throw new Error(firstFailure || `${platformLabel(platform)} 同步失败`);
+      }
+
+      const parts = [];
+      if (content) {
+        parts.push(`内容发现 ${content.found ?? 0}，新导入 ${content.imported ?? 0}`);
+      }
+      if (analytics) {
+        parts.push(`Analytics 更新 ${analytics.collected ?? 0} 个 ACTIVE 内容`);
+        if (analytics.account_metric) parts.push("账号级数据已更新");
+      }
+      if (result.status === "partial") {
+        parts.push(`部分失败${firstFailure ? `：${firstFailure}` : ""}`);
+      }
+      setOAuthMessage(`同步完成：${parts.length ? parts.join("；") : "运行时任务已完成"}。`);
       apiGet("/assets").then(setAssets).catch(() => {});
       refreshPublishTasks();
+      refreshAnalytics();
+      refreshAccounts();
     } catch (error) {
       setOAuthMessage(error.message);
     } finally {
       setSyncingAccountId(null);
-    }
-  };
-
-  const syncAccountAnalytics = async (account) => {
-    const platform = String(account.platform || "").toLowerCase();
-    try {
-      setCollectingAnalyticsAccountId(account.id);
-      setOAuthMessage(`正在通过 ${platformLabel(platform)} 官方 Analytics API 同步 ACTIVE 数据…`);
-      const result = await collectAccountAnalytics(account.id, platform);
-      if ((result.failed ?? 0) > 0) {
-        const firstError = result.failures?.[0]?.error;
-        setOAuthMessage(
-          `数据同步完成：成功 ${result.collected ?? 0} 个，失败 ${result.failed ?? 0} 个${firstError ? `。首个错误：${firstError}` : ""}`
-        );
-      } else {
-        setOAuthMessage(
-          `数据同步完成：已更新 ${result.collected ?? 0} 个 ACTIVE 视频的 Analytics 数据。旧内容不会被删除。`
-        );
-      }
-      refreshAnalytics();
-    } catch (error) {
-      setOAuthMessage(error.message);
-    } finally {
-      setCollectingAnalyticsAccountId(null);
     }
   };
 
@@ -355,7 +361,7 @@ function App() {
   };
 
   const collectTaskAnalytics = (task) => {
-    setAnalyticsMessage(`正在采集发布任务 #${task.id} 的 YouTube 数据…`);
+    setAnalyticsMessage(`正在采集发布任务 #${task.id} 的 ${platformLabel(task.platform)} 数据…`);
     collectPublishTaskAnalytics(task.id)
       .then((result) => {
         setAnalyticsMessage(`采集完成：${result.video_id || task.platform_video_id}，${result.views ?? 0} 次观看。`);
@@ -364,16 +370,20 @@ function App() {
       .catch((error) => setAnalyticsMessage(error.message));
   };
 
-  const canCollectTask = (task) =>
-    String(task.platform || "").toLowerCase() === "youtube" &&
-    String(task.status || "").toLowerCase() === "published" &&
-    Boolean(task.platform_video_id) &&
-    task.account_id != null;
+  const canCollectTask = (task) => {
+    const runtime = runtimeForPlatform(task.platform);
+    return Boolean(runtime.analytics_sync_registered) &&
+      String(task.status || "").toLowerCase() === "published" &&
+      Boolean(task.platform_video_id) &&
+      task.account_id != null;
+  };
 
   const publishedCount = tasks.filter(
     (task) => String(task.status || "").toLowerCase() === "published"
   ).length;
-  const readyAccounts = accounts.filter((account) => accountReadiness[account.id]?.ready === true).length;
+  const readyAccounts = accounts.filter(
+    (account) => String(account.status || "").toLowerCase() === "connected" || accountReadiness[account.id]?.ready === true
+  ).length;
   const totalViews = useMemo(
     () => metrics.reduce((sum, item) => sum + Number(item.views || 0), 0),
     [metrics]
@@ -420,7 +430,7 @@ function App() {
           <div className="panel-header"><div><span className="section-kicker">ACCOUNTS</span><h2>平台连接</h2></div><button className="text-button" onClick={() => setActiveView("accounts")}>管理账号</button></div>
           <div className="status-list">
             <div><span>平台 Registry</span><strong>{platforms.length}</strong></div>
-            <div><span>YouTube OAuth</span><Badge tone={youtubeOAuthStatus?.configured ? "success" : "warning"}>{youtubeOAuthStatus?.configured ? "已配置" : "待配置"}</Badge></div>
+            <div><span>账号连接器</span><strong>{platforms.filter((item) => item.runtime?.account_connector_registered).length}</strong></div>
             <div><span>可用账号</span><strong>{readyAccounts}</strong></div>
           </div>
         </section>
@@ -437,7 +447,7 @@ function App() {
   const renderAccounts = () => (
     <>
       <div className="page-heading compact">
-        <div><span className="eyebrow">ACCOUNTS</span><h1>平台账号</h1><p>选择平台并授权，然后通过官方 API 同步已发布内容和 Analytics 数据。</p></div>
+        <div><span className="eyebrow">ACCOUNTS</span><h1>平台账号</h1><p>账号连接、内容同步和 Analytics 统一通过运行时 Registry 调度。</p></div>
         <button className="primary-button add-platform-button" onClick={() => setShowPlatformPicker(true)}>+ 添加平台账号</button>
       </div>
 
@@ -448,35 +458,33 @@ function App() {
           <EmptyState title="还没有平台账号" description="点击“添加平台账号”，从当前 Platform Registry 选择要连接的平台。" />
         ) : accounts.map((account) => {
           const platform = String(account.platform || "").toLowerCase();
+          const runtime = runtimeForPlatform(platform);
           const readiness = accountReadiness[account.id];
-          const connectable = Boolean(PLATFORM_CONNECTORS[platform]);
-          const connected = platform === "youtube" ? readiness?.ready : account.status === "connected";
+          const connector = runtime.account_connector;
+          const connectable = Boolean(runtime.account_connector_registered);
+          const connectorConfigured = connector?.configured !== false;
+          const connected = String(account.status || "").toLowerCase() === "connected" || readiness?.ready === true;
+          const syncable = Boolean(runtime.content_sync_registered || (runtime.analytics_supported && runtime.analytics_sync_registered));
           const syncing = syncingAccountId === account.id;
-          const collectingAnalytics = collectingAnalyticsAccountId === account.id;
           return (
             <section className="account-card" key={account.id}>
               <div className="account-avatar">{platformMark(platform)}</div>
               <div className="account-main">
                 <div className="account-title-row">
                   <strong>{platformLabel(platform)}</strong>
-                  <Badge tone={connected ? "success" : "warning"}>{connected ? "已连接" : connectable ? "需要授权" : "连接器待接入"}</Badge>
+                  <Badge tone={connected ? "success" : "warning"}>{connected ? "已连接" : connectable ? connectorConfigured ? "需要授权" : "连接配置待完成" : "连接器待接入"}</Badge>
                 </div>
                 <span className="muted">{account.account_name} · Account #{account.id}</span>
-                {readiness?.reason && !readiness.ready && <span className="small-warning">{readiness.reason}</span>}
+                {readiness?.reason && runtime.analytics_supported && !readiness.ready && <span className="small-warning">{readiness.reason}</span>}
               </div>
               <div className="account-actions">
-                {platform === "youtube" && connected && (
-                  <>
-                    <button className="secondary-button" onClick={() => syncPlatformAccount(account)} disabled={syncing || collectingAnalytics}>
-                      {syncing ? "同步中…" : "同步内容"}
-                    </button>
-                    <button className="secondary-button" onClick={() => syncAccountAnalytics(account)} disabled={collectingAnalytics || syncing || readiness?.ready !== true}>
-                      {collectingAnalytics ? "同步数据中…" : "同步数据"}
-                    </button>
-                  </>
+                {connected && syncable && (
+                  <button className="secondary-button" onClick={() => syncFullPlatformAccount(account)} disabled={syncing}>
+                    {syncing ? "同步中…" : "同步全部"}
+                  </button>
                 )}
                 {connectable ? (
-                  <button className="primary-button" onClick={() => reconnectAccount(account)} disabled={platform === "youtube" && youtubeOAuthStatus?.configured === false}>
+                  <button className="primary-button" onClick={() => reconnectAccount(account)} disabled={!connectorConfigured || syncing}>
                     {connected ? "重新授权" : `连接 ${platformLabel(platform)}`}
                   </button>
                 ) : (
@@ -491,14 +499,18 @@ function App() {
       <section className="panel account-platform-summary">
         <div className="panel-header"><div><span className="section-kicker">REGISTRY</span><h2>可选平台</h2></div><span className="muted">{platforms.length} 个运行时平台</span></div>
         <div className="provider-pills">
-          {platforms.map((item) => (
-            <Badge key={item.platform} tone={PLATFORM_CONNECTORS[String(item.platform).toLowerCase()] ? "success" : "neutral"}>
-              {platformLabel(item.platform)} · {PLATFORM_CONNECTORS[String(item.platform).toLowerCase()] ? "可连接" : "Adapter Ready"}
-            </Badge>
-          ))}
+          {platforms.map((item) => {
+            const runtime = item.runtime || {};
+            const connectorReady = runtime.account_connector_registered && runtime.account_connector?.configured !== false;
+            return (
+              <Badge key={item.platform} tone={connectorReady ? "success" : "neutral"}>
+                {platformLabel(item.platform)} · {connectorReady ? "可连接" : runtime.account_connector_registered ? "连接配置待完成" : "Adapter Ready"}
+              </Badge>
+            );
+          })}
         </div>
       </section>
-      <JsonDetails title="YouTube OAuth 技术状态" data={youtubeOAuthStatus || { status: "checking" }} />
+      <JsonDetails title="平台运行时能力" data={platforms.map((item) => ({ platform: item.platform, runtime: item.runtime }))} />
     </>
   );
 
@@ -536,16 +548,18 @@ function App() {
 
   const renderPlatforms = () => (
     <>
-      <div className="page-heading compact"><div><span className="eyebrow">PLATFORMS</span><h1>平台能力</h1><p>当前 Adapter 与能力状态。未来新增平台无需改核心发布逻辑。</p></div></div>
+      <div className="page-heading compact"><div><span className="eyebrow">PLATFORMS</span><h1>平台能力</h1><p>发布、账号连接、内容同步与 Analytics 都从运行时 Registry 发现。</p></div></div>
       <div className="platform-grid">
         {platforms.map((item) => {
           const capability = item.capabilities || {};
+          const runtime = item.runtime || {};
           const name = String(item.platform || "").toLowerCase();
           return <section className="platform-card" key={item.platform}>
             <div className="platform-card-header"><div className="platform-logo">{platformMark(name)}</div><div><strong>{platformLabel(name)}</strong><span>{item.adapter}</span></div><Badge tone="success">ready</Badge></div>
             <div className="capability-row"><span>发布</span><Badge tone={capability.publish_supported ? "success" : "neutral"}>{capability.publish_supported ? "支持" : "未启用"}</Badge></div>
-            <div className="capability-row"><span>Analytics</span><Badge tone={capability.analytics_supported ? "success" : "neutral"}>{capability.analytics_supported ? "支持" : "未启用"}</Badge></div>
-            <div className="capability-row"><span>账号连接</span><Badge tone={PLATFORM_CONNECTORS[name] ? "success" : "neutral"}>{PLATFORM_CONNECTORS[name] ? "已接入" : "待接入"}</Badge></div>
+            <div className="capability-row"><span>账号连接</span><Badge tone={runtime.account_connector_registered ? "success" : "neutral"}>{runtime.account_connector_registered ? runtime.account_connector?.configured === false ? "待配置" : "已接入" : "待接入"}</Badge></div>
+            <div className="capability-row"><span>内容同步</span><Badge tone={runtime.content_sync_registered ? "success" : "neutral"}>{runtime.content_sync_registered ? `已接入 · Active ${runtime.content_sync_active_limit || 10}` : "待接入"}</Badge></div>
+            <div className="capability-row"><span>Analytics</span><Badge tone={runtime.analytics_sync_registered ? "success" : "neutral"}>{runtime.analytics_sync_registered ? "Collector 已接入" : capability.analytics_supported ? "能力已启用 · Collector 待接入" : "未启用"}</Badge></div>
             <div className="metric-tags">{(capability.metric_types || []).map((metric) => <span key={metric}>{metric}</span>)}</div>
           </section>;
         })}
