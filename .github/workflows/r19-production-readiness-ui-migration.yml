@@ -39,7 +39,7 @@ jobs:
           ! grep -q 'workflow: "render.yml"' os/frontend/src/App.jsx
           grep -q 'githubWorkflow' os/frontend/src/App.jsx
           grep -q 'taskRunBlocker' os/frontend/src/App.jsx
-          grep -q 'AI_GATEWAY_VIDEO_URL' os/frontend/src/App.jsx
+          grep -q '不会回退到本地 GPU / 本地模型' os/frontend/src/App.jsx
           grep -q 'render-launch02.yml' os/frontend/src/App.jsx
 
       - name: Commit migration and remove one-shot files
