@@ -12,7 +12,6 @@ class FeedbackInsight:
     successful_patterns: List[str] = field(default_factory=list)
     weak_patterns: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
-    audience_feedback: List[str] = field(default_factory=list)
     intent_events: int = 0
     referral_clicks: int = 0
     conversions: int = 0
@@ -35,6 +34,7 @@ def _float(value: Any) -> float:
 
 
 def _row_to_metrics(row) -> Dict[str, int]:
+    """Map a legacy analytics_metrics SQLite row into metric fields."""
     if not isinstance(row, (list, tuple)) or len(row) < 8:
         return {}
     return {
@@ -47,6 +47,7 @@ def _row_to_metrics(row) -> Dict[str, int]:
 
 
 def _aggregate_performance(data: Any) -> Dict[str, int]:
+    """Normalize existing Data Center / Analytics performance shapes."""
     metric_keys = ("views", "likes", "comments", "watch_time", "shares")
 
     if isinstance(data, dict):
@@ -69,11 +70,10 @@ def _aggregate_performance(data: Any) -> Dict[str, int]:
 
 
 def _growth_signals(data: Any):
+    """Read Content -> Traffic -> Intent -> Conversion signals when available."""
     if not isinstance(data, dict):
         return {
             "intent_events": 0,
-            "content_feedback": 0,
-            "audience_feedback": [],
             "referral_clicks": 0,
             "conversions": 0,
             "conversion_value": 0.0,
@@ -86,21 +86,9 @@ def _growth_signals(data: Any):
     intent = funnel.get("intent") or {}
     conversion = funnel.get("conversion") or {}
     intent_by_type = intent.get("by_type") or {}
-    feedback_rows = intent.get("recent_feedback") or []
-    feedback_texts = []
-    for row in feedback_rows:
-        if isinstance(row, dict):
-            text = row.get("text")
-        else:
-            text = row
-        text = str(text or "").strip()
-        if text:
-            feedback_texts.append(text[:1000])
 
     return {
         "intent_events": _number(intent.get("total")),
-        "content_feedback": _number(intent_by_type.get("content_feedback")),
-        "audience_feedback": feedback_texts[:10],
         "referral_clicks": _number(intent_by_type.get("binance_referral_click")),
         "conversions": _number(conversion.get("total")),
         "conversion_value": _float(conversion.get("value")),
@@ -108,6 +96,7 @@ def _growth_signals(data: Any):
 
 
 def analyze_feedback(data: Any, video_id: Optional[str] = None) -> FeedbackInsight:
+    """Convert Data Center performance and growth funnel data into an insight."""
     inferred_video_id = video_id
     if isinstance(data, dict):
         inferred_video_id = inferred_video_id or data.get("video_id")
@@ -130,12 +119,6 @@ def analyze_feedback(data: Any, video_id: Optional[str] = None) -> FeedbackInsig
         successful_patterns.append("strong share activity")
     if metrics["watch_time"] > 300:
         successful_patterns.append("strong watch time")
-
-    if growth["content_feedback"] > 0:
-        successful_patterns.append("direct audience feedback observed")
-        recommendations.append(
-            "use direct viewer feedback as an input for the next topic and script iteration"
-        )
 
     # Business-funnel signals take priority over vanity metrics when present.
     if growth["conversions"] > 0:
@@ -189,7 +172,6 @@ def analyze_feedback(data: Any, video_id: Optional[str] = None) -> FeedbackInsig
         successful_patterns=successful_patterns,
         weak_patterns=weak_patterns,
         recommendations=recommendations,
-        audience_feedback=growth["audience_feedback"],
         intent_events=growth["intent_events"],
         referral_clicks=growth["referral_clicks"],
         conversions=growth["conversions"],
