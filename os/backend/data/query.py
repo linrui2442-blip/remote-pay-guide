@@ -155,7 +155,7 @@ def _current_rows(account_id=None, platform=None, scope="active"):
     return rows
 
 
-def _historical_rows(account_id=None, platform=None):
+def _historical_rows(account_id=None, platform=None, state=None):
     publish_index = _publish_index()
     account_ids = {
         task.get("account_id")
@@ -166,9 +166,22 @@ def _historical_rows(account_id=None, platform=None):
         account_ids = {account_id}
 
     normalized_platform = _normalize(platform) or None
+    normalized_state = _normalize(state) or None
     rows = []
     for current_account_id in account_ids:
+        tracking = {
+            (
+                _normalize(item.get("platform")),
+                str(item.get("platform_video_id")),
+            ): item
+            for item in get_tracking_records(current_account_id, normalized_platform)
+        }
         for item in get_history_summaries(current_account_id, normalized_platform):
+            key = (_normalize(item.get("platform")), str(item.get("platform_video_id")))
+            tracking_item = tracking.get(key) or {}
+            tracking_state = tracking_item.get("state") or "historical"
+            if normalized_state and tracking_state != normalized_state:
+                continue
             rows.append(
                 {
                     "content_id": item.get("content_id"),
@@ -178,8 +191,8 @@ def _historical_rows(account_id=None, platform=None):
                     "platform": _normalize(item.get("platform")),
                     "title": item.get("title") or item.get("platform_video_id"),
                     "published_at": item.get("published_at"),
-                    "tracking_state": "historical",
-                    "pinned": False,
+                    "tracking_state": tracking_state,
+                    "pinned": bool(tracking_item.get("pinned")),
                     "period_start": None,
                     "period_end": None,
                     "collected_at": item.get("summarized_at"),
@@ -247,9 +260,11 @@ def query_data_center(
         raise ValueError(f"unsupported sort field: {sort_by}")
 
     if normalized_scope in {"historical", "archived"}:
-        rows = _historical_rows(account_id=account_id, platform=platform)
-        if normalized_scope == "archived":
-            rows = []
+        rows = _historical_rows(
+            account_id=account_id,
+            platform=platform,
+            state=normalized_scope,
+        )
     else:
         rows = _current_rows(
             account_id=account_id,
