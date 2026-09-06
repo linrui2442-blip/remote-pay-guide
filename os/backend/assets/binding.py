@@ -40,13 +40,17 @@ def create_asset_from_result(result):
             source_provider = "external"
             storage_type = "external"
 
-        asset_id = f"asset_{uuid.uuid4().hex[:8]}"
+        asset_id = output.get("asset_id") or f"asset_{uuid.uuid4().hex[:8]}"
         video_id = (
             result.get("video_id")
             or output.get("video_id")
             or output.get("content_id")
             or str(result.get("runtime_job_id") or "UNKNOWN")
         )
+
+        status = "ready" if asset_url or file_path else "registered"
+        if provider == "github" and storage_type != "github_pages":
+            status = "processing"
 
         asset = VideoAsset(
             asset_id=asset_id,
@@ -56,7 +60,7 @@ def create_asset_from_result(result):
             storage_type=storage_type,
             asset_url=asset_url,
             file_path=file_path,
-            status="ready" if asset_url or file_path else "registered",
+            status=status,
             metadata=metadata,
             source=source_provider,
             location=asset_url or file_path or "",
