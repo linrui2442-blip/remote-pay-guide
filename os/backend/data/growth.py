@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from analytics.manager import get_content_metrics
+from analytics.manager import get_latest_content_metrics
 from data.models import ConversionRecord, IntentEvent
 
 
@@ -190,7 +190,10 @@ def _sum_metric(metrics, key):
 
 
 def get_content_funnel(content_id):
-    traffic = get_content_metrics(content_id)
+    # Platform APIs usually return cumulative snapshots. Use the newest
+    # snapshot per video/platform so scheduled collection does not inflate the
+    # growth funnel by summing the same traffic repeatedly.
+    traffic = get_latest_content_metrics(content_id)
     intent = get_intent_events(content_id)
     conversions = get_conversions(content_id)
 
@@ -230,7 +233,7 @@ def get_content_funnel(content_id):
 
 def get_funnel_summary():
     _ensure_tables()
-    traffic = get_content_metrics(None)
+    traffic = get_latest_content_metrics(None)
     intent = get_intent_events()
     conversions = get_conversions()
 
