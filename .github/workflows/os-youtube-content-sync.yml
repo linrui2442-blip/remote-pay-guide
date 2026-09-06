@@ -6,7 +6,10 @@ on:
     branches:
       - main
     paths:
+      - 'os/backend/config/network.py'
+      - 'os/backend/integrations/google_transport.py'
       - 'os/backend/integrations/youtube.py'
+      - 'os/backend/analytics/youtube_api.py'
       - 'os/backend/routers/accounts.py'
       - 'os/backend/assets/**'
       - 'os/backend/publish/**'
