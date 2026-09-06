@@ -1,0 +1,118 @@
+name: OS Promote Video Asset to GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Source GitHub Actions run containing the video artifact
+        required: true
+        type: string
+      artifact_name:
+        description: Exact artifact name from the source run
+        required: true
+        type: string
+      asset_path:
+        description: Optional relative MP4 path inside the artifact; required when artifact contains multiple MP4s
+        required: false
+        default: ''
+        type: string
+      asset_filename:
+        description: Unique destination filename under media/
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: remote-pay-guide-os-asset-promotion-main
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Remote Pay Guide
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download exact source artifact online
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: source-artifact
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Select MP4 and stage unique media asset
+        shell: bash
+        env:
+          ASSET_PATH: ${{ inputs.asset_path }}
+          ASSET_FILENAME: ${{ inputs.asset_filename }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import shutil
+          from pathlib import Path
+
+          source_root = Path('source-artifact').resolve()
+          asset_path = os.environ.get('ASSET_PATH', '').strip()
+          asset_filename = os.environ['ASSET_FILENAME'].strip()
+          if not re.fullmatch(r'[A-Za-z0-9._-]+\.mp4', asset_filename):
+              raise SystemExit('asset_filename must be a simple unique .mp4 filename')
+
+          if asset_path:
+              candidate = (source_root / asset_path).resolve()
+              if source_root not in candidate.parents and candidate != source_root:
+                  raise SystemExit('asset_path escapes artifact root')
+              if not candidate.is_file():
+                  raise SystemExit(f'asset_path not found: {asset_path}')
+              source = candidate
+          else:
+              candidates = [p for p in source_root.rglob('*.mp4') if p.is_file()]
+              if len(candidates) != 1:
+                  raise SystemExit(
+                      f'Artifact contains {len(candidates)} MP4 files; set asset_path explicitly'
+                  )
+              source = candidates[0]
+
+          media_dir = Path('media')
+          media_dir.mkdir(parents=True, exist_ok=True)
+          target = media_dir / asset_filename
+          if target.exists():
+              raise SystemExit(f'Refusing to overwrite existing media asset: {target}')
+          shutil.copy2(source, target)
+          if target.stat().st_size <= 0:
+              raise SystemExit('Staged media asset is empty')
+          print(f'Staged {source} -> {target} ({target.stat().st_size} bytes)')
+          PY
+
+      - name: Commit promoted asset to main
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main
+          git add "media/${{ inputs.asset_filename }}"
+          git commit -m "Promote OS video asset ${{ inputs.asset_filename }}"
+          git push origin HEAD:main
+
+      - name: Verify GitHub Pages asset is reachable
+        shell: bash
+        run: |
+          url="https://linrui2442-blip.github.io/remote-pay-guide/media/${{ inputs.asset_filename }}"
+          for attempt in $(seq 1 72); do
+            if curl -fsSI --max-time 15 "$url" >/tmp/pages-headers.txt; then
+              echo "GitHub Pages asset is reachable: $url"
+              grep -iE '^(content-type|content-length|etag|last-modified):' /tmp/pages-headers.txt || true
+              exit 0
+            fi
+            echo "Waiting for GitHub Pages deployment ($attempt/72)..."
+            sleep 5
+          done
+          echo "GitHub Pages asset did not become reachable: $url"
+          exit 1
