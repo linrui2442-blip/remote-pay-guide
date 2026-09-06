@@ -8,11 +8,16 @@ on:
       - 'os/backend/integrations/sync_planner.py'
       - 'os/backend/integrations/sync_scheduler.py'
       - 'os/backend/routers/accounts.py'
+      - 'os/backend/routers/oauth.py'
+      - 'os/backend/routers/publish.py'
+      - 'os/backend/data/manager.py'
+      - 'os/backend/oauth/registry.py'
       - 'os/backend/analytics/collector.py'
       - 'os/backend/analytics/errors.py'
       - 'os/backend/analytics/registry.py'
       - 'os/backend/analytics/adapters/**'
       - 'os/backend/tests/r14_sync_registry_smoke.py'
+      - 'os/backend/tests/r15_account_connector_runtime_smoke.py'
       - '.github/workflows/os-sync-registry-verification.yml'
 
 jobs:
@@ -36,6 +41,9 @@ jobs:
 
       - name: Verify provider-neutral sync registry and scheduler
         run: python os/backend/tests/r14_sync_registry_smoke.py
+
+      - name: Verify account connector runtime registry
+        run: python os/backend/tests/r15_account_connector_runtime_smoke.py
 
       - name: Re-run account analytics regression
         env:
