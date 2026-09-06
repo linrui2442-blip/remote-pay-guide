@@ -1,4 +1,4 @@
-# Remote Pay Guide OS Blueprint v2.2
+# Remote Pay Guide OS Blueprint v2.3
 
 ## 1. 项目定位
 
@@ -30,7 +30,7 @@ Video Asset
 ↓
 Publish
 ↓
-Analytics
+Traffic / Intent / Conversion
 ↓
 Data Feedback
 ```
@@ -201,17 +201,88 @@ Social Platforms
 
 ---
 
-## 9. Data Feedback Loop
+## 9. Data Center / Data Feedback Loop
 
-Data Center 收集：
+Data Center 不是单纯的视频统计库，也不只是保存 Production / Publish 状态。
 
+它是 Remote Pay Guide OS 的统一增长数据中枢，必须把内容生命周期与流量、用户意图、商业转化连接起来。
+
+核心数据链路：
+
+```
+Content
+↓
+Production Result
+↓
+Video Asset
+↓
+Publish Data
+↓
+Traffic
+↓
+User Intent
+↓
+Conversion
+↓
+AI Intelligence
+```
+
+Data Center 收集和关联：
+
+- Content Registry / content_id
 - Production Result
 - Video Asset
 - Publish Data
-- Analytics Metrics
+- Platform Traffic Metrics
+  - impressions
+  - views
+  - clicks / CTR
+  - watch time
+  - average view duration
+  - retention
+  - likes / comments / shares
+- Landing Page / GA4 User Intent Events
+  - page_view
+  - payment_type_select
+  - payer_type_select
+  - exchange_status_select
+  - new_to_exchange_identified
+  - binance_referral_click
+- Conversion Data
+  - referral conversion
+  - signup / attributed conversion when available
+  - conversion value when available
 - Execution Performance
 
-提供给 AI Intelligence，形成反馈循环。
+Remote Pay Guide 的业务漏斗必须保持：
+
+```
+Content
+↓
+Traffic
+↓
+User Intent
+↓
+Binance Referral Conversion
+```
+
+AI Intelligence 的判断目标不是只优化播放量，而是判断：
+
+```
+哪类内容
+↓
+带来哪类流量
+↓
+产生什么用户意图
+↓
+最终带来什么转化
+```
+
+### Data Center 存储边界
+
+- `content-registry/registry.json` 与 `database/content.db` 属于已有 Content Registry / 历史迁移资产，继续保留并兼容，不应被重复开发或破坏。
+- OS 运行时模块使用 `os/database/os.db` 保存 Production、Asset、Publish、Analytics、Event 以及增长反馈运行状态。
+- 新能力优先扩展现有 `os/backend/data/` 和 `os/backend/analytics/`，不要再创建第二套 Data Center。
 
 ---
 
@@ -223,6 +294,7 @@ Data Center 收集：
 - 双生产架构
 - Provider 解耦
 - Data Feedback Loop
+- Content → Traffic → Intent → Conversion 业务漏斗
 - 本地控制中心
 
 禁止：
@@ -231,6 +303,8 @@ Data Center 收集：
 - 将系统设计为本地 AI 推理工作站
 - 绑定单一 AI 模型
 - 将 Asset Center 等同文件存储
+- 重复创建 Data Center、Analytics 或 Tracking 系统
+- 用只看播放量的模型替代完整增长反馈链路
 
 术语统一：
 
