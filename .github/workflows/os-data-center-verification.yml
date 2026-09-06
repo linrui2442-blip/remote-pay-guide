@@ -43,11 +43,15 @@ jobs:
           from analytics.models import AnalyticsMetric
           from data.manager import (
               get_content_funnel_data,
+              get_platform,
+              get_platform_runtime_capabilities,
+              get_platforms,
               get_statistics,
               record_conversion_event,
               record_intent_event,
           )
           from data.models import ConversionRecord, IntentEvent
+          from data.platform_capabilities import register_platform_capability
           from intelligence.feedback import analyze_feedback
           from intelligence.strategy import build_production_strategy
 
@@ -133,6 +137,31 @@ jobs:
           assert strategy.parameters['strategy_type'] == 'scale_conversion_winner'
           assert strategy.parameters['conversions'] == 1
 
+          platforms = get_platforms()
+          assert {item['platform_name'] for item in platforms} >= {
+              'youtube', 'instagram', 'facebook', 'tiktok'
+          }
+          youtube_capability = get_platform('youtube')
+          assert youtube_capability['publish_supported'] is True
+          assert youtube_capability['analytics_supported'] is True
+          assert 'views' in youtube_capability['metric_types']
+          assert 'retention' in youtube_capability['metric_types']
+
+          register_platform_capability(
+              'future-platform',
+              publish_supported=True,
+              analytics_supported=True,
+              oauth_required=True,
+              metric_types=['views', 'clicks'],
+          )
+          future_runtime = get_platform_runtime_capabilities('future-platform')
+          assert future_runtime == {
+              'platform': 'future-platform',
+              'publish_supported': True,
+              'analytics_supported': True,
+              'metric_types': ['clicks', 'views'],
+          }
+
           collector = AnalyticsCollector()
           youtube_status = collector.readiness('youtube')
           assert youtube_status['ready'] is False
@@ -149,5 +178,7 @@ jobs:
           print(statistics)
           print(feedback)
           print(strategy)
+          print(youtube_capability)
+          print(future_runtime)
           print(youtube_status)
           PY
