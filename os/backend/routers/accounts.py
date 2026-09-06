@@ -7,10 +7,11 @@ from integrations.youtube import YouTubeContentSync
 
 
 router = APIRouter()
+ACTIVE_CONTENT_SYNC_LIMIT = 10
 
 
 class AccountSyncRequest(BaseModel):
-    max_results: int = Field(default=10, ge=1, le=200)
+    max_results: int = Field(default=ACTIVE_CONTENT_SYNC_LIMIT, ge=1, le=200)
 
 
 @router.get('/accounts')
@@ -59,10 +60,14 @@ def sync_account(account_id: int, request: AccountSyncRequest | None = None):
         )
 
     request = request or AccountSyncRequest()
+    # The current OS policy deliberately keeps the live observation window at
+    # the newest 10 items. Historical items already known to the OS stay in the
+    # database; they are simply not re-fetched as active content.
+    effective_results = min(request.max_results, ACTIVE_CONTENT_SYNC_LIMIT)
     try:
         return YouTubeContentSync().sync(
             account_id,
-            max_results=request.max_results,
+            max_results=effective_results,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
