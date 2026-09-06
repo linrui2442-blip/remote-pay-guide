@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -6,6 +7,18 @@ from analytics.models import AnalyticsMetric
 
 
 DB_PATH = Path("os/database/os.db")
+COMMON_METRIC_FIELDS = (
+    "impressions",
+    "views",
+    "clicks",
+    "ctr",
+    "likes",
+    "comments",
+    "watch_time",
+    "average_view_duration",
+    "retention",
+    "shares",
+)
 
 
 def _connect():
@@ -38,6 +51,7 @@ def _ensure_table():
                 average_view_duration REAL,
                 retention REAL,
                 shares INTEGER DEFAULT 0,
+                metrics_json TEXT NOT NULL DEFAULT '{}',
                 collected_at TEXT
             )
             """
@@ -58,6 +72,7 @@ def _ensure_table():
             "ctr": "REAL",
             "average_view_duration": "REAL",
             "retention": "REAL",
+            "metrics_json": "TEXT NOT NULL DEFAULT '{}'",
         }
         for name, field_type in migrations.items():
             if name not in columns:
@@ -91,16 +106,28 @@ def _coerce_metric(metric):
     return metric
 
 
+def _metric_payload(metric):
+    payload = dict(metric.metrics or {})
+    for field in COMMON_METRIC_FIELDS:
+        payload[field] = getattr(metric, field)
+    return payload
+
+
 def save_metric(metric):
     """Append one analytics snapshot.
 
     Raw history is intentionally preserved. Data Center funnel calculations use
     the newest snapshot per video/platform/account so periodic collection does
     not double-count cumulative platform metrics.
+
+    ``metrics_json`` stores the complete normalized provider payload. The common
+    columns remain for fast current queries and backward compatibility, while
+    provider-specific metrics can be added without schema changes.
     """
     _ensure_table()
     metric = _coerce_metric(metric)
     collected_at = metric.collected_at or datetime.now(timezone.utc).isoformat()
+    metrics_json = json.dumps(_metric_payload(metric), separators=(",", ":"), sort_keys=True)
 
     with _connect() as conn:
         cursor = conn.execute(
@@ -108,8 +135,9 @@ def save_metric(metric):
             INSERT INTO analytics_metrics
             (video_id, content_id, platform, account_id, source, period_start,
              period_end, impressions, views, clicks, ctr, likes, comments,
-             watch_time, average_view_duration, retention, shares, collected_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             watch_time, average_view_duration, retention, shares, metrics_json,
+             collected_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 metric.video_id,
@@ -129,6 +157,7 @@ def save_metric(metric):
                 metric.average_view_duration,
                 metric.retention,
                 metric.shares,
+                metrics_json,
                 collected_at,
             ),
         )
@@ -141,7 +170,27 @@ def save_metric(metric):
 
 
 def _serialize(row):
-    return dict(row) if row else None
+    if not row:
+        return None
+    data = dict(row)
+    try:
+        metrics = json.loads(data.get("metrics_json") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        metrics = {}
+    for field in COMMON_METRIC_FIELDS:
+        if field not in metrics:
+            metrics[field] = data.get(field)
+    data["metrics"] = metrics
+    return data
+
+
+def get_metric_value(metric_record, metric_name, default=None):
+    if not metric_record:
+        return default
+    metrics = metric_record.get("metrics") or {}
+    if metric_name in metrics:
+        return metrics.get(metric_name)
+    return metric_record.get(metric_name, default)
 
 
 def get_metrics():
