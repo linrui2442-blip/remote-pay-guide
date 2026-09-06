@@ -19,6 +19,7 @@ import {
   syncAccount,
 } from "./api";
 import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";
+import DataCenter from "./pages/DataCenter.jsx";
 
 const NAV_ITEMS = [
   ["overview", "总览", "⌂"],
@@ -291,10 +292,10 @@ function App() {
   const syncPlatformAccount = async (account) => {
     try {
       setSyncingAccountId(account.id);
-      setOAuthMessage(`正在通过 ${platformLabel(account.platform)} 官方 API 同步内容…`);
-      const result = await syncAccount(account.id, 50);
+      setOAuthMessage(`正在通过 ${platformLabel(account.platform)} 官方 API 同步最新 10 条内容…`);
+      const result = await syncAccount(account.id, 10);
       setOAuthMessage(
-        `同步完成：发现 ${result.found ?? 0} 个视频，新导入 ${result.imported ?? 0} 个，已存在 ${result.already_present ?? 0} 个。`
+        `同步完成：发现 ${result.found ?? 0} 个视频，新导入 ${result.imported ?? 0} 个，已存在 ${result.already_present ?? 0} 个。当前主动观察窗口：最新 10 条。`
       );
       apiGet("/assets").then(setAssets).catch(() => {});
       refreshPublishTasks();
@@ -309,7 +310,7 @@ function App() {
     const platform = String(account.platform || "").toLowerCase();
     try {
       setCollectingAnalyticsAccountId(account.id);
-      setOAuthMessage(`正在通过 ${platformLabel(platform)} 官方 Analytics API 同步数据…`);
+      setOAuthMessage(`正在通过 ${platformLabel(platform)} 官方 Analytics API 同步 ACTIVE 数据…`);
       const result = await collectAccountAnalytics(account.id, platform);
       if ((result.failed ?? 0) > 0) {
         const firstError = result.failures?.[0]?.error;
@@ -318,7 +319,7 @@ function App() {
         );
       } else {
         setOAuthMessage(
-          `数据同步完成：已更新 ${result.collected ?? 0} 个视频的 Analytics 数据。`
+          `数据同步完成：已更新 ${result.collected ?? 0} 个 ACTIVE 视频的 Analytics 数据。旧内容不会被删除。`
         );
       }
       refreshAnalytics();
@@ -531,18 +532,7 @@ function App() {
     </>
   );
 
-  const renderAnalytics = () => (
-    <>
-      <div className="page-heading compact"><div><span className="eyebrow">DATA CENTER</span><h1>数据中心</h1><p>当前平台流量快照。历史快照继续保留，但决策使用最新数据。</p></div></div>
-      <div className="stats-grid"><StatCard label="当前观看" value={totalViews.toLocaleString()} /><StatCard label="当前点击" value={totalClicks.toLocaleString()} /><StatCard label="指标快照" value={metrics.length} /><StatCard label="视频资产" value={assets.length} /></div>
-      <section className="panel">
-        <div className="panel-header"><div><span className="section-kicker">TRAFFIC</span><h2>平台表现</h2></div></div>
-        {metrics.length === 0 ? <EmptyState title="还没有 Analytics 数据" description="在平台账号页面点击“同步数据”，即可通过官方 Analytics API 拉取真实数据。" /> : (
-          <div className="table-wrap"><table><thead><tr><th>视频</th><th>平台</th><th>观看</th><th>点击</th><th>平均观看</th><th>留存</th></tr></thead><tbody>{metrics.map((item, index) => <tr key={`${item.video_id || "metric"}-${index}`}><td>{item.video_id || item.content_id || "—"}</td><td>{platformLabel(item.platform)}</td><td>{Number(item.views || 0).toLocaleString()}</td><td>{Number(item.clicks || 0).toLocaleString()}</td><td>{item.average_view_duration ?? "—"}</td><td>{item.retention != null ? `${item.retention}%` : "—"}</td></tr>)}</tbody></table></div>
-        )}
-      </section>
-    </>
-  );
+  const renderAnalytics = () => <DataCenter />;
 
   const renderPlatforms = () => (
     <>
