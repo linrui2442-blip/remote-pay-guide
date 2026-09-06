@@ -1,6 +1,7 @@
-from googleapiclient.discovery import build
+import requests
 
 from assets.manager import create_video_asset
+from integrations.google_transport import build_authorized_session
 from oauth.manager import get_token, update_token
 from oauth.providers.youtube import YouTubeOAuthProvider
 from publish.manager import create_publish_task, get_publish_tasks, update_publish_status
@@ -10,12 +11,69 @@ from publish.models import PublishTask
 NETWORK_TIMEOUT_ERRNOS = {60, 110, 10060}
 
 
+class YouTubeDataAPIRequestsClient:
+    """Minimal official YouTube Data API v3 client using requests transport.
+
+    googleapiclient uses httplib2 internally, whose proxy behavior can differ
+    from requests on Windows. Remote Pay Guide OS owns its proxy preference,
+    so this client applies that proxy directly to a Google-authorized requests
+    session instead of relying on library-specific environment discovery.
+    """
+
+    BASE_URL = "https://www.googleapis.com/youtube/v3"
+
+    def __init__(self, credentials, session=None):
+        self.session = session or build_authorized_session(credentials)
+
+    @staticmethod
+    def _error_detail(response):
+        try:
+            payload = response.json()
+            message = payload.get("error", {}).get("message")
+            if message:
+                return message
+        except Exception:
+            pass
+        return response.text[:300] if getattr(response, "text", None) else "unknown Google API error"
+
+    def _get(self, resource, params):
+        url = f"{self.BASE_URL}/{resource}"
+        try:
+            response = self.session.get(url, params=params, timeout=(10, 30))
+            response.raise_for_status()
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            raise RuntimeError(
+                "Google YouTube API network/proxy request failed. Remote Pay Guide OS "
+                "could not reach www.googleapis.com through the configured route. Check "
+                "System Settings -> Proxy and confirm the local HTTP/Mixed proxy port is running."
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            response = getattr(exc, "response", None)
+            if response is not None:
+                raise RuntimeError(
+                    f"Google YouTube API request failed ({response.status_code}): "
+                    f"{self._error_detail(response)}"
+                ) from exc
+            raise RuntimeError(f"Google YouTube API request failed: {exc}") from exc
+        return response.json()
+
+    def channels_list(self, **params):
+        return self._get("channels", params)
+
+    def playlist_items_list(self, **params):
+        return self._get("playlistItems", params)
+
+    def videos_list(self, **params):
+        return self._get("videos", params)
+
+
 class YouTubeContentSync:
     """Import existing videos from an authorized YouTube account into the OS.
 
-    This does not publish or modify anything on YouTube. It only reads the
-    channel uploads playlist and creates local Video Asset / Publish Center
-    records so existing videos can enter the Analytics -> Data Center loop.
+    This does not publish, download, back up, or modify anything on YouTube. It
+    only reads metadata from the official API and creates local external Video
+    Asset / Publish Center records so existing videos can enter the Analytics
+    -> Data Center loop.
     """
 
     def __init__(self, service=None):
@@ -34,8 +92,7 @@ class YouTubeContentSync:
             if error_code in NETWORK_TIMEOUT_ERRNOS:
                 raise RuntimeError(
                     "Google YouTube API network timeout. The OS backend could not reach "
-                    "www.googleapis.com. If Google works in the browser through a VPN/proxy, "
-                    "the backend process must use the same proxy/VPN route."
+                    "www.googleapis.com through its configured network route."
                 ) from exc
             raise
 
@@ -53,12 +110,7 @@ class YouTubeContentSync:
             update_token(account_id, {"provider": "youtube", **valid_token})
 
         credentials = provider.build_google_credentials(valid_token)
-        self.service = build(
-            "youtube",
-            "v3",
-            credentials=credentials,
-            cache_discovery=False,
-        )
+        self.service = YouTubeDataAPIRequestsClient(credentials)
         return self.service
 
     @staticmethod
@@ -66,12 +118,18 @@ class YouTubeContentSync:
         return f"https://www.youtube.com/watch?v={video_id}"
 
     def _channel(self, service):
-        response = self._execute(
-            service.channels().list(
+        if isinstance(service, YouTubeDataAPIRequestsClient):
+            response = service.channels_list(
                 part="snippet,contentDetails",
-                mine=True,
+                mine="true",
             )
-        )
+        else:
+            response = self._execute(
+                service.channels().list(
+                    part="snippet,contentDetails",
+                    mine=True,
+                )
+            )
         items = response.get("items") or []
         if not items:
             raise RuntimeError("No YouTube channel was returned for the authorized account")
@@ -93,14 +151,19 @@ class YouTubeContentSync:
         items = []
         page_token = None
         while len(items) < max_results:
-            response = self._execute(
-                service.playlistItems().list(
-                    part="snippet,contentDetails",
-                    playlistId=playlist_id,
-                    maxResults=min(50, max_results - len(items)),
-                    pageToken=page_token,
-                )
-            )
+            params = {
+                "part": "snippet,contentDetails",
+                "playlistId": playlist_id,
+                "maxResults": min(50, max_results - len(items)),
+            }
+            if page_token:
+                params["pageToken"] = page_token
+
+            if isinstance(service, YouTubeDataAPIRequestsClient):
+                response = service.playlist_items_list(**params)
+            else:
+                response = self._execute(service.playlistItems().list(**params))
+
             items.extend(response.get("items") or [])
             page_token = response.get("nextPageToken")
             if not page_token:
@@ -113,12 +176,14 @@ class YouTubeContentSync:
             batch = video_ids[index:index + 50]
             if not batch:
                 continue
-            response = self._execute(
-                service.videos().list(
-                    part="snippet,status",
-                    id=",".join(batch),
-                )
-            )
+            params = {
+                "part": "snippet,status",
+                "id": ",".join(batch),
+            }
+            if isinstance(service, YouTubeDataAPIRequestsClient):
+                response = service.videos_list(**params)
+            else:
+                response = self._execute(service.videos().list(**params))
             for item in response.get("items") or []:
                 details[item.get("id")] = item
         return details
