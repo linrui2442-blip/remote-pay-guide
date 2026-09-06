@@ -28,7 +28,7 @@ export default function App(){
   apiGet('/assets').then(setAssets).catch(()=>{});
   apiGet('/publish/tasks').then(setTasks).catch(()=>{});
   apiGet('/publish/platforms').then(setPlatforms).catch(()=>{});
-  apiGet('/analytics/metrics').then(setMetrics).catch(()=>{});
+  apiGet('/analytics/metrics/current').then(setMetrics).catch(()=>{});
   refreshProduction();
  },[]);
 
@@ -49,13 +49,13 @@ export default function App(){
   <h2>Video Assets</h2><pre>{JSON.stringify(assets,null,2)}</pre>
   <h2>Publish Tasks</h2><pre>{JSON.stringify(tasks,null,2)}</pre>
   <h2>Platforms</h2><pre>{JSON.stringify(platforms,null,2)}</pre>
-  <h2>Analytics</h2><pre>{JSON.stringify(metrics,null,2)}</pre>
+  <h2>Current Analytics</h2><pre>{JSON.stringify(metrics,null,2)}</pre>
   <h2>Production Center</h2>
   <pre>{JSON.stringify(productionStatus,null,2)}</pre>
   <h3>Production Provider</h3>
   <select value={provider} onChange={e=>setProvider(e.target.value)}>
    <option value="github">GitHub Actions</option>
-   <option value="ai_gateway">Local AI</option>
+   <option value="ai_gateway">AI Gateway (Remote)</option>
   </select>
   <button onClick={createTask}>Create Production Task</button>
   <pre>{JSON.stringify(providers,null,2)}</pre>
