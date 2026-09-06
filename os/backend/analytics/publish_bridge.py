@@ -68,8 +68,12 @@ def collect_publish_task_metrics(
     )
 
 
-def _analytics_cursor(collected, fallback=None):
+def _analytics_cursor(collected, account_metric=None, fallback=None):
     candidates = []
+    if account_metric:
+        cursor = account_metric.get("period_end") or account_metric.get("collected_at")
+        if cursor:
+            candidates.append(str(cursor))
     for item in collected:
         metric = item.get("metric") or {}
         cursor = metric.get("period_end") or metric.get("collected_at")
@@ -87,16 +91,15 @@ def collect_account_publish_metrics(
     end_date=None,
     active_limit=DEFAULT_ACTIVE_LIMIT,
 ):
-    """Collect analytics only for the account's active tracking window.
+    """Collect account analytics plus the active content tracking window.
 
-    The default policy tracks the newest 10 published items per bound platform
-    account, plus any manually pinned items. Content that leaves the active
-    window becomes historical and keeps its stored metrics / lifecycle summary,
-    but it is no longer queried on every account-level Analytics sync.
+    The default content policy tracks the newest 10 published items per bound
+    platform account, plus manually pinned items. Content that leaves the active
+    window becomes historical and keeps its stored metrics/lifecycle summary.
 
-    Sync state is persisted at the platform-account boundary. A successful or
-    partially successful batch advances an analytics checkpoint using the most
-    recent period_end/collected_at returned by the platform collector.
+    Providers that expose account/channel Analytics may also collect one account
+    snapshot in the same batch. Test doubles and future adapters can omit the
+    optional ``collect_account`` method until that capability is implemented.
     """
     normalized_platform = (platform or "").strip().lower() or None
     if not normalized_platform:
@@ -115,6 +118,20 @@ def collect_account_publish_metrics(
         active_collector = collector or AnalyticsCollector()
         collected = []
         failures = []
+        account_metric = None
+        account_failure = None
+
+        collect_account = getattr(active_collector, "collect_account", None)
+        if callable(collect_account):
+            try:
+                account_metric = collect_account(
+                    normalized_platform,
+                    account_id=account_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            except Exception as exc:
+                account_failure = str(exc)
 
         for task in tasks:
             try:
@@ -140,17 +157,25 @@ def collect_account_publish_metrics(
                     }
                 )
 
-        cursor = _analytics_cursor(collected, fallback=end_date)
-        if failures and collected:
+        cursor = _analytics_cursor(
+            collected,
+            account_metric=account_metric,
+            fallback=end_date,
+        )
+        failure_count = len(failures) + (1 if account_failure else 0)
+        success_count = len(collected) + (1 if account_metric else 0)
+        total_operations = len(tasks) + (1 if callable(collect_account) else 0)
+
+        if failure_count and success_count:
             sync_state = mark_sync_partial(
                 account_id,
                 normalized_platform,
                 "analytics",
                 cursor=cursor,
-                error=f"{len(failures)} of {len(tasks)} analytics items failed",
+                error=f"{failure_count} of {total_operations} analytics operations failed",
             )
-        elif failures:
-            error = f"all {len(failures)} analytics items failed"
+        elif failure_count:
+            error = f"all {failure_count} analytics operations failed"
             sync_state = mark_sync_failure(
                 account_id,
                 normalized_platform,
@@ -173,6 +198,8 @@ def collect_account_publish_metrics(
             "found": len(tasks),
             "collected": len(collected),
             "failed": len(failures),
+            "account_metric": account_metric,
+            "account_failure": account_failure,
             "analytics_cursor": cursor,
             "results": collected,
             "failures": failures,
