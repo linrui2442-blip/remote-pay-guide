@@ -16,6 +16,13 @@ from data.platform_capabilities import (
     supports_publish,
 )
 from data.reports import get_overview_report
+from data.tracking import (
+    DEFAULT_ACTIVE_LIMIT,
+    get_history_summaries,
+    get_tracking_records,
+    refresh_tracking_policy,
+    set_tracking_pinned,
+)
 
 
 def get_video_lifecycle_data(video_id):
@@ -76,3 +83,31 @@ def get_platform_runtime_capabilities(platform_name):
         "analytics_supported": supports_analytics(platform_name),
         "metric_types": get_metric_types(platform_name),
     }
+
+
+def refresh_account_tracking(account_id, platform, active_limit=DEFAULT_ACTIVE_LIMIT):
+    return refresh_tracking_policy(account_id, platform, active_limit=active_limit)
+
+
+def get_account_tracking(account_id, platform=None, state=None):
+    return get_tracking_records(account_id, platform=platform, state=state)
+
+
+def pin_account_content(
+    account_id,
+    platform,
+    platform_video_id,
+    pinned=True,
+    active_limit=DEFAULT_ACTIVE_LIMIT,
+):
+    return set_tracking_pinned(
+        account_id,
+        platform,
+        platform_video_id,
+        pinned=pinned,
+        active_limit=active_limit,
+    )
+
+
+def get_account_history(account_id, platform=None):
+    return get_history_summaries(account_id, platform=platform)
