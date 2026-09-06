@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from analytics.account_manager import (
+    get_account_metric_history,
+    get_latest_account_metrics,
+)
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
 from analytics.manager import (
     get_content_metrics,
@@ -59,6 +63,16 @@ def metrics():
 @router.get('/analytics/metrics/current')
 def current_metrics():
     return get_latest_metrics()
+
+
+@router.get('/analytics/accounts/{account_id}/metrics')
+def account_metrics(account_id: int, platform: str | None = None):
+    return get_account_metric_history(account_id, platform=platform)
+
+
+@router.get('/analytics/accounts/{account_id}/metrics/current')
+def current_account_metrics(account_id: int, platform: str | None = None):
+    return get_latest_account_metrics(account_id, platform=platform)
 
 
 @router.get('/analytics/collector/status/{platform}')
