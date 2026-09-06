@@ -1,0 +1,41 @@
+name: OS YouTube Content Sync
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'os/backend/integrations/youtube.py'
+      - 'os/backend/routers/accounts.py'
+      - 'os/backend/assets/**'
+      - 'os/backend/publish/**'
+      - 'os/backend/tests/r5_youtube_content_sync_smoke.py'
+      - '.github/workflows/os-youtube-content-sync.yml'
+
+jobs:
+  verify-youtube-content-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: python -m pip install --disable-pip-version-check -r os/backend/requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall -q os/backend
+
+      - name: Run YouTube content sync smoke test
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r5_youtube_content_sync_smoke.py
