@@ -77,7 +77,7 @@ def create_job(data):
 def get_jobs():
     init_runtime_table()
     conn = _connect()
-    rows = conn.execute("SELECT * FROM runtime_jobs").fetchall()
+    rows = conn.execute("SELECT * FROM runtime_jobs ORDER BY id").fetchall()
     conn.close()
     return [_serialize(row) for row in rows]
 
@@ -86,6 +86,17 @@ def get_job(job_id):
     init_runtime_table()
     conn = _connect()
     row = conn.execute("SELECT * FROM runtime_jobs WHERE id=?", (job_id,)).fetchone()
+    conn.close()
+    return _serialize(row)
+
+
+def get_latest_job_for_task(task_id):
+    init_runtime_table()
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM runtime_jobs WHERE task_id=? ORDER BY id DESC LIMIT 1",
+        (task_id,),
+    ).fetchone()
     conn.close()
     return _serialize(row)
 
