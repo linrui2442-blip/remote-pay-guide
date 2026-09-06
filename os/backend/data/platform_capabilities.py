@@ -64,16 +64,10 @@ def _ensure_table():
         for platform in DEFAULT_PLATFORMS:
             conn.execute(
                 """
-                INSERT INTO platform_capabilities
+                INSERT OR IGNORE INTO platform_capabilities
                 (platform_name, publish_supported, analytics_supported,
                  oauth_required, metric_types, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(platform_name) DO UPDATE SET
-                    publish_supported=excluded.publish_supported,
-                    analytics_supported=excluded.analytics_supported,
-                    oauth_required=excluded.oauth_required,
-                    metric_types=excluded.metric_types,
-                    updated_at=excluded.updated_at
                 """,
                 (
                     platform["platform_name"],
@@ -85,6 +79,19 @@ def _ensure_table():
                     now,
                 ),
             )
+
+        # One-time compatibility correction for databases initialized before
+        # the live YouTube collector existed. Do not overwrite later operator
+        # changes to the capability record.
+        youtube_metrics = json.dumps(DEFAULT_PLATFORMS[0]["metric_types"])
+        conn.execute(
+            """
+            UPDATE platform_capabilities
+            SET metric_types=?, updated_at=?
+            WHERE platform_name='youtube' AND metric_types LIKE '%impressions%'
+            """,
+            (youtube_metrics, now),
+        )
         conn.commit()
 
 
