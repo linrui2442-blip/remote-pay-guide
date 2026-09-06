@@ -8,22 +8,26 @@ export default function YouTubeOAuthCallback() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
+    const accountId = params.get("account_id");
 
-    const accountId = params.get("account_id") || "";
-
-    if (!code || !state || !accountId) {
+    if (!code || !state) {
       setStatus("OAuth callback missing required parameters.");
       return;
     }
 
-    apiPost("/oauth/youtube/exchange", {
-      account_id: Number(accountId),
+    const payload = {
       authorization_code: code,
       state,
-    })
+    };
+    // Legacy callback links may still include account_id. New flows resolve
+    // the account securely from the server-side OAuth state record.
+    if (accountId) payload.account_id = Number(accountId);
+
+    apiPost("/oauth/youtube/exchange", payload)
       .then((result) => {
         if (result?.status === "connected") {
-          setStatus("YouTube connected");
+          const profile = result.scope_profile ? ` (${result.scope_profile})` : "";
+          setStatus(`YouTube connected${profile}`);
         } else {
           setStatus(result?.detail || "YouTube connection failed");
         }
