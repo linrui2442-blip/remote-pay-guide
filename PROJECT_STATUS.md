@@ -26,7 +26,7 @@ Platform Operations:
 
 Remote Pay Guide legacy pipeline: Maintenance / Ready for next batch
 
-Remote Pay Guide OS: Data Center internal integration complete; live external traffic collection blocked on analytics credentials/scopes
+Remote Pay Guide OS: Data Center internal integration complete; multi-platform capability runtime implemented; live external traffic collection still blocked on analytics credentials/scopes
 
 ## Production Pipeline
 
@@ -80,6 +80,11 @@ Completed / implemented foundation:
 - Production runtime circular import fixed without changing the existing production pipeline
 - Analytics placeholder no longer fabricates zero traffic when an external collector is unavailable
 - Analytics collector readiness API exposes the exact missing integration capability
+- Platform capability runtime is implemented inside the OS Data Center and uses `os/database/os.db`
+- Platform capability APIs expose supported publishing/analytics capabilities and available metric types
+- Default capability metadata is initialized for YouTube, Instagram, Facebook, and TikTok; operational account connection remains tracked separately from capability metadata
+- Future platforms can be registered through the capability service without changing Data Center storage or AI growth-funnel models
+- A temporary duplicate platform-capability migration under the legacy `database/content.db` layer was removed; the OS capability runtime now has a single storage location
 - OS Data Center verification workflow passes end-to-end for:
   - traffic storage
   - user intent storage
@@ -89,6 +94,8 @@ Completed / implemented foundation:
   - conversion-aware AI feedback
   - conversion-aware production strategy
   - external analytics readiness guard
+  - platform capability initialization
+  - future-platform runtime registration
 
 Business feedback loop:
 
