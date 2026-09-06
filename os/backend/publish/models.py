@@ -7,5 +7,6 @@ class PublishTask(BaseModel):
     asset_id: Optional[str] = None
     video_id: Optional[str] = None
     platform: str
+    account_id: Optional[int] = None
     status: str = "pending"
     scheduled_time: Optional[str] = None

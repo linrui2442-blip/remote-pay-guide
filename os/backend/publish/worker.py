@@ -1,14 +1,32 @@
-from publish.adapters.youtube import YouTubeAdapter
+from assets.manager import get_asset, get_asset_by_asset_id
 from publish.manager import get_publish_task, update_publish_status
+from publish.registry import get_adapter
 
 
 class PublishWorker:
     def __init__(self, queue):
         self.queue = queue
-        self.adapters = {
-            "youtube": YouTubeAdapter()
-        }
-        self.adapters["youtube"].initialize()
+
+    def _resolve_asset(self, task):
+        asset_id = task.get("asset_id")
+        if asset_id:
+            asset = get_asset_by_asset_id(asset_id)
+            if asset:
+                return asset
+
+        video_id = task.get("video_id")
+        if video_id:
+            asset = get_asset(video_id)
+            if asset:
+                return asset
+            return {
+                "asset_id": None,
+                "video_id": video_id,
+                "asset_url": None,
+                "file_path": None,
+                "location": video_id,
+            }
+        return None
 
     def run_once(self):
         processed = 0
@@ -18,25 +36,36 @@ class PublishWorker:
             if not task:
                 continue
 
-            platform = task[2] if isinstance(task, tuple) else task.get("platform")
-            adapter = self.adapters.get(platform)
+            adapter = get_adapter(task.get("platform"))
             if not adapter:
                 update_publish_status(task_id, "failed", error_message="unsupported platform")
+                self.queue.remove_task(task_id)
+                processed += 1
+                continue
+
+            asset = self._resolve_asset(task)
+            if not asset:
+                update_publish_status(task_id, "failed", error_message="video asset not found")
+                self.queue.remove_task(task_id)
+                processed += 1
                 continue
 
             update_publish_status(task_id, "publishing")
+            account_id = task.get("account_id")
 
-            # Future path: asset_id first, legacy video_id fallback.
-            video_reference = task[1] if isinstance(task, tuple) else task.get("asset_id")
-            if not video_reference:
-                video_reference = task[1] if isinstance(task, tuple) else task.get("video_id")
-
-            result = adapter.publish_video(
-                {"asset_id": video_reference, "video_id": video_reference},
-                task[3] if isinstance(task, tuple) else None,
-                video_path=video_reference,
-                title=video_reference,
-            )
+            try:
+                if task.get("platform") == "youtube":
+                    video_reference = asset.get("file_path") or asset.get("asset_url") or asset.get("location")
+                    result = adapter.publish_video(
+                        asset,
+                        account_id,
+                        video_path=video_reference,
+                        title=asset.get("video_id") or task.get("video_id") or task.get("asset_id"),
+                    )
+                else:
+                    result = adapter.publish_video(asset, account_id)
+            except Exception as exc:
+                result = {"status": "failed", "error": str(exc)}
 
             if result.get("status") == "published":
                 update_publish_status(
@@ -55,7 +84,4 @@ class PublishWorker:
             self.queue.remove_task(task_id)
             processed += 1
 
-        return {
-            "processed": processed,
-            "status": "completed"
-        }
+        return {"processed": processed, "status": "completed"}

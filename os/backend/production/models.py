@@ -1,10 +1,5 @@
-from pydantic import BaseModel
+"""Compatibility import for the canonical ProductionTask schema."""
 
+from production.tasks.models import ProductionTask
 
-class ProductionTask(BaseModel):
-    id: int | None = None
-    task_type: str
-    provider: str
-    status: str = "pending"
-    workflow: str
-    branch: str = "main"
+__all__ = ["ProductionTask"]

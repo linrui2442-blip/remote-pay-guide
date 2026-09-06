@@ -12,9 +12,7 @@ class GitHubClient:
 
     @property
     def headers(self):
-        headers = {
-            "Accept": "application/vnd.github+json"
-        }
+        headers = {"Accept": "application/vnd.github+json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
@@ -25,16 +23,25 @@ class GitHubClient:
         response.raise_for_status()
         return response.json()
 
-    def trigger_workflow(self, workflow, branch="main"):
+    def trigger_workflow(self, workflow, branch="main", inputs=None):
         url = (
             f"{self.base_url}/repos/{self.owner}/{self.repo}"
             f"/actions/workflows/{workflow}/dispatches"
         )
+        payload = {"ref": branch}
+        if inputs:
+            payload["inputs"] = inputs
+
         response = requests.post(
             url,
             headers=self.headers,
-            json={"ref": branch},
+            json=payload,
             timeout=10,
         )
         response.raise_for_status()
-        return {"status": "started"}
+        return {
+            "status": "started",
+            "workflow": workflow,
+            "branch": branch,
+            "inputs": inputs or {},
+        }

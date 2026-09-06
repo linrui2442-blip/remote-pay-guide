@@ -6,7 +6,7 @@ from production.tasks.models import ProductionTask
 
 def select_provider(task_type: str) -> str:
     """Select execution provider without executing production."""
-    if task_type == "ai_video":
+    if task_type in {"ai_video", "ai_generated_video", "video_generation"}:
         return "ai_gateway"
     return "github"
 
@@ -16,6 +16,10 @@ def _to_dict(value):
         return value
     if is_dataclass(value):
         return asdict(value)
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "dict"):
+        return value.dict()
     return {}
 
 
@@ -29,7 +33,7 @@ def generate_production_task(insight):
         recommendations = parameters.get("recommendations", []) or []
 
     text = " ".join(str(item) for item in recommendations).lower()
-    task_type = parameters.get("task_type")
+    task_type = data.get("task_type") or parameters.get("task_type")
     if not task_type:
         task_type = "ai_video" if "ai video" in text or "generate video" in text else "video_batch"
 
@@ -59,6 +63,9 @@ def generate_production_task(insight):
         parameters=parameters,
         resources=resources,
         priority=0,
+        task_type=task_type,
+        workflow=data.get("workflow") or parameters.get("workflow", ""),
+        branch=data.get("branch") or parameters.get("branch", "main"),
     )
 
     return create_task(task)

@@ -4,14 +4,20 @@ from datetime import datetime
 DB_PATH = "os/database/os.db"
 
 
-def _init_db():
+def _connect():
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn.row_factory = sqlite3.Row
+    return conn
 
+
+def _init_db():
+    conn = _connect()
+    cursor = conn.cursor()
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS publish_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id TEXT,
             video_id TEXT,
             platform TEXT,
             account_id INTEGER,
@@ -26,14 +32,14 @@ def _init_db():
         """
     )
 
-    columns = [row[1] for row in cursor.execute("PRAGMA table_info(publish_tasks)").fetchall()]
+    columns = {row["name"] for row in cursor.execute("PRAGMA table_info(publish_tasks)").fetchall()}
     migrations = {
+        "asset_id": "TEXT",
         "account_id": "INTEGER",
         "platform_video_id": "TEXT",
         "published_url": "TEXT",
         "error_message": "TEXT",
     }
-
     for name, field_type in migrations.items():
         if name not in columns:
             cursor.execute(f"ALTER TABLE publish_tasks ADD COLUMN {name} {field_type}")
@@ -42,18 +48,24 @@ def _init_db():
     conn.close()
 
 
+def _serialize(row):
+    return dict(row) if row else None
+
+
 def create_publish_task(task):
     _init_db()
     now = datetime.utcnow().isoformat()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     cursor = conn.execute(
         """
         INSERT INTO publish_tasks
-        (video_id, platform, account_id, status, scheduled_time, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (asset_id, video_id, platform, account_id, status, scheduled_time,
+         created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            task.video_id,
+            getattr(task, "asset_id", None),
+            getattr(task, "video_id", None),
             task.platform,
             getattr(task, "account_id", None),
             task.status,
@@ -70,23 +82,23 @@ def create_publish_task(task):
 
 def get_publish_tasks():
     _init_db()
-    conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("SELECT * FROM publish_tasks").fetchall()
+    conn = _connect()
+    rows = conn.execute("SELECT * FROM publish_tasks ORDER BY id").fetchall()
     conn.close()
-    return rows
+    return [_serialize(row) for row in rows]
 
 
 def get_publish_task(task_id):
     _init_db()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     row = conn.execute("SELECT * FROM publish_tasks WHERE id=?", (task_id,)).fetchone()
     conn.close()
-    return row
+    return _serialize(row)
 
 
 def update_publish_status(task_id, status, platform_video_id=None, published_url=None, error_message=None):
     _init_db()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     conn.execute(
         """
         UPDATE publish_tasks
@@ -104,3 +116,4 @@ def update_publish_status(task_id, status, platform_video_id=None, published_url
     )
     conn.commit()
     conn.close()
+    return get_publish_task(task_id)

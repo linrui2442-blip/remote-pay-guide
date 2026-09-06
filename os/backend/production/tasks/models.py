@@ -3,12 +3,14 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 
+VALID_SOURCES = {"legacy", "ai_intelligence"}
+VALID_PROVIDERS = {"github", "ai_gateway"}
+VALID_STATUSES = {"created", "queued", "scheduled", "running", "completed", "failed"}
+
+
 @dataclass
 class ProductionTask:
-    """Unified production instruction model.
-
-    Supports both legacy task files and future AI Intelligence generated tasks.
-    """
+    """Canonical production instruction used by every Production Center entry path."""
 
     id: Optional[int] = None
     source: str = "legacy"
@@ -19,12 +21,22 @@ class ProductionTask:
     resources: List[Any] = field(default_factory=list)
     priority: int = 0
     status: str = "created"
+
+    # Legacy Production Center compatibility fields.
+    task_type: str = ""
+    workflow: str = ""
+    branch: str = "main"
+
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
     def validate(self):
-        if self.source not in {"legacy", "ai_intelligence"}:
+        if self.source not in VALID_SOURCES:
             raise ValueError("Invalid ProductionTask source")
-        if self.provider not in {"github", "ai_gateway"}:
+        if self.provider not in VALID_PROVIDERS:
             raise ValueError("Invalid ProductionTask provider")
+        if self.status not in VALID_STATUSES:
+            raise ValueError("Invalid ProductionTask status")
+        if not self.branch:
+            raise ValueError("ProductionTask branch is required")
         return True
