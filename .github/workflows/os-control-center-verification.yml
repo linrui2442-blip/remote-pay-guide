@@ -43,17 +43,6 @@ jobs:
           import oauth.manager as oauth_manager
           from accounts.models import Account
 
-          def collect_paths(routes):
-              paths = set()
-              for route in routes:
-                  path = getattr(route, 'path', None)
-                  if path:
-                      paths.add(path)
-                  nested = getattr(route, 'routes', None)
-                  if nested:
-                      paths.update(collect_paths(nested))
-              return paths
-
           with tempfile.TemporaryDirectory() as tmpdir:
               db_path = str(Path(tmpdir) / 'os.db')
               accounts_manager.DB_PATH = db_path
@@ -61,7 +50,7 @@ jobs:
 
               import main
 
-              route_paths = collect_paths(main.app.routes)
+              route_paths = set(main.app.openapi()['paths'])
               assert '/accounts' in route_paths
               assert '/accounts/{account_id}' in route_paths
               assert '/ai/request' in route_paths
