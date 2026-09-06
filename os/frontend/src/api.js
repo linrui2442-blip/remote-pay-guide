@@ -28,6 +28,7 @@ export function getProductionStatus() { return apiGet('/production/status'); }
 export function getProductionProviders() { return apiGet('/production/providers'); }
 export function createProductionTask(data) { return apiPost('/production/tasks', data); }
 export function runProductionTask(id) { return apiPost(`/production/tasks/${id}/run`, {}); }
+export function refreshProductionTask(id) { return apiPost(`/production/tasks/${id}/refresh`, {}); }
 
 export function getPublishTasks() { return apiGet('/publish/tasks'); }
 export function collectPublishTaskAnalytics(id, data = {}) {
