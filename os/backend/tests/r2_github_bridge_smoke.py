@@ -21,6 +21,10 @@ def main():
             provider="github",
             template="os_bridge_test",
             parameters={
+                # The bridge workflow is manual-only. Its nested dispatch must
+                # explicitly request a fixture artifact so it never recursively
+                # launches the bridge driver job.
+                "mode": "fixture",
                 "github_discover_attempts": 60,
                 "github_discover_interval": 1,
                 "github_poll_attempts": 180,
