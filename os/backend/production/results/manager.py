@@ -77,6 +77,20 @@ def _bind_asset(result):
     return binding
 
 
+def _fail_asset_binding(result_id, binding):
+    conn = _connect()
+    conn.execute(
+        "UPDATE production_results SET status='failed', asset_status='failed', error=?, updated_at=? WHERE id=?",
+        (
+            binding.get("error") or "Video Asset binding failed",
+            datetime.utcnow().isoformat(),
+            result_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
 def _sync_terminal_status(result, status):
     if status not in {"completed", "failed"}:
         return
@@ -137,7 +151,9 @@ def create_result(data):
 
     result = get_result(result_id)
     if result and result.get("status") == "completed":
-        _bind_asset(result)
+        binding = _bind_asset(result)
+        if not binding.get("asset_id"):
+            _fail_asset_binding(result_id, binding)
         result = get_result(result_id)
     if result and result.get("status") in {"completed", "failed"}:
         _sync_terminal_status(result, result["status"])
@@ -203,17 +219,7 @@ def update_result(result_id, *, status=None, output=None, error=None):
     if result and next_status == "completed" and not result.get("asset_id"):
         binding = _bind_asset(result)
         if not binding.get("asset_id"):
-            conn = _connect()
-            conn.execute(
-                "UPDATE production_results SET status='failed', asset_status='failed', error=?, updated_at=? WHERE id=?",
-                (
-                    binding.get("error") or "Video Asset binding failed",
-                    datetime.utcnow().isoformat(),
-                    result_id,
-                ),
-            )
-            conn.commit()
-            conn.close()
+            _fail_asset_binding(result_id, binding)
         result = get_result(result_id)
 
     if result and result.get("status") in {"completed", "failed"}:
