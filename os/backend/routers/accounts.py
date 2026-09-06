@@ -11,7 +11,6 @@ router = APIRouter()
 
 class AccountSyncRequest(BaseModel):
     max_results: int = Field(default=50, ge=1, le=200)
-    max_comments_per_video: int = Field(default=20, ge=0, le=100)
 
 
 @router.get('/accounts')
@@ -64,7 +63,6 @@ def sync_account(account_id: int, request: AccountSyncRequest | None = None):
         return YouTubeContentSync().sync(
             account_id,
             max_results=request.max_results,
-            max_comments_per_video=request.max_comments_per_video,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
