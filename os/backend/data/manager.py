@@ -78,11 +78,27 @@ def get_platform(platform_name):
 
 
 def get_platform_runtime_capabilities(platform_name):
+    # Import runtime registries lazily so the Data Center remains the metadata
+    # boundary without creating import cycles with publish/sync/OAuth adapters.
+    from analytics.registry import get_analytics_adapter_registration
+    from integrations.sync_registry import get_content_sync_adapter
+    from oauth.registry import get_account_connector_status
+
+    normalized = (platform_name or '').strip().lower()
+    content_adapter = get_content_sync_adapter(normalized)
+    analytics_adapter = get_analytics_adapter_registration(normalized)
+    connector = get_account_connector_status(normalized)
+
     return {
-        "platform": (platform_name or "").strip().lower(),
-        "publish_supported": supports_publish(platform_name),
-        "analytics_supported": supports_analytics(platform_name),
-        "metric_types": get_metric_types(platform_name),
+        'platform': normalized,
+        'publish_supported': supports_publish(normalized),
+        'analytics_supported': supports_analytics(normalized),
+        'metric_types': get_metric_types(normalized),
+        'content_sync_registered': content_adapter is not None,
+        'content_sync_active_limit': content_adapter.active_limit if content_adapter else None,
+        'analytics_sync_registered': analytics_adapter is not None,
+        'account_connector_registered': connector is not None,
+        'account_connector': connector,
     }
 
 
@@ -118,10 +134,10 @@ def query_data_center_view(
     *,
     account_id=None,
     platform=None,
-    scope="active",
+    scope='active',
     metrics=None,
-    sort_by="views",
-    sort_direction="desc",
+    sort_by='views',
+    sort_direction='desc',
     limit=100,
 ):
     return query_data_center(
