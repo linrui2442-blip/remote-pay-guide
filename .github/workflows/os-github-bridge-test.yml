@@ -30,6 +30,9 @@ jobs:
           python -m pip install --disable-pip-version-check
           requests pydantic google-auth google-api-python-client
 
+      - name: Prepare isolated OS database directory
+        run: mkdir -p os/database
+
       - name: Execute canonical ProductionTask to online asset smoke test
         env:
           GITHUB_TOKEN: ${{ github.token }}
