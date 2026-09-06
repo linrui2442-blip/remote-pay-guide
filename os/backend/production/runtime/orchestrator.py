@@ -1,5 +1,5 @@
 from production.providers import get_provider
-from production.runtime.manager import get_job
+from production.runtime.manager import get_job, get_latest_job_for_task
 from production.runtime.worker import ProductionRuntimeWorker
 from production.tasks.execution import require_execution_ready
 from production.tasks.manager import get_task
@@ -87,6 +87,40 @@ def execute_production_task(task, *, worker=None):
         'task_id': task.id,
         'execution': execution,
         'provider_readiness': provider_readiness,
+        'runtime_job': get_job(job['id']),
+        'result': result,
+        'production_task': get_task(task.id),
+    }
+
+
+def refresh_production_task(task, *, worker=None):
+    """Poll an active asynchronous ProductionTask without re-submitting it."""
+    if task is None:
+        raise LookupError('production task not found')
+
+    status = str(getattr(task, 'status', '') or '').strip().lower()
+    if status in {'completed', 'failed'}:
+        job = get_latest_job_for_task(task.id)
+        return {
+            'task_id': task.id,
+            'status': status,
+            'already_terminal': True,
+            'runtime_job': job,
+            'production_task': get_task(task.id),
+        }
+    if status not in {'scheduled', 'running'}:
+        raise ValueError(
+            f'ProductionTask can only be refreshed from scheduled/running state, got {status or "unknown"}'
+        )
+
+    job = get_latest_job_for_task(task.id)
+    if not job:
+        raise LookupError('runtime job not found for production task')
+
+    runtime_worker = worker or ProductionRuntimeWorker()
+    result = runtime_worker.poll(job)
+    return {
+        'task_id': task.id,
         'runtime_job': get_job(job['id']),
         'result': result,
         'production_task': get_task(task.id),
