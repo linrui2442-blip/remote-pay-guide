@@ -1,6 +1,11 @@
+from dataclasses import asdict
+
 from intelligence.scoring import calculate_score
 from intelligence.analyzer import ContentAnalyzer
 from intelligence.insights import create_insight
+from intelligence.feedback import analyze_feedback
+from intelligence.strategy import build_production_strategy
+from intelligence.task_generator import generate_production_task
 from data.lifecycle import get_video_lifecycle
 from data.performance import get_video_performance
 
@@ -42,3 +47,29 @@ def analyze_video(video_id):
     }
 
     return create_insight(insight)
+
+
+def generate_feedback_strategy(video_id):
+    """Build the next ProductionTask from Data Center feedback.
+
+    This is an internal orchestration entry point only. It does not schedule
+    the task, create a Runtime Job, or execute a Provider.
+    """
+    lifecycle = get_video_lifecycle(video_id)
+    performance = get_video_performance(video_id)
+
+    feedback = analyze_feedback(
+        {
+            "video_id": video_id,
+            "performance": performance,
+            "lifecycle": lifecycle,
+        }
+    )
+    strategy = build_production_strategy(feedback)
+    task = generate_production_task(strategy)
+
+    return {
+        "feedback": asdict(feedback),
+        "strategy": asdict(strategy),
+        "production_task": asdict(task),
+    }
