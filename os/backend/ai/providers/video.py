@@ -3,6 +3,7 @@ import os
 import requests
 
 from ai.models import AIResponse
+from config.ai_gateway import get_ai_gateway_settings
 
 
 class VideoProvider:
@@ -14,29 +15,49 @@ class VideoProvider:
     """
 
     def __init__(self, endpoint=None, api_key=None, session=None, timeout=None):
-        self.endpoint = (endpoint or os.getenv("AI_GATEWAY_VIDEO_URL") or "").strip()
-        self.api_key = api_key if api_key is not None else os.getenv("AI_GATEWAY_API_KEY")
+        # `None` means use live OS/environment settings. Passing an explicit
+        # empty string is useful for fail-closed tests and never falls back.
+        self.endpoint_override = endpoint
+        self.api_key_override = api_key
         self.session = session or requests.Session()
         self.timeout = int(timeout or os.getenv("AI_GATEWAY_TIMEOUT_SECONDS") or 120)
 
+    def _endpoint(self):
+        if self.endpoint_override is not None:
+            return str(self.endpoint_override or '').strip()
+        settings = get_ai_gateway_settings()
+        return str(settings.get('video_url') or '').strip()
+
+    def _api_key(self):
+        if self.api_key_override is not None:
+            return self.api_key_override
+        return os.getenv("AI_GATEWAY_API_KEY")
+
     def initialize(self):
+        endpoint = self._endpoint()
         return {
             "provider": "video",
-            "status": "ready" if self.endpoint else "configuration_required",
-            "configured": bool(self.endpoint),
+            "status": "ready" if endpoint else "configuration_required",
+            "configured": bool(endpoint),
             "transport": "remote_http",
             "local_inference": False,
-            "missing_configuration": [] if self.endpoint else ["AI_GATEWAY_VIDEO_URL"],
+            "endpoint_source": (
+                "override"
+                if self.endpoint_override is not None
+                else get_ai_gateway_settings().get('source')
+            ),
+            "missing_configuration": [] if endpoint else ["AI Gateway video URL"],
         }
 
     def request(self, request):
-        if not self.endpoint:
+        endpoint = self._endpoint()
+        if not endpoint:
             return AIResponse(
                 status="failed",
                 model=getattr(request, "model", "auto") or "auto",
                 error=(
-                    "AI Remote Production is not configured: set "
-                    "AI_GATEWAY_VIDEO_URL to the external relay endpoint"
+                    "AI Remote Production is not configured: set the AI Gateway "
+                    "video URL in OS settings or AI_GATEWAY_VIDEO_URL"
                 ),
             )
 
@@ -44,8 +65,9 @@ class VideoProvider:
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        api_key = self._api_key()
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
         payload = {
             "task_type": request.task_type,
@@ -57,7 +79,7 @@ class VideoProvider:
 
         try:
             response = self.session.post(
-                self.endpoint,
+                endpoint,
                 json=payload,
                 headers=headers,
                 timeout=self.timeout,
