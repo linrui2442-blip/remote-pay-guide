@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from analytics.manager import get_latest_video_metrics
+from analytics.manager import get_account_video_metrics
 from assets.manager import get_asset
 from data.growth import get_content_funnel
 from publish.manager import get_publish_tasks
@@ -145,17 +145,22 @@ def _serialize_tracking(row):
     return data
 
 
-def _latest_metric_for(video_id, platform):
-    metrics = get_latest_video_metrics(video_id)
-    normalized_platform = _normalize_platform(platform)
-    for metric in metrics:
-        if _normalize_platform(metric.get("platform")) == normalized_platform:
-            return metric
+def _latest_metric_for(account_id, video_id, platform):
+    metrics = get_account_video_metrics(
+        account_id,
+        video_id,
+        platform=platform,
+        latest=True,
+    )
     return metrics[0] if metrics else {}
 
 
 def _upsert_history_summary(record):
-    metric = _latest_metric_for(record["content_id"], record["platform"])
+    metric = _latest_metric_for(
+        record["account_id"],
+        record["content_id"],
+        record["platform"],
+    )
     funnel = get_content_funnel(record["content_id"])
     intent_by_type = funnel.get("intent", {}).get("by_type", {})
     conversion = funnel.get("conversion", {})
