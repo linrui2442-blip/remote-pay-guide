@@ -65,7 +65,7 @@ def _serialize(row):
 def _bind_asset(result):
     binding = create_asset_from_result(result)
     asset_id = binding.get("asset_id")
-    asset_status = "ready" if asset_id else "failed"
+    asset_status = binding.get("asset_status") or ("ready" if asset_id else "failed")
 
     conn = _connect()
     conn.execute(
@@ -138,6 +138,9 @@ def create_result(data):
     result = get_result(result_id)
     if result and result.get("status") == "completed":
         _bind_asset(result)
+        result = get_result(result_id)
+    if result and result.get("status") in {"completed", "failed"}:
+        _sync_terminal_status(result, result["status"])
     return get_result(result_id)
 
 
