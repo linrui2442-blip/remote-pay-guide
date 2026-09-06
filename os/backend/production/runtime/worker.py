@@ -46,6 +46,27 @@ class ProductionRuntimeWorker:
                 'error': error if result_status == 'failed' else None,
             })
 
+            if (
+                result.get('provider', job.get('provider')) == 'github'
+                and result_status == 'submitted'
+                and production_result
+            ):
+                from production.providers.github_completion import complete_github_execution
+
+                production_result = complete_github_execution(
+                    production_result['id'],
+                    job,
+                    client=getattr(provider, 'client', None),
+                )
+                result_status = production_result.get('status', 'failed')
+                output = production_result.get('output')
+                error = production_result.get('error')
+                result['status'] = result_status
+                result['output'] = output
+                if error:
+                    result['error'] = error
+                update_job_result(job['id'], output, error)
+
             if result_status == 'completed':
                 update_job_status(job['id'], JOB_COMPLETED)
                 self._sync_task(job.get('task_id'), 'completed')
@@ -53,8 +74,6 @@ class ProductionRuntimeWorker:
                 update_job_status(job['id'], JOB_FAILED)
                 self._sync_task(job.get('task_id'), 'failed')
             else:
-                # Async provider work has only been submitted/running. The Runtime
-                # Job and ProductionTask remain running until a later result update.
                 update_job_status(job['id'], JOB_RUNNING)
 
             result['production_result'] = production_result
