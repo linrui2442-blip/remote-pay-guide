@@ -1,7 +1,12 @@
 import React, {useEffect, useState} from "react";
 import {apiGet, getProductionTasks, getProductionStatus, getProductionProviders, createProductionTask, runProductionTask} from "./api";
+import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback.jsx";
 
 export default function App(){
+ if (window.location.pathname === "/oauth/youtube/callback") {
+  return <YouTubeOAuthCallback />;
+ }
+
  const [system,setSystem]=useState(null);
  const [assets,setAssets]=useState([]);
  const [tasks,setTasks]=useState([]);
