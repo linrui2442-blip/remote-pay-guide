@@ -1,8 +1,11 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from accounts.manager import create_account, get_account, get_accounts
 from accounts.models import Account
+from data.sync_state import get_sync_state
 from integrations.youtube import YouTubeContentSync
 
 
@@ -12,6 +15,7 @@ ACTIVE_CONTENT_SYNC_LIMIT = 10
 
 class AccountSyncRequest(BaseModel):
     max_results: int = Field(default=ACTIVE_CONTENT_SYNC_LIMIT, ge=1, le=200)
+    sync_mode: Literal['incremental', 'full_refresh'] = 'incremental'
 
 
 @router.get('/accounts')
@@ -25,6 +29,17 @@ def account(account_id: int):
     if not record:
         raise HTTPException(status_code=404, detail='account not found')
     return record
+
+
+@router.get('/accounts/{account_id}/sync-state')
+def account_sync_state(account_id: int):
+    record = get_account(account_id)
+    if not record:
+        raise HTTPException(status_code=404, detail='account not found')
+    platform = str(record.get('platform') or '').strip().lower()
+    if not platform:
+        raise HTTPException(status_code=409, detail='account has no platform')
+    return get_sync_state(account_id, platform)
 
 
 @router.post('/accounts')
@@ -68,7 +83,10 @@ def sync_account(account_id: int, request: AccountSyncRequest | None = None):
         return YouTubeContentSync().sync(
             account_id,
             max_results=effective_results,
+            sync_mode=request.sync_mode,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
