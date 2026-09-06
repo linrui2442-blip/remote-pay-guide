@@ -58,6 +58,19 @@ function formatDate(value) {
   return parsed.toLocaleDateString();
 }
 
+function formatPeriod(start, end) {
+  if (!start && !end) return "—";
+  if (start === end) return start || end;
+  return `${start || "?"} → ${end || "?"}`;
+}
+
+function formatSignedNumber(value) {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const number = Number(value);
+  if (number > 0) return `+${number.toLocaleString()}`;
+  return number.toLocaleString();
+}
+
 function TrackingBadge({ state, pinned }) {
   if (pinned) return <span className="dc-badge dc-badge-pinned">持续跟踪</span>;
   if (state === "active") return <span className="dc-badge dc-badge-active">ACTIVE</span>;
@@ -84,6 +97,7 @@ export default function DataCenter() {
   const [scope, setScope] = useState("active");
   const [sortBy, setSortBy] = useState("views");
   const [query, setQuery] = useState({ summary: {}, rows: [], returned: 0, total_matching: 0 });
+  const [accountMetrics, setAccountMetrics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pinningKey, setPinningKey] = useState("");
@@ -95,6 +109,21 @@ export default function DataCenter() {
     ]);
     setAccounts(accountRows || []);
     setPlatforms(platformRows || []);
+  };
+
+  const loadAccountMetrics = async () => {
+    const params = new URLSearchParams();
+    if (platform) params.set("platform", platform);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const path = accountId
+      ? `/analytics/accounts/${encodeURIComponent(accountId)}/metrics/current${suffix}`
+      : `/analytics/accounts/current${suffix}`;
+    try {
+      const snapshots = await apiGet(path);
+      setAccountMetrics(snapshots || []);
+    } catch (_) {
+      setAccountMetrics([]);
+    }
   };
 
   const loadQuery = async () => {
@@ -110,9 +139,11 @@ export default function DataCenter() {
       params.set("limit", "200");
       const result = await apiGet(`/data/query?${params.toString()}`);
       setQuery(result || { summary: {}, rows: [] });
+      await loadAccountMetrics();
     } catch (requestError) {
       setError(requestError.message || "数据中心读取失败");
       setQuery({ summary: {}, rows: [], returned: 0, total_matching: 0 });
+      setAccountMetrics([]);
     } finally {
       setLoading(false);
     }
@@ -216,6 +247,9 @@ export default function DataCenter() {
             <option value="views">观看量</option>
             <option value="watch_time">总观看时长</option>
             <option value="average_view_percentage">平均观看比例</option>
+            <option value="likes">赞</option>
+            <option value="comments">评论数</option>
+            <option value="shares">分享</option>
             <option value="published_at">发布时间</option>
             <option value="referral_clicks">Referral Clicks</option>
             <option value="conversions">Conversions</option>
@@ -237,10 +271,76 @@ export default function DataCenter() {
           value={formatPercent(summary.average_view_percentage)}
           hint="按观看量加权；Shorts 循环可能超过 100%"
         />
+        <MetricCard label="赞" value={formatNumber(summary.likes)} />
+        <MetricCard label="评论数" value={formatNumber(summary.comments)} hint="仅数量，不读取评论正文" />
+        <MetricCard label="分享" value={formatNumber(summary.shares)} />
         <MetricCard label="Referral Clicks" value={formatNumber(summary.referral_clicks)} hint="来自 OS 归因事件" />
         <MetricCard label="Conversions" value={formatNumber(summary.conversions)} />
         <MetricCard label="Conversion Value" value={formatMoney(summary.conversion_value)} />
       </div>
+
+      <section className="panel dc-table-panel">
+        <div className="panel-header dc-table-header">
+          <div>
+            <span className="section-kicker">ACCOUNT / CHANNEL PERFORMANCE</span>
+            <h2>账号级 Analytics</h2>
+          </div>
+          <span className="muted">{accountMetrics.length} 个最新账号快照</span>
+        </div>
+
+        {accountMetrics.length === 0 ? (
+          <div className="dc-empty">
+            <strong>当前筛选范围还没有账号级 Analytics</strong>
+            <span>在“平台账号”点击“同步全部”后，支持账号级 Analytics 的平台会在这里留下最新快照。</span>
+          </div>
+        ) : (
+          <div className="table-wrap dc-table-wrap">
+            <table className="dc-table">
+              <thead>
+                <tr>
+                  <th>平台 / 账号</th>
+                  <th>周期</th>
+                  <th>观看</th>
+                  <th>总观看时长</th>
+                  <th>平均观看</th>
+                  <th>平均观看比例</th>
+                  <th>赞</th>
+                  <th>评论数</th>
+                  <th>分享</th>
+                  <th>订阅净增</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accountMetrics.map((snapshot) => {
+                  const metrics = snapshot.metrics || {};
+                  const account = accountMap[String(snapshot.account_id)] || {};
+                  const hasSubscribers = metrics.subscribers_gained != null || metrics.subscribers_lost != null;
+                  const subscriberNet = hasSubscribers
+                    ? Number(metrics.subscribers_gained || 0) - Number(metrics.subscribers_lost || 0)
+                    : null;
+                  return (
+                    <tr key={`${snapshot.account_id}-${snapshot.platform}-${snapshot.id}`}>
+                      <td className="dc-platform-cell">
+                        <strong>{platformLabel(snapshot.platform)}</strong>
+                        <span>{account.account_name || `Account #${snapshot.account_id}`}</span>
+                      </td>
+                      <td>{formatPeriod(snapshot.period_start, snapshot.period_end)}</td>
+                      <td className="dc-number">{formatNumber(metrics.views)}</td>
+                      <td>{formatSeconds(metrics.watch_time)}</td>
+                      <td>{formatDuration(metrics.average_view_duration)}</td>
+                      <td className="dc-number">{formatPercent(metrics.average_view_percentage ?? metrics.retention)}</td>
+                      <td className="dc-number">{formatNumber(metrics.likes)}</td>
+                      <td className="dc-number">{formatNumber(metrics.comments)}</td>
+                      <td className="dc-number">{formatNumber(metrics.shares)}</td>
+                      <td className="dc-number">{formatSignedNumber(subscriberNet)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="panel dc-table-panel">
         <div className="panel-header dc-table-header">
@@ -258,7 +358,7 @@ export default function DataCenter() {
         ) : (query.rows || []).length === 0 ? (
           <div className="dc-empty">
             <strong>当前范围还没有可展示的数据</strong>
-            <span>先在“平台账号”同步内容和 Analytics；新版本会把最新 10 条建立为 ACTIVE 跟踪集。</span>
+            <span>先在“平台账号”执行“同步全部”；新版本会把最新 10 条建立为 ACTIVE 跟踪集。</span>
           </div>
         ) : (
           <div className="table-wrap dc-table-wrap">
