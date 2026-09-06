@@ -26,7 +26,7 @@ Platform Operations:
 
 Remote Pay Guide legacy pipeline: Maintenance / Ready for next batch
 
-Remote Pay Guide OS: Data Center and multi-platform runtime implemented; YouTube Analytics collector code is ready and now requires real OAuth analytics authorization before live collection can start
+Remote Pay Guide OS: local control-center wiring, multi-platform runtime, Publish Center → Data Center analytics bridge, and YouTube Analytics collector code are implemented and verified. The remaining YouTube live-data blocker is external Google OAuth configuration plus explicit user authorization.
 
 ## Production Pipeline
 
@@ -83,24 +83,33 @@ Completed / implemented foundation:
 - Platform capability runtime is implemented inside the OS Data Center and uses `os/database/os.db`
 - Platform capability APIs expose supported publishing/analytics capabilities and available metric types
 - Default capability metadata exists for YouTube, Instagram, Facebook, and TikTok; operational account connection remains tracked separately from capability metadata
-- Existing Publish Center registry now auto-discovers adapter modules instead of hard-coding the four current platforms
+- Existing Publish Center registry auto-discovers adapter modules instead of hard-coding the current platform list
 - A future publish platform can be added as a new adapter module without editing Publish Center registry core; optional adapter capability metadata is registered into the Data Center automatically
-- `GET /publish/platforms` now exposes runtime adapter status together with Data Center capability metadata
+- `GET /publish/platforms` exposes runtime adapter status together with Data Center capability metadata
+- Publish Center task reads are exposed through `GET /publish/tasks` and `GET /publish/tasks/{task_id}` for the local control center
 - YouTube OAuth supports explicit `publish`, `analytics`, and `full` scope profiles while keeping `publish` as the backward-compatible default
 - OAuth token storage persists provider and granted scopes; legacy tokens without scope metadata are treated explicitly as upload-only
 - OAuth state persists the requested scope profile and is the server-side source of truth for the initiating account
-- YouTube OAuth callback no longer depends on Google returning a separate `account_id` query parameter
+- YouTube OAuth callback no longer depends on Google returning a separate `account_id` query parameter and provides a return path to the OS after completion
+- Non-secret OAuth configuration readiness is exposed through `GET /oauth/youtube/status`
+- Local account management APIs are implemented and the frontend can add/list YouTube accounts
+- Local frontend-to-backend CORS is configured for `localhost:5173` and `127.0.0.1:5173`, with optional `OS_FRONTEND_ORIGINS` override
 - YouTube Analytics API v2 client implemented for per-video views, watch time, average view duration, retention, likes, comments, and shares
 - YouTube watch time is normalized to seconds inside the OS
 - Live collection endpoint implemented at `POST /analytics/collector/collect`
 - Collector readiness can be checked per account through `GET /analytics/collector/status/{platform}?account_id=...`
+- Publish Center → Analytics bridge implemented at `POST /analytics/collector/collect/publish-task/{task_id}`; it reuses the published task's platform video ID and account binding instead of duplicating publish metadata
+- The local frontend exposes a **Collect YouTube Analytics** action for eligible published YouTube tasks and refreshes current Data Center metrics after collection
 - Current analytics snapshot endpoints are available separately from raw history
 - A temporary duplicate platform-capability migration under legacy `database/content.db` was removed; OS capability runtime has one storage location
+- Local startup and OAuth boundary are documented in `os/README.md` and `os/frontend/YOUTUBE_OAUTH_CONFIG.md`
 
 Verification:
 
-- OS Data Center Verification passes with traffic, intent, referral attribution, conversion, AI feedback, OAuth scope tracking, snapshot de-duplication, and a network-free fake YouTube Analytics collector
+- OS Data Center Verification passes traffic, intent, referral attribution, conversion, AI feedback, OAuth scope tracking, snapshot de-duplication, a network-free fake YouTube Analytics collector, and the Publish Center → Analytics bridge
 - OS Platform Registry Verification passes dynamic adapter discovery and future-platform capability registration
+- OS Frontend Verification passes the Vite production build for the current control-center UI
+- OS Control Center Verification passes backend compilation, OpenAPI route visibility, account management, local CORS, Publish Center task routes, analytics collection routes, OAuth routes, and AI Gateway routes
 - Existing four publish adapters remain discoverable through the same `get_adapter()` compatibility entry point
 
 Business feedback loop:
@@ -121,7 +130,13 @@ Next Production Strategy
 
 ## Current External-Integration Breakpoint
 
-The code path for live YouTube Analytics collection is implemented. The remaining blocker is a real Google OAuth consent/authorization step for the YouTube account.
+The local OS code path from published YouTube task to live YouTube Analytics storage is implemented and verified without making a live request.
+
+The remaining external steps are:
+
+1. Add `http://localhost:5173/oauth/youtube/callback` to the authorized redirect URIs of the existing Google OAuth Web Application used for YouTube. The existing Postiz redirect can remain configured alongside it.
+2. Start the local backend with `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, and `YOUTUBE_OAUTH_REDIRECT_URI` configured in the local process environment.
+3. In the OS control center, use **Connect YouTube (Publish + Analytics)** and complete Google consent for the explicit `full` scope profile.
 
 Existing publishing credentials may still be upload-only:
 
@@ -132,9 +147,7 @@ YouTube Analytics collection requires:
 - `https://www.googleapis.com/auth/youtube.readonly`
 - `https://www.googleapis.com/auth/yt-analytics.readonly`
 
-The backend can now initiate a deliberate full authorization using the `full` scope profile, persist the granted scopes, verify account readiness, and then call the YouTube Analytics API. No credential is silently upgraded.
-
-Before real authorization, the Google OAuth Web Application must allow the OS callback URI being used by the local frontend (for example `http://localhost:5173/oauth/youtube/callback`). This repository does not store or change Google Console secrets/settings.
+No credential is silently upgraded. The repository does not store or change Google Console secret values/settings.
 
 GA4 already receives landing-page events, but OS-side GA4 report collection still requires the GA4 property/auth connection before live import can be enabled.
 
