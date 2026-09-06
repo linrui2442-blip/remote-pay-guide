@@ -36,6 +36,9 @@ export function collectPublishTaskAnalytics(id, data = {}) {
 
 export function getAccounts() { return apiGet('/accounts'); }
 export function createAccount(data) { return apiPost('/accounts', data); }
+export function syncAccount(accountId, maxResults = 50) {
+  return apiPost(`/accounts/${encodeURIComponent(accountId)}/sync`, { max_results: maxResults });
+}
 export function getYouTubeOAuthStatus() { return apiGet('/oauth/youtube/status'); }
 export function getAnalyticsCollectorStatus(platform, accountId) {
   const query = accountId == null ? '' : `?account_id=${encodeURIComponent(accountId)}`;
