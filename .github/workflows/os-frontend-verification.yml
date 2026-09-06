@@ -39,6 +39,23 @@ jobs:
           grep -q 'PlatformOAuthCallback' os/frontend/src/App.jsx
           grep -q 'oauthCallbackMatch' os/frontend/src/App.jsx
 
+      - name: Verify Production execution readiness UI
+        run: |
+          ! grep -q 'workflow: "render.yml"' os/frontend/src/App.jsx
+          grep -q 'githubWorkflow' os/frontend/src/App.jsx
+          grep -q 'taskRunBlocker' os/frontend/src/App.jsx
+          grep -q 'render-launch02.yml' os/frontend/src/App.jsx
+          grep -q '不会回退到本地 GPU / 本地模型' os/frontend/src/App.jsx
+
+      - name: Verify AI Gateway settings UI
+        run: |
+          grep -q 'getAIGatewaySettings' os/frontend/src/api.js
+          grep -q 'saveAIGatewaySettings' os/frontend/src/api.js
+          grep -q 'AI REMOTE PRODUCTION' os/frontend/src/App.jsx
+          grep -q '本地推理：禁用' os/frontend/src/App.jsx
+          grep -q 'API Key 只允许通过后端进程环境提供' os/frontend/src/App.jsx
+          ! grep -q 'setAIGatewayApiKey' os/frontend/src/App.jsx
+
       - name: Verify Data Center Intelligence controls
         run: |
           grep -q 'AI INTELLIGENCE' os/frontend/src/pages/DataCenter.jsx
