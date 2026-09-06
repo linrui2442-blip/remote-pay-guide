@@ -26,7 +26,7 @@ Platform Operations:
 
 Remote Pay Guide legacy pipeline: Maintenance / Ready for next batch
 
-Remote Pay Guide OS: Data Center internal integration complete; multi-platform capability runtime implemented; live external traffic collection still blocked on analytics credentials/scopes
+Remote Pay Guide OS: Data Center and multi-platform runtime implemented; YouTube Analytics collector code is ready and now requires real OAuth analytics authorization before live collection can start
 
 ## Production Pipeline
 
@@ -53,7 +53,7 @@ Current OS architecture keeps the existing production assets and aggregates them
 Completed / implemented foundation:
 
 - GitHub Production compatibility layer preserved
-- AI Gateway production architecture preserved
+- AI Gateway remote production architecture preserved; the OS does not describe the AI Gateway path as local AI inference
 - Video Asset layer
 - Publish Center
 - YouTube OAuth / publish path
@@ -62,7 +62,7 @@ Completed / implemented foundation:
 - OS Orchestrator foundation
 - Existing `os/backend/data/` confirmed as the Data Center domain; no duplicate Data Center created
 - Existing Content Registry reused read-only by the OS Data Center
-- Analytics storage extended for traffic intelligence:
+- Analytics storage supports traffic intelligence:
   - impressions
   - views
   - clicks / CTR
@@ -70,32 +70,38 @@ Completed / implemented foundation:
   - average view duration
   - retention
   - likes / comments / shares
+- Raw analytics snapshot history is preserved while current funnel/performance calculations use only the newest snapshot per video/platform, preventing cumulative API snapshots from being double-counted
 - User Intent storage implemented
 - Conversion storage implemented
 - Content funnel APIs implemented
-- Data Center overview expanded to include traffic, intent, referral clicks, conversions, and conversion value
-- AI Intelligence now receives the full growth funnel instead of judging only platform metrics
+- Data Center overview includes traffic, intent, referral clicks, conversions, and conversion value
+- AI Intelligence receives the full growth funnel instead of judging only platform metrics
 - Conversion and referral-intent signals take priority over vanity metrics when building the next production strategy
-- Intelligence insight storage now preserves the growth-funnel snapshot
+- Intelligence insight storage preserves the growth-funnel snapshot
 - Production runtime circular import fixed without changing the existing production pipeline
-- Analytics placeholder no longer fabricates zero traffic when an external collector is unavailable
-- Analytics collector readiness API exposes the exact missing integration capability
+- Analytics collector never fabricates zero traffic when an external integration is unavailable
 - Platform capability runtime is implemented inside the OS Data Center and uses `os/database/os.db`
 - Platform capability APIs expose supported publishing/analytics capabilities and available metric types
-- Default capability metadata is initialized for YouTube, Instagram, Facebook, and TikTok; operational account connection remains tracked separately from capability metadata
-- Future platforms can be registered through the capability service without changing Data Center storage or AI growth-funnel models
-- A temporary duplicate platform-capability migration under the legacy `database/content.db` layer was removed; the OS capability runtime now has a single storage location
-- OS Data Center verification workflow passes end-to-end for:
-  - traffic storage
-  - user intent storage
-  - referral click attribution
-  - conversion storage
-  - funnel aggregation
-  - conversion-aware AI feedback
-  - conversion-aware production strategy
-  - external analytics readiness guard
-  - platform capability initialization
-  - future-platform runtime registration
+- Default capability metadata exists for YouTube, Instagram, Facebook, and TikTok; operational account connection remains tracked separately from capability metadata
+- Existing Publish Center registry now auto-discovers adapter modules instead of hard-coding the four current platforms
+- A future publish platform can be added as a new adapter module without editing Publish Center registry core; optional adapter capability metadata is registered into the Data Center automatically
+- `GET /publish/platforms` now exposes runtime adapter status together with Data Center capability metadata
+- YouTube OAuth supports explicit `publish`, `analytics`, and `full` scope profiles while keeping `publish` as the backward-compatible default
+- OAuth token storage persists provider and granted scopes; legacy tokens without scope metadata are treated explicitly as upload-only
+- OAuth state persists the requested scope profile and is the server-side source of truth for the initiating account
+- YouTube OAuth callback no longer depends on Google returning a separate `account_id` query parameter
+- YouTube Analytics API v2 client implemented for per-video views, watch time, average view duration, retention, likes, comments, and shares
+- YouTube watch time is normalized to seconds inside the OS
+- Live collection endpoint implemented at `POST /analytics/collector/collect`
+- Collector readiness can be checked per account through `GET /analytics/collector/status/{platform}?account_id=...`
+- Current analytics snapshot endpoints are available separately from raw history
+- A temporary duplicate platform-capability migration under legacy `database/content.db` was removed; OS capability runtime has one storage location
+
+Verification:
+
+- OS Data Center Verification passes with traffic, intent, referral attribution, conversion, AI feedback, OAuth scope tracking, snapshot de-duplication, and a network-free fake YouTube Analytics collector
+- OS Platform Registry Verification passes dynamic adapter discovery and future-platform capability registration
+- Existing four publish adapters remain discoverable through the same `get_adapter()` compatibility entry point
 
 Business feedback loop:
 
@@ -115,23 +121,25 @@ Next Production Strategy
 
 ## Current External-Integration Breakpoint
 
-YouTube publishing OAuth is currently configured with upload-only scope:
+The code path for live YouTube Analytics collection is implemented. The remaining blocker is a real Google OAuth consent/authorization step for the YouTube account.
+
+Existing publishing credentials may still be upload-only:
 
 - `https://www.googleapis.com/auth/youtube.upload`
 
-Live YouTube traffic/analytics collection requires read-capable scopes, including:
+YouTube Analytics collection requires:
 
 - `https://www.googleapis.com/auth/youtube.readonly`
 - `https://www.googleapis.com/auth/yt-analytics.readonly`
 
-The OS now reports this state explicitly through the analytics collector readiness boundary and does not write fake zero metrics.
+The backend can now initiate a deliberate full authorization using the `full` scope profile, persist the granted scopes, verify account readiness, and then call the YouTube Analytics API. No credential is silently upgraded.
 
-Enabling live YouTube analytics requires a deliberate OAuth scope expansion and user reauthorization. The existing upload credential must not be silently reinterpreted as an analytics credential.
+Before real authorization, the Google OAuth Web Application must allow the OS callback URI being used by the local frontend (for example `http://localhost:5173/oauth/youtube/callback`). This repository does not store or change Google Console secrets/settings.
 
 GA4 already receives landing-page events, but OS-side GA4 report collection still requires the GA4 property/auth connection before live import can be enabled.
 
 No secret values are stored in project documentation.
-No OAuth flow is executed as part of this development phase.
+No real OAuth consent flow or live analytics request was executed during this development phase.
 
 ## Notes
 
