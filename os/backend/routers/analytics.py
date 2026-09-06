@@ -14,6 +14,10 @@ from analytics.manager import (
     save_metric,
 )
 from analytics.models import AnalyticsMetric
+from analytics.publish_bridge import (
+    PublishAnalyticsTaskNotFound,
+    collect_publish_task_metrics,
+)
 
 
 router = APIRouter()
@@ -25,6 +29,11 @@ class AnalyticsCollectionRequest(BaseModel):
     platform: str
     account_id: int
     content_id: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+
+
+class PublishTaskAnalyticsCollectionRequest(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
 
@@ -66,6 +75,30 @@ def collect_metrics(request: AnalyticsCollectionRequest):
         raise HTTPException(
             status_code=502,
             detail=f"analytics collection failed: {exc}",
+        ) from exc
+
+
+@router.post('/analytics/collector/collect/publish-task/{task_id}')
+def collect_publish_task(
+    task_id: int,
+    request: PublishTaskAnalyticsCollectionRequest | None = None,
+):
+    request = request or PublishTaskAnalyticsCollectionRequest()
+    try:
+        return collect_publish_task_metrics(
+            task_id,
+            collector=collector,
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+    except PublishAnalyticsTaskNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AnalyticsCollectionNotReady as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"publish-task analytics collection failed: {exc}",
         ) from exc
 
 
