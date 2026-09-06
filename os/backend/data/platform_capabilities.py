@@ -12,7 +12,7 @@ DEFAULT_PLATFORMS = (
         "publish_supported": True,
         "analytics_supported": True,
         "oauth_required": True,
-        "metric_types": ["impressions", "views", "watch_time", "average_view_duration", "retention", "likes", "comments", "shares"],
+        "metric_types": ["views", "watch_time", "average_view_duration", "retention", "likes", "comments", "shares"],
     },
     {
         "platform_name": "instagram",
@@ -64,10 +64,16 @@ def _ensure_table():
         for platform in DEFAULT_PLATFORMS:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO platform_capabilities
+                INSERT INTO platform_capabilities
                 (platform_name, publish_supported, analytics_supported,
                  oauth_required, metric_types, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(platform_name) DO UPDATE SET
+                    publish_supported=excluded.publish_supported,
+                    analytics_supported=excluded.analytics_supported,
+                    oauth_required=excluded.oauth_required,
+                    metric_types=excluded.metric_types,
+                    updated_at=excluded.updated_at
                 """,
                 (
                     platform["platform_name"],
