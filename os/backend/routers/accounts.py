@@ -6,15 +6,15 @@ from pydantic import BaseModel, Field
 from accounts.manager import create_account, get_account, get_accounts
 from accounts.models import Account
 from data.sync_state import get_sync_state
-from integrations.youtube import YouTubeContentSync
+from integrations.sync_registry import get_content_sync_adapter, run_content_sync
 
 
 router = APIRouter()
-ACTIVE_CONTENT_SYNC_LIMIT = 10
+DEFAULT_CONTENT_SYNC_LIMIT = 10
 
 
 class AccountSyncRequest(BaseModel):
-    max_results: int = Field(default=ACTIVE_CONTENT_SYNC_LIMIT, ge=1, le=200)
+    max_results: int = Field(default=DEFAULT_CONTENT_SYNC_LIMIT, ge=1, le=200)
     sync_mode: Literal['incremental', 'full_refresh'] = 'incremental'
 
 
@@ -61,6 +61,37 @@ def add_account(account: Account):
     )
 
 
+@router.get('/accounts/{account_id}/sync-plan')
+def account_sync_plan(account_id: int):
+    account = get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail='account not found')
+
+    platform = str(account.get('platform') or '').strip().lower()
+    adapter = get_content_sync_adapter(platform)
+    if adapter is None:
+        return {
+            'account_id': account_id,
+            'platform': platform or None,
+            'content_sync_registered': False,
+            'operations': [],
+        }
+
+    return {
+        'account_id': account_id,
+        'platform': platform,
+        'content_sync_registered': True,
+        'active_limit': adapter.active_limit,
+        'operations': [
+            {
+                'operation': 'content_sync',
+                'sync_mode': 'incremental',
+                'max_results': adapter.active_limit,
+            }
+        ],
+    }
+
+
 @router.post('/accounts/{account_id}/sync')
 def sync_account(account_id: int, request: AccountSyncRequest | None = None):
     account = get_account(account_id)
@@ -68,21 +99,12 @@ def sync_account(account_id: int, request: AccountSyncRequest | None = None):
         raise HTTPException(status_code=404, detail='account not found')
 
     platform = str(account.get('platform') or '').strip().lower()
-    if platform != 'youtube':
-        raise HTTPException(
-            status_code=409,
-            detail=f'content sync is not implemented for platform {platform or "unknown"}',
-        )
-
     request = request or AccountSyncRequest()
-    # The current OS policy deliberately keeps the live observation window at
-    # the newest 10 items. Historical items already known to the OS stay in the
-    # database; they are simply not re-fetched as active content.
-    effective_results = min(request.max_results, ACTIVE_CONTENT_SYNC_LIMIT)
     try:
-        return YouTubeContentSync().sync(
+        return run_content_sync(
             account_id,
-            max_results=effective_results,
+            platform,
+            max_results=request.max_results,
             sync_mode=request.sync_mode,
         )
     except ValueError as exc:
@@ -92,5 +114,5 @@ def sync_account(account_id: int, request: AccountSyncRequest | None = None):
     except Exception as exc:
         raise HTTPException(
             status_code=502,
-            detail=f'YouTube content sync failed: {exc}',
+            detail=f'{platform or "platform"} content sync failed: {exc}',
         ) from exc
