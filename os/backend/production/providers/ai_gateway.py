@@ -7,6 +7,9 @@ from ai.models import AIRequest
 class AIGatewayProvider:
     """Production-provider adapter for the AI Remote Production Line."""
 
+    ACTIVE_STATUSES = {"submitted", "running"}
+    TERMINAL_STATUSES = {"completed", "failed"}
+
     def __init__(self, gateway=None):
         self.config = None
         self.gateway = gateway or AIGatewayService()
@@ -69,10 +72,7 @@ class AIGatewayProvider:
             options=options,
         )
 
-    def submit_job(self, job):
-        request = self._request_from_job(job)
-        response = self.gateway.request(request)
-
+    def _normalize_response(self, response, request):
         if hasattr(response, "status"):
             status = response.status
             output = response.output
@@ -88,7 +88,7 @@ class AIGatewayProvider:
             usage = response.get("usage", {})
 
         normalized_status = str(status or "failed").strip().lower()
-        if normalized_status not in {"submitted", "running", "completed", "failed"}:
+        if normalized_status not in self.ACTIVE_STATUSES | self.TERMINAL_STATUSES:
             normalized_status = "failed"
             if not error:
                 error = f"unsupported AI Gateway status: {status}"
@@ -103,23 +103,51 @@ class AIGatewayProvider:
             "task_type": request.task_type,
         }
 
+    def submit_job(self, job):
+        request = self._request_from_job(job)
+        response = self.gateway.request(request)
+        return self._normalize_response(response, request)
+
+    def poll_job(self, job, production_result=None):
+        request = self._request_from_job(job)
+        previous_output = (production_result or {}).get("output") or {}
+        if not hasattr(self.gateway, "poll"):
+            return {
+                "provider": "ai_gateway",
+                "status": "failed",
+                "output": previous_output,
+                "error": "AI Gateway runtime does not support remote job polling",
+                "model": request.model,
+                "usage": {},
+                "task_type": request.task_type,
+            }
+
+        try:
+            response = self.gateway.poll(
+                request.task_type,
+                previous_output,
+                model=request.model,
+            )
+        except Exception as exc:
+            return {
+                "provider": "ai_gateway",
+                "status": "running",
+                "output": previous_output,
+                "error": f"AI Gateway status poll failed: {exc}",
+                "model": request.model,
+                "usage": {},
+                "task_type": request.task_type,
+            }
+        return self._normalize_response(response, request)
+
     def get_status(self, job_id):
-        return {"job_id": job_id, "status": "processing"}
+        return {"job_id": job_id, "status": "poll_required"}
 
     def cancel_job(self, job_id):
         return {"job_id": job_id, "status": "cancelled"}
 
     def run(self, job):
-        result = self.submit_job(job)
-        return {
-            "status": result["status"],
-            "provider": "ai_gateway",
-            "output": result.get("output"),
-            "error": result.get("error"),
-            "model": result.get("model"),
-            "usage": result.get("usage") or {},
-            "task_type": result.get("task_type"),
-        }
+        return self.submit_job(job)
 
     def get_provider_status(self):
         video_provider = getattr(self.gateway, "providers", {}).get("video")
@@ -129,7 +157,7 @@ class AIGatewayProvider:
             video_status = {
                 "status": "unknown",
                 "configured": False,
-                "missing_configuration": ["AI_GATEWAY_VIDEO_URL"],
+                "missing_configuration": ["AI Gateway video URL"],
             }
 
         return {
@@ -138,5 +166,7 @@ class AIGatewayProvider:
             "configured": bool(video_status.get("configured")),
             "transport": video_status.get("transport", "remote_http"),
             "local_inference": False,
+            "endpoint_source": video_status.get("endpoint_source"),
             "missing_configuration": video_status.get("missing_configuration") or [],
+            "async_polling": True,
         }
