@@ -6,7 +6,11 @@ on:
     paths:
       - 'os/backend/analytics/models.py'
       - 'os/backend/analytics/manager.py'
+      - 'os/backend/data/query.py'
+      - 'os/backend/data/manager.py'
+      - 'os/backend/routers/data.py'
       - 'os/backend/tests/r11_generic_metrics_smoke.py'
+      - 'os/backend/tests/r12_generic_query_smoke.py'
       - '.github/workflows/os-generic-metrics-verification.yml'
 
 jobs:
@@ -30,3 +34,6 @@ jobs:
 
       - name: Verify extensible metric storage
         run: python os/backend/tests/r11_generic_metrics_smoke.py
+
+      - name: Verify generic Data Center query metrics
+        run: python os/backend/tests/r12_generic_query_smoke.py
