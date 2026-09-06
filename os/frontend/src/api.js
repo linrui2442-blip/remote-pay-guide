@@ -49,3 +49,11 @@ export function beginYouTubeOAuth(accountId, scopeProfile = 'full') {
     `/oauth/youtube/authorize/${encodeURIComponent(accountId)}?scope_profile=${encodeURIComponent(scopeProfile)}`
   );
 }
+
+export function getNetworkProxySettings() {
+  return apiGet('/settings/network/proxy');
+}
+
+export function saveNetworkProxySettings(data) {
+  return apiPost('/settings/network/proxy', data);
+}
