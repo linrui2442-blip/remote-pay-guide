@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from data.lifecycle import get_video_lifecycle
 from data.manager import (
+    get_account_history,
+    get_account_tracking,
     get_content_conversions,
     get_content_funnel_data,
     get_content_intent,
@@ -11,14 +14,27 @@ from data.manager import (
     get_platform_runtime_capabilities,
     get_platforms,
     get_statistics,
+    pin_account_content,
     record_conversion_event,
     record_intent_event,
+    refresh_account_tracking,
 )
 from data.models import ConversionRecord, IntentEvent
 from data.performance import get_performance_summary, get_video_performance
 
 
 router = APIRouter()
+
+
+class TrackingRefreshRequest(BaseModel):
+    platform: str
+    active_limit: int = Field(default=10, ge=1, le=200)
+
+
+class TrackingPinRequest(BaseModel):
+    platform: str
+    pinned: bool = True
+    active_limit: int = Field(default=10, ge=1, le=200)
 
 
 @router.get('/data/lifecycle/{video_id}')
@@ -95,3 +111,52 @@ def platform_runtime_capability(platform_name: str):
     if capability is None:
         raise HTTPException(status_code=404, detail='platform capability not found')
     return get_platform_runtime_capabilities(platform_name)
+
+
+@router.post('/data/tracking/account/{account_id}/refresh')
+def refresh_tracking(account_id: int, request: TrackingRefreshRequest):
+    try:
+        return refresh_account_tracking(
+            account_id,
+            request.platform,
+            active_limit=request.active_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/data/tracking/account/{account_id}')
+def tracking_records(
+    account_id: int,
+    platform: str | None = None,
+    state: str | None = None,
+):
+    try:
+        return get_account_tracking(account_id, platform=platform, state=state)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/data/tracking/account/{account_id}/pin/{platform_video_id}')
+def pin_tracking_item(
+    account_id: int,
+    platform_video_id: str,
+    request: TrackingPinRequest,
+):
+    try:
+        return pin_account_content(
+            account_id,
+            request.platform,
+            platform_video_id,
+            pinned=request.pinned,
+            active_limit=request.active_limit,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/data/tracking/account/{account_id}/history')
+def tracking_history(account_id: int, platform: str | None = None):
+    return get_account_history(account_id, platform=platform)
