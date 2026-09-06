@@ -8,7 +8,7 @@ from config.network import configure_outbound_proxy
 
 # Browser OAuth can succeed through a Windows proxy while Python API calls
 # still go direct and time out. Configure outbound routing before external
-# integrations are initialized.
+# integrations are initialized. A saved manual OS proxy has priority.
 configure_outbound_proxy()
 
 from integrations.github.client import GitHubClient
@@ -25,6 +25,7 @@ from routers import (
     assets,
     oauth,
     accounts,
+    settings,
 )
 
 app = FastAPI(title="Remote Pay Guide OS")
@@ -57,6 +58,7 @@ app.include_router(analytics.router)
 app.include_router(assets.router)
 app.include_router(oauth.router)
 app.include_router(accounts.router)
+app.include_router(settings.router)
 
 
 class WorkflowRequest(BaseModel):
