@@ -108,6 +108,45 @@ class YouTubeOAuthProvider:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)
 
+    @staticmethod
+    def _scope_values(value):
+        if not value:
+            return []
+        if isinstance(value, str):
+            return [item for item in value.split() if item]
+        return [str(item) for item in value if item]
+
+    def _validate_granted_scopes(self, granted_scopes):
+        granted = set(self._scope_values(granted_scopes))
+        if not granted:
+            granted = set(self.scopes)
+        missing = [scope for scope in self.scopes if scope not in granted]
+        if missing:
+            raise ValueError(
+                "Google OAuth token is missing required scopes: " + ", ".join(missing)
+            )
+        return sorted(granted)
+
+    def _fetch_token_allowing_scope_superset(self, flow, authorization_code):
+        # The same Google OAuth client is also used by the legacy/Postiz path.
+        # Google can therefore return a token whose granted scope set is a
+        # *superset* of the three scopes requested by the OS. oauthlib treats
+        # any scope change as an exception by default. Relax that check only
+        # during the token exchange, then explicitly verify below that every
+        # scope requested by this OS flow is actually present.
+        previous = os.environ.get("OAUTHLIB_RELAX_TOKEN_SCOPE")
+        os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+        try:
+            token = flow.fetch_token(code=authorization_code)
+        finally:
+            if previous is None:
+                os.environ.pop("OAUTHLIB_RELAX_TOKEN_SCOPE", None)
+            else:
+                os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = previous
+
+        granted_scopes = self._validate_granted_scopes(token.get("scope"))
+        return token, granted_scopes
+
     def get_authorization_url(self, client_id=None, redirect_uri=None, state=None):
         # Keep google-auth-oauthlib optional for unrelated OS paths that only
         # import the publishing registry. It is required only when OAuth is
@@ -128,7 +167,10 @@ class YouTubeOAuthProvider:
         flow.redirect_uri = self.redirect_uri
         authorization_url, generated_state = flow.authorization_url(
             access_type="offline",
-            include_granted_scopes="true",
+            # Do not request incremental scope aggregation here. This OS flow
+            # asks only for its explicit profile and does not alter/revoke any
+            # grants already used by the legacy/Postiz client.
+            include_granted_scopes="false",
             prompt="consent",
             state=state or secrets.token_urlsafe(32),
         )
@@ -157,15 +199,17 @@ class YouTubeOAuthProvider:
             autogenerate_code_verifier=False,
         )
         flow.redirect_uri = self.redirect_uri
-        flow.fetch_token(code=authorization_code)
+        _token, granted_scopes = self._fetch_token_allowing_scope_superset(
+            flow,
+            authorization_code,
+        )
         credentials = flow.credentials
-        granted_scopes = list(credentials.scopes or self.scopes)
 
         return {
             "access_token": credentials.token,
             "refresh_token": credentials.refresh_token,
             "expires_at": self._expiry_to_iso(credentials.expiry),
-            "scopes": sorted(set(granted_scopes)),
+            "scopes": granted_scopes,
             "scope_profile": self.scope_profile,
         }
 
