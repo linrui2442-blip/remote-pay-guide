@@ -7,6 +7,15 @@ from google.oauth2.credentials import Credentials
 
 
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
+YOUTUBE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+
+YOUTUBE_SCOPE_PROFILES = {
+    "publish": [YOUTUBE_UPLOAD_SCOPE],
+    "analytics": [YOUTUBE_READ_SCOPE, YOUTUBE_ANALYTICS_SCOPE],
+    "full": [YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READ_SCOPE, YOUTUBE_ANALYTICS_SCOPE],
+}
+
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
@@ -15,8 +24,24 @@ class YouTubeOAuthConfigurationError(RuntimeError):
     pass
 
 
+def normalize_scope_profile(scope_profile):
+    profile = (scope_profile or "publish").strip().lower()
+    if profile not in YOUTUBE_SCOPE_PROFILES:
+        raise ValueError(
+            "unsupported YouTube OAuth scope profile: "
+            f"{scope_profile}; expected one of {', '.join(sorted(YOUTUBE_SCOPE_PROFILES))}"
+        )
+    return profile
+
+
 class YouTubeOAuthProvider:
-    def __init__(self, client_id=None, client_secret=None, redirect_uri=None):
+    def __init__(
+        self,
+        client_id=None,
+        client_secret=None,
+        redirect_uri=None,
+        scope_profile="publish",
+    ):
         self.client_id = (
             client_id
             or os.getenv("YOUTUBE_OAUTH_CLIENT_ID")
@@ -32,6 +57,11 @@ class YouTubeOAuthProvider:
             or os.getenv("YOUTUBE_OAUTH_REDIRECT_URI")
             or os.getenv("GOOGLE_REDIRECT_URI")
         )
+        self.scope_profile = normalize_scope_profile(scope_profile)
+
+    @property
+    def scopes(self):
+        return list(YOUTUBE_SCOPE_PROFILES[self.scope_profile])
 
     def _require_config(self, require_redirect=True):
         missing = []
@@ -91,7 +121,7 @@ class YouTubeOAuthProvider:
 
         flow = Flow.from_client_config(
             self._client_config(),
-            scopes=[YOUTUBE_UPLOAD_SCOPE],
+            scopes=self.scopes,
             state=state,
         )
         flow.redirect_uri = self.redirect_uri
@@ -104,6 +134,8 @@ class YouTubeOAuthProvider:
         return {
             "authorization_url": authorization_url,
             "state": generated_state,
+            "scope_profile": self.scope_profile,
+            "scopes": self.scopes,
         }
 
     def exchange_code(self, authorization_code: str, state=None):
@@ -114,32 +146,36 @@ class YouTubeOAuthProvider:
 
         flow = Flow.from_client_config(
             self._client_config(),
-            scopes=[YOUTUBE_UPLOAD_SCOPE],
+            scopes=self.scopes,
             state=state,
         )
         flow.redirect_uri = self.redirect_uri
         flow.fetch_token(code=authorization_code)
         credentials = flow.credentials
+        granted_scopes = list(credentials.scopes or self.scopes)
 
         return {
             "access_token": credentials.token,
             "refresh_token": credentials.refresh_token,
             "expires_at": self._expiry_to_iso(credentials.expiry),
+            "scopes": sorted(set(granted_scopes)),
+            "scope_profile": self.scope_profile,
         }
 
     def _build_credentials(self, token_data):
         self._require_config(require_redirect=False)
+        scopes = token_data.get("scopes") or self.scopes
         return Credentials(
             token=token_data.get("access_token"),
             refresh_token=token_data.get("refresh_token"),
             token_uri=GOOGLE_TOKEN_URI,
             client_id=self.client_id,
             client_secret=self.client_secret,
-            scopes=[YOUTUBE_UPLOAD_SCOPE],
+            scopes=scopes,
             expiry=self._parse_expiry(token_data.get("expires_at")),
         )
 
-    def refresh_token(self, refresh_token: str):
+    def refresh_token(self, refresh_token: str, scopes=None):
         if not refresh_token:
             raise ValueError("refresh_token is required")
         credentials = self._build_credentials(
@@ -147,13 +183,16 @@ class YouTubeOAuthProvider:
                 "access_token": None,
                 "refresh_token": refresh_token,
                 "expires_at": None,
+                "scopes": scopes or self.scopes,
             }
         )
         credentials.refresh(Request())
+        refreshed_scopes = list(credentials.scopes or scopes or self.scopes)
         return {
             "access_token": credentials.token,
             "refresh_token": credentials.refresh_token or refresh_token,
             "expires_at": self._expiry_to_iso(credentials.expiry),
+            "scopes": sorted(set(refreshed_scopes)),
         }
 
     def ensure_valid_token(self, token_data):
@@ -163,6 +202,7 @@ class YouTubeOAuthProvider:
         access_token = token_data.get("access_token")
         refresh_token = token_data.get("refresh_token")
         expiry = self._parse_expiry(token_data.get("expires_at"))
+        scopes = token_data.get("scopes") or self.scopes
         now = datetime.now(timezone.utc)
 
         should_refresh = False
@@ -177,13 +217,14 @@ class YouTubeOAuthProvider:
         if should_refresh:
             if not refresh_token:
                 raise RuntimeError("YouTube OAuth access token is unavailable and no refresh token exists")
-            refreshed = self.refresh_token(refresh_token)
+            refreshed = self.refresh_token(refresh_token, scopes=scopes)
             return refreshed, True
 
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "expires_at": token_data.get("expires_at"),
+            "scopes": scopes,
         }, False
 
     def build_google_credentials(self, token_data):
