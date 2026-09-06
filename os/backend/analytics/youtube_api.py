@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 
-from googleapiclient.discovery import build
+import requests
+
+from integrations.google_transport import build_authorized_session
 
 
 YOUTUBE_ANALYTICS_METRICS = (
@@ -19,21 +21,21 @@ class YouTubeAnalyticsAPIClient:
 
     YouTube reports estimatedMinutesWatched in minutes. The OS normalizes
     watch_time to seconds so it shares the same unit as average_view_duration.
+    Live calls use the same explicit proxy-aware Google requests transport as
+    YouTube content sync.
     """
 
-    def __init__(self, service=None):
+    API_URL = "https://youtubeanalytics.googleapis.com/v2/reports"
+
+    def __init__(self, service=None, session=None):
         self.service = service
+        self.session = session
 
     def initialize(self, credentials=None):
-        if self.service is None:
+        if self.service is None and self.session is None:
             if credentials is None:
                 raise RuntimeError("YouTube Analytics credentials are required")
-            self.service = build(
-                "youtubeAnalytics",
-                "v2",
-                credentials=credentials,
-                cache_discovery=False,
-            )
+            self.session = build_authorized_session(credentials)
         return {"platform": "youtube", "status": "ready"}
 
     @staticmethod
@@ -93,20 +95,55 @@ class YouTubeAnalyticsAPIClient:
             "shares": cls._int(row.get("shares")),
         }
 
+    @staticmethod
+    def _error_detail(response):
+        try:
+            payload = response.json()
+            message = payload.get("error", {}).get("message")
+            if message:
+                return message
+        except Exception:
+            pass
+        return response.text[:300] if getattr(response, "text", None) else "unknown Google API error"
+
+    def _query_via_requests(self, params):
+        try:
+            response = self.session.get(self.API_URL, params=params, timeout=(10, 30))
+            response.raise_for_status()
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            raise RuntimeError(
+                "Google YouTube Analytics network/proxy request failed. Check Remote Pay Guide OS "
+                "System Settings -> Proxy and confirm the local HTTP/Mixed proxy port is running."
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            response = getattr(exc, "response", None)
+            if response is not None:
+                raise RuntimeError(
+                    f"Google YouTube Analytics request failed ({response.status_code}): "
+                    f"{self._error_detail(response)}"
+                ) from exc
+            raise RuntimeError(f"Google YouTube Analytics request failed: {exc}") from exc
+        return response.json()
+
     def collect_video_metrics(self, video_id, start_date=None, end_date=None):
-        if not self.service:
+        if not self.service and not self.session:
             raise RuntimeError("YouTube Analytics API client is not initialized")
         if not video_id:
             raise ValueError("video_id is required")
 
         resolved_start, resolved_end = self._resolve_window(start_date, end_date)
-        response = self.service.reports().query(
-            ids="channel==MINE",
-            startDate=resolved_start,
-            endDate=resolved_end,
-            metrics=",".join(YOUTUBE_ANALYTICS_METRICS),
-            filters=f"video=={video_id}",
-        ).execute()
+        params = {
+            "ids": "channel==MINE",
+            "startDate": resolved_start,
+            "endDate": resolved_end,
+            "metrics": ",".join(YOUTUBE_ANALYTICS_METRICS),
+            "filters": f"video=={video_id}",
+        }
+
+        if self.service is not None:
+            response = self.service.reports().query(**params).execute()
+        else:
+            response = self._query_via_requests(params)
 
         metrics = self.normalize_response(response)
         metrics.update(
