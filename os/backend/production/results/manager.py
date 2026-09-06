@@ -171,21 +171,55 @@ def get_result_by_job(runtime_job_id):
     return _serialize(row)
 
 
-def update_result_status(result_id, status):
+def update_result(result_id, *, status=None, output=None, error=None):
     init_results_table()
+    current = get_result(result_id)
+    if not current:
+        return None
+
+    next_status = status if status is not None else current.get("status")
+    next_output = output if output is not None else current.get("output") or {}
+    next_error = error if error is not None else current.get("error")
+
     conn = _connect()
     conn.execute(
-        "UPDATE production_results SET status=?, updated_at=? WHERE id=?",
-        (status, datetime.utcnow().isoformat(), result_id),
+        """
+        UPDATE production_results
+        SET status=?, output=?, error=?, updated_at=?
+        WHERE id=?
+        """,
+        (
+            next_status,
+            json.dumps(next_output, ensure_ascii=False),
+            next_error,
+            datetime.utcnow().isoformat(),
+            result_id,
+        ),
     )
     conn.commit()
     conn.close()
 
     result = get_result(result_id)
-    if result and status == "completed" and not result.get("asset_id"):
-        _bind_asset(result)
+    if result and next_status == "completed" and not result.get("asset_id"):
+        binding = _bind_asset(result)
+        if not binding.get("asset_id"):
+            conn = _connect()
+            conn.execute(
+                "UPDATE production_results SET status='failed', asset_status='failed', error=?, updated_at=? WHERE id=?",
+                (
+                    binding.get("error") or "Video Asset binding failed",
+                    datetime.utcnow().isoformat(),
+                    result_id,
+                ),
+            )
+            conn.commit()
+            conn.close()
         result = get_result(result_id)
 
-    if result:
-        _sync_terminal_status(result, status)
+    if result and result.get("status") in {"completed", "failed"}:
+        _sync_terminal_status(result, result["status"])
     return get_result(result_id)
+
+
+def update_result_status(result_id, status):
+    return update_result(result_id, status=status)
