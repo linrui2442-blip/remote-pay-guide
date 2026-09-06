@@ -1,0 +1,61 @@
+name: R16 Provider Neutral Frontend Migration
+
+on:
+  push:
+    paths:
+      - 'scripts/migrations/r16_provider_neutral_frontend.py'
+      - '.github/workflows/r16-provider-neutral-frontend-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply provider-neutral frontend migration
+        run: python scripts/migrations/r16_provider_neutral_frontend.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: os/frontend
+        run: npm install
+
+      - name: Build migrated frontend
+        working-directory: os/frontend
+        run: npm run build
+
+      - name: Verify frontend has no platform connector hardcoding
+        run: |
+          ! grep -q 'PLATFORM_CONNECTORS' os/frontend/src/App.jsx
+          ! grep -q 'beginYouTubeOAuth' os/frontend/src/App.jsx
+          ! grep -q 'platform === "youtube"' os/frontend/src/App.jsx
+          grep -q 'syncAccountAll' os/frontend/src/App.jsx
+          grep -q 'account_connector_registered' os/frontend/src/App.jsx
+
+      - name: Commit migrated frontend
+        run: |
+          if git diff --quiet -- os/frontend/src/App.jsx; then
+            echo 'No frontend changes to commit'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add os/frontend/src/App.jsx
+          git commit -m 'Make platform account UI registry-driven'
+          git push origin HEAD:main
