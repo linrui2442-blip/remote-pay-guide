@@ -1,0 +1,55 @@
+name: R20 AI Gateway Settings UI Migration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/r20-ai-gateway-settings-ui-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-ai-gateway-settings-ui:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add AI Gateway settings UI
+        run: python scripts/r20_ai_gateway_settings_ui_migration.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: os/frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: os/frontend
+        run: npm run build
+
+      - name: Verify AI Gateway settings UI
+        run: |
+          grep -q 'getAIGatewaySettings' os/frontend/src/App.jsx
+          grep -q 'saveAIGatewaySettings' os/frontend/src/App.jsx
+          grep -q 'saveAIGateway' os/frontend/src/App.jsx
+          grep -q 'AI REMOTE PRODUCTION' os/frontend/src/App.jsx
+          grep -q '本地推理：禁用' os/frontend/src/App.jsx
+          grep -q 'API Key 只允许通过后端进程环境提供' os/frontend/src/App.jsx
+          ! grep -q 'setAIGatewayApiKey' os/frontend/src/App.jsx
+
+      - name: Commit migration and remove one-shot files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/r20-ai-gateway-settings-ui-migration.yml
+          git rm scripts/r20_ai_gateway_settings_ui_migration.py
+          git add os/frontend/src/App.jsx
+          git commit -m 'Configure AI Gateway endpoint from System Settings'
+          git push origin HEAD:main
