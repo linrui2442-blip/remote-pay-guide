@@ -1,0 +1,38 @@
+name: OS Sync State Verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'os/backend/data/sync_state.py'
+      - 'os/backend/integrations/youtube.py'
+      - 'os/backend/analytics/publish_bridge.py'
+      - 'os/backend/routers/accounts.py'
+      - 'os/backend/tests/r5_youtube_content_sync_smoke.py'
+      - 'os/backend/tests/r10_sync_state_smoke.py'
+      - '.github/workflows/os-sync-state-verification.yml'
+
+jobs:
+  verify-sync-state:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: pip install -r os/backend/requirements.txt
+
+      - name: Compile backend
+        run: PYTHONPATH=os/backend python -m compileall -q os/backend
+
+      - name: Verify YouTube content sync compatibility
+        run: python os/backend/tests/r5_youtube_content_sync_smoke.py
+
+      - name: Verify platform sync checkpoints
+        run: python os/backend/tests/r10_sync_state_smoke.py
