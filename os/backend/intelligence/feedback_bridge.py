@@ -10,6 +10,8 @@ from data.growth import get_content_funnel
 from data.query import query_data_center
 from intelligence.feedback import analyze_feedback
 from intelligence.strategy import build_production_strategy
+from intelligence.task_generator import generate_production_task
+from production.tasks.manager import get_tasks
 
 
 DB_PATH = Path('os/database/os.db')
@@ -178,6 +180,16 @@ def _save_snapshot(account_id, platform, row, funnel, feedback, strategy):
     return result
 
 
+def get_feedback_snapshot(snapshot_id):
+    _ensure_table()
+    with _connect() as conn:
+        row = conn.execute(
+            'SELECT * FROM intelligence_feedback_snapshots WHERE id=?',
+            (int(snapshot_id),),
+        ).fetchone()
+    return _deserialize(row)
+
+
 def get_latest_account_feedback(account_id, platform=None, limit=100):
     _ensure_table()
     normalized = _normalize_platform(platform) or None
@@ -290,4 +302,46 @@ def refresh_account_feedback(account_id, platform=None, limit=DEFAULT_REFRESH_LI
         'reused': reused,
         'top_strategy': snapshots[0] if snapshots else None,
         'snapshots': snapshots,
+    }
+
+
+def materialize_feedback_task(snapshot_id):
+    """Explicitly convert one stored strategy snapshot into a ProductionTask.
+
+    Sync/refresh only creates recommendations. This function is deliberately a
+    separate user-action boundary and never schedules, runs, or publishes the
+    resulting task. Repeating the same action reuses the existing task.
+    """
+    snapshot = get_feedback_snapshot(snapshot_id)
+    if not snapshot:
+        raise LookupError('intelligence feedback snapshot not found')
+
+    target_snapshot_id = int(snapshot['id'])
+    for task in get_tasks():
+        parameters = task.parameters or {}
+        if parameters.get('intelligence_snapshot_id') == target_snapshot_id:
+            return {
+                'created': False,
+                'snapshot_id': target_snapshot_id,
+                'production_task': asdict(task),
+            }
+
+    strategy = dict(snapshot.get('strategy') or {})
+    parameters = dict(strategy.get('parameters') or {})
+    parameters.update(
+        {
+            'intelligence_snapshot_id': target_snapshot_id,
+            'intelligence_snapshot_key': snapshot.get('snapshot_key'),
+            'source_account_id': snapshot.get('account_id'),
+            'source_platform': snapshot.get('platform'),
+            'source_content_id': snapshot.get('content_id'),
+            'source_platform_video_id': snapshot.get('platform_video_id'),
+        }
+    )
+    strategy['parameters'] = parameters
+    task = generate_production_task(strategy)
+    return {
+        'created': True,
+        'snapshot_id': target_snapshot_id,
+        'production_task': asdict(task),
     }
