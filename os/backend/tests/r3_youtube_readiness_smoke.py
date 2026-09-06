@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -233,6 +234,36 @@ def test_oauth_scope_superset_is_accepted_but_required_scopes_are_enforced():
         raise AssertionError("missing required OAuth scopes must be rejected")
 
 
+def test_google_credentials_use_naive_utc_expiry():
+    provider = YouTubeOAuthProvider(
+        client_id="r3-test.apps.googleusercontent.com",
+        client_secret="r3-test-secret",
+        redirect_uri="http://localhost:5173/oauth/youtube/callback",
+        scope_profile="full",
+    )
+    expires_at = "2030-01-02T03:04:05+00:00"
+    parsed = provider._parse_expiry(expires_at)
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset().total_seconds() == 0
+
+    credentials = provider.build_google_credentials(
+        {
+            "access_token": "r3-access-token",
+            "refresh_token": "r3-refresh-token",
+            "expires_at": expires_at,
+            "scopes": provider.scopes,
+        }
+    )
+    assert isinstance(credentials.expiry, datetime)
+    assert credentials.expiry.tzinfo is None
+    assert credentials.expiry == datetime(2030, 1, 2, 3, 4, 5)
+
+    # Regression: accessing google-auth's expiry/valid state must not raise
+    # `can't compare offset-naive and offset-aware datetimes`.
+    _ = credentials.expired
+    _ = credentials.valid
+
+
 def test_oauth_provider_is_not_mocked():
     source = (BACKEND / "oauth" / "providers" / "youtube.py").read_text(
         encoding="utf-8"
@@ -274,6 +305,7 @@ def main():
     test_oauth_state_is_single_use()
     test_oauth_pkce_verifier_survives_redirect_boundary()
     test_oauth_scope_superset_is_accepted_but_required_scopes_are_enforced()
+    test_google_credentials_use_naive_utc_expiry()
     test_oauth_provider_is_not_mocked()
     test_no_postiz_import_in_os_publish_path()
     print("R3 readiness smoke tests passed")
@@ -283,6 +315,7 @@ def main():
     print("OAuth state -> single-use")
     print("OAuth PKCE verifier -> persisted across redirect and single-use")
     print("OAuth scope superset -> accepted only when all OS-required scopes are present")
+    print("Google credential expiry -> naive UTC for google-auth compatibility")
     print("YouTube OAuth provider -> real implementation, no mock tokens")
     print("OS publish path Postiz references -> none")
 
