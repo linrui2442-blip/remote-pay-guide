@@ -23,7 +23,7 @@ def create_asset_from_result(result):
         provider = result.get("provider")
         output = _normalize_output(result.get("output") or {})
 
-        asset_url = output.get("url") or output.get("asset_url")
+        asset_url = output.get("url") or output.get("asset_url") or output.get("video_url")
         file_path = output.get("file_path") or output.get("path")
         metadata = {"production_output": output}
 
@@ -34,8 +34,21 @@ def create_asset_from_result(result):
             else:
                 storage_type = "artifact"
         elif provider == "ai_gateway":
+            # AI Remote Production is intentionally external-only. A completed
+            # AI job must expose a remote asset URL; the OS never silently falls
+            # back to a local file/GPU/model path.
+            if not asset_url:
+                return {
+                    "asset_id": None,
+                    "asset_status": "failed",
+                    "error": (
+                        "AI Gateway completed without a remote asset URL "
+                        "(expected url, asset_url, or video_url)"
+                    ),
+                }
             source_provider = "ai_gateway"
             storage_type = "ai_output"
+            file_path = None
         else:
             source_provider = "external"
             storage_type = "external"
