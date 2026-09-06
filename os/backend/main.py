@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,7 @@ from config.network import configure_outbound_proxy
 configure_outbound_proxy()
 
 from integrations.github.client import GitHubClient
+from production.runtime.poller import runtime_poller
 
 from routers import (
     production,
@@ -28,7 +30,17 @@ from routers import (
     settings,
 )
 
-app = FastAPI(title="Remote Pay Guide OS")
+
+@asynccontextmanager
+async def lifespan(app):
+    runtime_poller.start()
+    try:
+        yield
+    finally:
+        runtime_poller.stop()
+
+
+app = FastAPI(title="Remote Pay Guide OS", lifespan=lifespan)
 
 frontend_origins = [
     origin.strip()
