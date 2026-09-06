@@ -41,6 +41,7 @@ def _connect():
             account_id INTEGER,
             provider TEXT,
             scope_profile TEXT,
+            code_verifier TEXT,
             expires_at TEXT,
             created_at TEXT
         )
@@ -52,6 +53,8 @@ def _connect():
     }
     if "scope_profile" not in state_columns:
         conn.execute("ALTER TABLE oauth_states ADD COLUMN scope_profile TEXT")
+    if "code_verifier" not in state_columns:
+        conn.execute("ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT")
 
     conn.commit()
     return conn
@@ -179,6 +182,7 @@ def create_oauth_state(
     provider="youtube",
     ttl_minutes=10,
     scope_profile="publish",
+    code_verifier=None,
 ):
     if not state:
         raise ValueError("OAuth state is required")
@@ -193,14 +197,15 @@ def create_oauth_state(
     conn.execute(
         """
         INSERT OR REPLACE INTO oauth_states
-        (state, account_id, provider, scope_profile, expires_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (state, account_id, provider, scope_profile, code_verifier, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             state,
             account_id,
             provider,
             scope_profile,
+            code_verifier,
             expires_at.isoformat(),
             now.isoformat(),
         ),
@@ -233,7 +238,7 @@ def consume_oauth_state(
     conn = _connect()
     row = conn.execute(
         """
-        SELECT state, account_id, provider, scope_profile, expires_at
+        SELECT state, account_id, provider, scope_profile, code_verifier, expires_at
         FROM oauth_states
         WHERE state=? AND account_id=? AND provider=?
         """,
@@ -252,12 +257,7 @@ def consume_oauth_state(
 
 
 def consume_oauth_state_by_state(state, provider="youtube"):
-    """Resolve account/scope metadata from the opaque one-time OAuth state.
-
-    OAuth providers return code + state to the redirect URI; they do not need
-    to echo a separate account_id query parameter. The server-side state row is
-    therefore the source of truth for which account initiated authorization.
-    """
+    """Resolve account/scope/PKCE metadata from the opaque one-time state."""
     if not state:
         return None
 
@@ -265,7 +265,7 @@ def consume_oauth_state_by_state(state, provider="youtube"):
     conn = _connect()
     row = conn.execute(
         """
-        SELECT state, account_id, provider, scope_profile, expires_at
+        SELECT state, account_id, provider, scope_profile, code_verifier, expires_at
         FROM oauth_states
         WHERE state=? AND provider=?
         """,
