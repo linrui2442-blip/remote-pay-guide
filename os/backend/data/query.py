@@ -1,3 +1,5 @@
+import re
+
 from analytics.manager import get_latest_metrics
 from assets.manager import get_asset
 from data.growth import get_content_funnel
@@ -5,11 +7,10 @@ from data.tracking import get_history_summaries, get_tracking_records
 from publish.manager import get_publish_tasks
 
 
-SORTABLE_FIELDS = {
-    "published_at",
+VALID_SCOPES = {"active", "historical", "archived", "all"}
+DEFAULT_SELECTED_METRICS = (
     "views",
     "watch_time",
-    "average_view_duration",
     "average_view_percentage",
     "likes",
     "comments",
@@ -17,12 +18,28 @@ SORTABLE_FIELDS = {
     "referral_clicks",
     "conversions",
     "conversion_value",
-}
-VALID_SCOPES = {"active", "historical", "archived", "all"}
+)
+METRIC_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
 def _normalize(value):
     return str(value or "").strip().lower()
+
+
+def _normalize_metrics(metrics):
+    if metrics is None:
+        return list(DEFAULT_SELECTED_METRICS)
+    if isinstance(metrics, str):
+        values = [item.strip() for item in metrics.split(",") if item.strip()]
+    else:
+        values = [str(item).strip() for item in metrics if str(item).strip()]
+    result = []
+    for metric in values:
+        if not METRIC_NAME_RE.match(metric):
+            raise ValueError(f"invalid metric name: {metric}")
+        if metric not in result:
+            result.append(metric)
+    return result or list(DEFAULT_SELECTED_METRICS)
 
 
 def _publish_index():
@@ -63,6 +80,17 @@ def _asset_metadata(video_id):
         "published_at": metadata.get("published_at"),
         "asset": asset,
     }
+
+
+def _metric_map(metric, *, referral_clicks=0, conversions=0, conversion_value=0):
+    values = dict(metric.get("metrics") or {})
+    # Data Center exposes the cross-platform name used by the query/UI while
+    # preserving the legacy storage key (retention) in the raw metric payload.
+    values["average_view_percentage"] = metric.get("retention")
+    values["referral_clicks"] = int(referral_clicks or 0)
+    values["conversions"] = int(conversions or 0)
+    values["conversion_value"] = float(conversion_value or 0)
+    return values
 
 
 def _current_rows(account_id=None, platform=None, scope="active"):
@@ -111,6 +139,17 @@ def _current_rows(account_id=None, platform=None, scope="active"):
         funnel = get_content_funnel(content_id)
         intent_by_type = funnel.get("intent", {}).get("by_type", {})
         conversion = funnel.get("conversion", {})
+        referral_clicks = int(
+            intent_by_type.get("binance_referral_click", 0) or 0
+        )
+        conversions = int(conversion.get("total", 0) or 0)
+        conversion_value = float(conversion.get("value", 0) or 0)
+        metric_values = _metric_map(
+            metric,
+            referral_clicks=referral_clicks,
+            conversions=conversions,
+            conversion_value=conversion_value,
+        )
 
         rows.append(
             {
@@ -145,11 +184,10 @@ def _current_rows(account_id=None, platform=None, scope="active"):
                 "impressions": int(metric.get("impressions") or 0),
                 "clicks": int(metric.get("clicks") or 0),
                 "ctr": metric.get("ctr"),
-                "referral_clicks": int(
-                    intent_by_type.get("binance_referral_click", 0) or 0
-                ),
-                "conversions": int(conversion.get("total", 0) or 0),
-                "conversion_value": float(conversion.get("value", 0) or 0),
+                "referral_clicks": referral_clicks,
+                "conversions": conversions,
+                "conversion_value": conversion_value,
+                "metrics": metric_values,
             }
         )
     return rows
@@ -182,6 +220,21 @@ def _historical_rows(account_id=None, platform=None, state=None):
             tracking_state = tracking_item.get("state") or "historical"
             if normalized_state and tracking_state != normalized_state:
                 continue
+            metric_values = {
+                "views": int(item.get("views") or 0),
+                "watch_time": int(item.get("watch_time") or 0),
+                "average_view_duration": item.get("average_view_duration"),
+                "average_view_percentage": item.get("average_view_percentage"),
+                "likes": int(item.get("likes") or 0),
+                "comments": int(item.get("comments") or 0),
+                "shares": int(item.get("shares") or 0),
+                "impressions": 0,
+                "clicks": 0,
+                "ctr": None,
+                "referral_clicks": int(item.get("referral_clicks") or 0),
+                "conversions": int(item.get("conversions") or 0),
+                "conversion_value": float(item.get("conversion_value") or 0),
+            }
             rows.append(
                 {
                     "content_id": item.get("content_id"),
@@ -196,26 +249,33 @@ def _historical_rows(account_id=None, platform=None, state=None):
                     "period_start": None,
                     "period_end": None,
                     "collected_at": item.get("summarized_at"),
-                    "views": int(item.get("views") or 0),
-                    "watch_time": int(item.get("watch_time") or 0),
-                    "average_view_duration": item.get("average_view_duration"),
-                    "average_view_percentage": item.get("average_view_percentage"),
-                    "likes": int(item.get("likes") or 0),
-                    "comments": int(item.get("comments") or 0),
-                    "shares": int(item.get("shares") or 0),
+                    "views": metric_values["views"],
+                    "watch_time": metric_values["watch_time"],
+                    "average_view_duration": metric_values["average_view_duration"],
+                    "average_view_percentage": metric_values["average_view_percentage"],
+                    "likes": metric_values["likes"],
+                    "comments": metric_values["comments"],
+                    "shares": metric_values["shares"],
                     "impressions": 0,
                     "clicks": 0,
                     "ctr": None,
-                    "referral_clicks": int(item.get("referral_clicks") or 0),
-                    "conversions": int(item.get("conversions") or 0),
-                    "conversion_value": float(item.get("conversion_value") or 0),
+                    "referral_clicks": metric_values["referral_clicks"],
+                    "conversions": metric_values["conversions"],
+                    "conversion_value": metric_values["conversion_value"],
+                    "metrics": metric_values,
                 }
             )
     return rows
 
 
+def _metric_value(row, field):
+    if field in row and row.get(field) is not None:
+        return row.get(field)
+    return (row.get("metrics") or {}).get(field)
+
+
 def _sort_value(row, field):
-    value = row.get(field)
+    value = _metric_value(row, field)
     if value is None:
         return -1 if field != "published_at" else ""
     return value
@@ -244,11 +304,21 @@ def _summary(rows):
     }
 
 
+def _decorate_selected_metrics(rows, selected_metrics):
+    for row in rows:
+        row["metric_values"] = {
+            metric: _metric_value(row, metric)
+            for metric in selected_metrics
+        }
+    return rows
+
+
 def query_data_center(
     *,
     account_id=None,
     platform=None,
     scope="active",
+    metrics=None,
     sort_by="views",
     sort_direction="desc",
     limit=100,
@@ -256,8 +326,9 @@ def query_data_center(
     normalized_scope = _normalize(scope) or "active"
     if normalized_scope not in VALID_SCOPES:
         raise ValueError(f"unsupported scope: {scope}")
-    if sort_by not in SORTABLE_FIELDS:
-        raise ValueError(f"unsupported sort field: {sort_by}")
+    selected_metrics = _normalize_metrics(metrics)
+    if sort_by != "published_at" and not METRIC_NAME_RE.match(str(sort_by or "")):
+        raise ValueError(f"invalid sort field: {sort_by}")
 
     if normalized_scope in {"historical", "archived"}:
         rows = _historical_rows(
@@ -288,17 +359,26 @@ def query_data_center(
     reverse = _normalize(sort_direction) != "asc"
     rows.sort(key=lambda row: _sort_value(row, sort_by), reverse=reverse)
     limit = max(1, min(int(limit or 100), 1000))
-    limited = rows[:limit]
+    limited = _decorate_selected_metrics(rows[:limit], selected_metrics)
+    metric_catalog = sorted(
+        {
+            metric_name
+            for row in rows
+            for metric_name in (row.get("metrics") or {}).keys()
+        }
+    )
 
     return {
         "filters": {
             "account_id": account_id,
             "platform": _normalize(platform) or None,
             "scope": normalized_scope,
+            "metrics": selected_metrics,
             "sort_by": sort_by,
             "sort_direction": "desc" if reverse else "asc",
             "limit": limit,
         },
+        "metric_catalog": metric_catalog,
         "summary": _summary(rows),
         "returned": len(limited),
         "total_matching": len(rows),
