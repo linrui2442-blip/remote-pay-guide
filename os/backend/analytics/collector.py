@@ -164,6 +164,8 @@ class AnalyticsCollector:
             platform="youtube",
             account_id=account_id,
             source="youtube_analytics_api",
+            period_start=result.get("start_date"),
+            period_end=result.get("end_date"),
             views=result.get("views", 0),
             watch_time=result.get("watch_time", 0),
             average_view_duration=result.get("average_view_duration"),
