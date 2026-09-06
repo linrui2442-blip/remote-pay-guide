@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from accounts.manager import get_account, update_account_status
 from oauth.manager import (
-    consume_oauth_state,
+    consume_oauth_state_by_state,
     create_oauth_state,
     create_token,
 )
@@ -16,9 +16,9 @@ router = APIRouter()
 
 
 class YouTubeOAuthExchangeRequest(BaseModel):
-    account_id: int
     authorization_code: str
     state: str
+    account_id: int | None = None
 
 
 @router.get("/oauth/youtube/authorize/{account_id}")
@@ -47,20 +47,22 @@ def youtube_authorize(account_id: int, scope_profile: str = "publish"):
 
 @router.post("/oauth/youtube/exchange")
 def youtube_exchange(request: YouTubeOAuthExchangeRequest):
-    account = get_account(request.account_id)
+    state_record = consume_oauth_state_by_state(
+        request.state,
+        provider="youtube",
+    )
+    if not state_record:
+        raise HTTPException(status_code=400, detail="invalid or expired OAuth state")
+
+    account_id = state_record.get("account_id")
+    if request.account_id is not None and request.account_id != account_id:
+        raise HTTPException(status_code=400, detail="OAuth state/account mismatch")
+
+    account = get_account(account_id)
     if not account:
         raise HTTPException(status_code=404, detail="account not found")
     if str(account.get("platform", "")).lower() != "youtube":
         raise HTTPException(status_code=400, detail="account is not a YouTube account")
-
-    state_record = consume_oauth_state(
-        request.account_id,
-        request.state,
-        provider="youtube",
-        return_record=True,
-    )
-    if not state_record:
-        raise HTTPException(status_code=400, detail="invalid or expired OAuth state")
 
     scope_profile = state_record.get("scope_profile") or "publish"
 
@@ -72,14 +74,14 @@ def youtube_exchange(request: YouTubeOAuthExchangeRequest):
         )
         stored = create_token(
             {
-                "account_id": request.account_id,
+                "account_id": account_id,
                 "provider": "youtube",
                 **token,
             }
         )
-        update_account_status(request.account_id, "connected")
+        update_account_status(account_id, "connected")
         return {
-            "account_id": request.account_id,
+            "account_id": account_id,
             "status": "connected",
             "scope_profile": scope_profile,
             "scopes": stored.get("scopes") if stored else [],
