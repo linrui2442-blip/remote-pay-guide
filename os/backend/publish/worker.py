@@ -1,4 +1,5 @@
 from assets.manager import get_asset, get_asset_by_asset_id
+from events.publish_events import emit_publish_completed, emit_publish_failed
 from publish.asset_resolver import AssetResolver, AssetResolutionError
 from publish.manager import get_publish_task, update_publish_status
 from publish.registry import get_adapter
@@ -21,8 +22,6 @@ class PublishWorker:
             asset = get_asset(video_id)
             if asset:
                 return asset
-            # Preserve legacy video_id fallback. A real path/URL must still be
-            # resolvable by the platform-specific adapter path.
             return {
                 "asset_id": None,
                 "video_id": video_id,
@@ -70,6 +69,7 @@ class PublishWorker:
                 update_publish_status(
                     task_id, "failed", error_message="unsupported platform"
                 )
+                emit_publish_failed(task, "unsupported platform")
                 self.queue.remove_task(task_id)
                 processed += 1
                 continue
@@ -79,6 +79,7 @@ class PublishWorker:
                 update_publish_status(
                     task_id, "failed", error_message="video asset not found"
                 )
+                emit_publish_failed(task, "video asset not found")
                 self.queue.remove_task(task_id)
                 processed += 1
                 continue
@@ -100,12 +101,15 @@ class PublishWorker:
                     platform_video_id=result.get("video_id"),
                     published_url=result.get("url"),
                 )
+                emit_publish_completed(task, result)
             else:
+                error = result.get("error", result.get("status"))
                 update_publish_status(
                     task_id,
                     "failed",
-                    error_message=result.get("error", result.get("status")),
+                    error_message=error,
                 )
+                emit_publish_failed(task, error)
 
             self.queue.remove_task(task_id)
             processed += 1
