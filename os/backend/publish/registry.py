@@ -20,7 +20,12 @@ def _normalize_platform(platform):
 
 
 def register_adapter(platform, adapter, *, initialize=True, replace=False):
-    """Register a publish adapter without changing Publish Center core code."""
+    """Register a publish adapter without changing Publish Center core code.
+
+    New adapters may optionally expose a ``capabilities`` dict containing
+    analytics_supported, oauth_required, and metric_types. If omitted, the
+    registry only claims the capability it can prove: publishing.
+    """
     normalized = _normalize_platform(platform)
     if not normalized:
         raise ValueError("platform is required")
@@ -36,14 +41,15 @@ def register_adapter(platform, adapter, *, initialize=True, replace=False):
     platform_registry[normalized] = adapter
 
     # Keep the Data Center aware of newly discovered publish platforms while
-    # preserving any capability metadata that has already been configured.
+    # preserving capability metadata that has already been configured.
     if get_platform_capability(normalized) is None:
+        metadata = getattr(adapter, "capabilities", {}) or {}
         register_platform_capability(
             normalized,
             publish_supported=True,
-            analytics_supported=False,
-            oauth_required=False,
-            metric_types=[],
+            analytics_supported=bool(metadata.get("analytics_supported", False)),
+            oauth_required=bool(metadata.get("oauth_required", False)),
+            metric_types=metadata.get("metric_types") or [],
         )
 
     return adapter
@@ -67,7 +73,8 @@ def discover_adapters():
 
     Helper/API modules that do not define an Adapter class are ignored. A new
     platform can therefore be added as a new adapter module without editing
-    this registry.
+    this registry. An adapter may override its module-derived platform key by
+    exposing ``platform_name``.
     """
     discovered = []
     for module_info in pkgutil.iter_modules(adapters_package.__path__):
@@ -81,10 +88,11 @@ def discover_adapters():
             continue
 
         adapter = adapter_class()
-        register_adapter(module_name, adapter)
-        discovered.append(module_name)
+        platform_name = getattr(adapter, "platform_name", module_name)
+        register_adapter(platform_name, adapter)
+        discovered.append(_normalize_platform(platform_name))
 
-    return sorted(discovered)
+    return sorted(item for item in discovered if item)
 
 
 def get_adapter(platform):
