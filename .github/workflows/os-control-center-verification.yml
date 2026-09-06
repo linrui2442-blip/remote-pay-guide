@@ -9,6 +9,7 @@ on:
       - 'os/backend/ai/**'
       - 'os/backend/analytics/**'
       - 'os/backend/assets/**'
+      - 'os/backend/config/network.py'
       - 'os/backend/production/**'
       - 'os/backend/publish/**'
       - 'os/backend/routers/accounts.py'
@@ -18,6 +19,7 @@ on:
       - 'os/backend/routers/oauth.py'
       - 'os/backend/routers/production.py'
       - 'os/backend/routers/publish.py'
+      - 'os/backend/routers/settings.py'
       - '.github/workflows/os-control-center-verification.yml'
 
 jobs:
@@ -44,23 +46,27 @@ jobs:
           PYTHONPATH: os/backend
         run: |
           python - <<'PY'
+          import os
           import tempfile
           from pathlib import Path
 
           import accounts.manager as accounts_manager
           import oauth.manager as oauth_manager
+          import config.network as network_config
           from accounts.models import Account
 
           with tempfile.TemporaryDirectory() as tmpdir:
               db_path = str(Path(tmpdir) / 'os.db')
               accounts_manager.DB_PATH = db_path
               oauth_manager.DB_PATH = db_path
+              network_config.DB_PATH = db_path
 
               import main
 
               route_paths = set(main.app.openapi()['paths'])
               assert '/accounts' in route_paths
               assert '/accounts/{account_id}' in route_paths
+              assert '/accounts/{account_id}/sync' in route_paths
               assert '/ai/request' in route_paths
               assert '/ai/status' in route_paths
               assert '/assets' in route_paths
@@ -77,6 +83,7 @@ jobs:
               assert '/oauth/youtube/status' in route_paths
               assert '/oauth/youtube/authorize/{account_id}' in route_paths
               assert '/oauth/youtube/exchange' in route_paths
+              assert '/settings/network/proxy' in route_paths
 
               middleware_names = {
                   middleware.cls.__name__ for middleware in main.app.user_middleware
@@ -92,6 +99,19 @@ jobs:
               assert created['account_name'] == 'verification-account'
               assert accounts_manager.get_account(created['id'])['id'] == created['id']
               assert len(accounts_manager.get_accounts()) == 1
+
+              saved = network_config.save_proxy_settings(
+                  mode='manual',
+                  proxy_url='127.0.0.1:7890',
+              )
+              assert saved['mode'] == 'manual'
+              assert saved['proxy_url'] == 'http://127.0.0.1:7890'
+              assert os.environ['HTTPS_PROXY'] == 'http://127.0.0.1:7890'
+              assert network_config.get_proxy_status()['runtime_configured'] is True
+
+              disabled = network_config.save_proxy_settings(mode='disabled')
+              assert disabled['mode'] == 'disabled'
+              assert network_config.get_proxy_status()['runtime_configured'] is False
 
           print('control center verification passed')
           PY
