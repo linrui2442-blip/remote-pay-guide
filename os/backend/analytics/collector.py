@@ -162,6 +162,7 @@ class AnalyticsCollector:
             video_id=video_id,
             content_id=content_id or video_id,
             platform="youtube",
+            account_id=account_id,
             source="youtube_analytics_api",
             views=result.get("views", 0),
             watch_time=result.get("watch_time", 0),
