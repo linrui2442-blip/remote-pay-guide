@@ -36,6 +36,8 @@ jobs:
       - name: Verify Data Center funnel
         env:
           PYTHONPATH: os/backend
+          YOUTUBE_OAUTH_CLIENT_ID: verify-client
+          YOUTUBE_OAUTH_CLIENT_SECRET: verify-secret
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -43,6 +45,7 @@ jobs:
           from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
           from analytics.manager import get_latest_metrics, get_metrics, save_metric
           from analytics.models import AnalyticsMetric
+          from analytics.youtube_api import YouTubeAnalyticsAPIClient
           from data.manager import (
               get_content_funnel_data,
               get_platform,
@@ -175,6 +178,7 @@ jobs:
           assert youtube_capability['analytics_supported'] is True
           assert 'views' in youtube_capability['metric_types']
           assert 'retention' in youtube_capability['metric_types']
+          assert 'impressions' not in youtube_capability['metric_types']
 
           register_platform_capability(
               'future-platform',
@@ -240,19 +244,20 @@ jobs:
           youtube_status = collector.readiness('youtube')
           assert youtube_status['ready'] is False
           assert youtube_status['collector_registered'] is True
-          assert youtube_status['requires_reauthorization'] is True
-          assert youtube_status['missing_scopes']
+          assert youtube_status['collector_enabled'] is True
+          assert 'account_id is required' in youtube_status['reason']
           try:
               collector.collect('verify-video', 'youtube')
           except AnalyticsCollectionNotReady:
               pass
           else:
-              raise AssertionError('collector must not fabricate zero metrics when OAuth read scopes are unavailable')
+              raise AssertionError('collector must require an account-specific credential')
 
           account_status = collector.readiness('youtube', account_id=999)
           assert account_status['credential_found'] is True
           assert account_status['credential_ready'] is False
           assert account_status['requires_reauthorization'] is True
+          assert account_status['ready'] is False
 
           create_token({
               'account_id': 999,
@@ -268,8 +273,76 @@ jobs:
           full_account_status = collector.readiness('youtube', account_id=999)
           assert full_account_status['credential_ready'] is True
           assert full_account_status['requires_reauthorization'] is False
-          assert full_account_status['collector_enabled'] is False
-          assert full_account_status['ready'] is False
+          assert full_account_status['collector_enabled'] is True
+          assert full_account_status['ready'] is True
+
+          normalized = YouTubeAnalyticsAPIClient.normalize_response({
+              'columnHeaders': [
+                  {'name': 'views'},
+                  {'name': 'estimatedMinutesWatched'},
+                  {'name': 'averageViewDuration'},
+                  {'name': 'averageViewPercentage'},
+                  {'name': 'likes'},
+                  {'name': 'comments'},
+                  {'name': 'shares'},
+              ],
+              'rows': [[321, 15.5, 42.5, 67.25, 11, 4, 3]],
+          })
+          assert normalized == {
+              'views': 321,
+              'watch_time': 930,
+              'average_view_duration': 42.5,
+              'retention': 67.25,
+              'likes': 11,
+              'comments': 4,
+              'shares': 3,
+          }
+
+          class FakeYouTubeAnalyticsClient:
+              def initialize(self, credentials=None):
+                  assert credentials is not None
+                  return {'platform': 'youtube', 'status': 'ready'}
+
+              def collect_video_metrics(self, video_id, start_date=None, end_date=None):
+                  assert video_id == 'live-video'
+                  assert start_date == '2026-08-01'
+                  assert end_date == '2026-08-31'
+                  return {
+                      'views': 321,
+                      'watch_time': 930,
+                      'average_view_duration': 42.5,
+                      'retention': 67.25,
+                      'likes': 11,
+                      'comments': 4,
+                      'shares': 3,
+                      'start_date': start_date,
+                      'end_date': end_date,
+                  }
+
+          create_token({
+              'account_id': 1000,
+              'provider': 'youtube',
+              'access_token': 'verify-full-access',
+              'scopes': [YOUTUBE_READ_SCOPE, YOUTUBE_ANALYTICS_SCOPE],
+          })
+          live_collector = AnalyticsCollector(
+              youtube_client_factory=FakeYouTubeAnalyticsClient
+          )
+          live_status = live_collector.readiness('youtube', account_id=1000)
+          assert live_status['ready'] is True
+          saved_live_metric = live_collector.collect(
+              'live-video',
+              'youtube',
+              account_id=1000,
+              content_id='live-content',
+              start_date='2026-08-01',
+              end_date='2026-08-31',
+          )
+          assert saved_live_metric['source'] == 'youtube_analytics_api'
+          assert saved_live_metric['content_id'] == 'live-content'
+          assert saved_live_metric['views'] == 321
+          assert saved_live_metric['watch_time'] == 930
+          assert saved_live_metric['retention'] == 67.25
 
           future_status = collector.readiness('future-platform')
           assert future_status['ready'] is False
@@ -291,6 +364,8 @@ jobs:
           print(youtube_status)
           print(account_status)
           print(full_account_status)
+          print(live_status)
+          print(saved_live_metric)
           print(future_status)
           print(instagram_status)
           PY
