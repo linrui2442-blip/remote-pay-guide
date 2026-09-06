@@ -10,6 +10,7 @@ on:
       - 'os/backend/analytics/**'
       - 'os/backend/assets/**'
       - 'os/backend/config/network.py'
+      - 'os/backend/config/ai_gateway.py'
       - 'os/backend/production/**'
       - 'os/backend/publish/**'
       - 'os/backend/routers/accounts.py'
@@ -56,6 +57,7 @@ jobs:
 
           import accounts.manager as accounts_manager
           import oauth.manager as oauth_manager
+          import config.ai_gateway as ai_gateway_config
           import config.network as network_config
           from accounts.models import Account
 
@@ -64,6 +66,7 @@ jobs:
               accounts_manager.DB_PATH = db_path
               oauth_manager.DB_PATH = db_path
               network_config.DB_PATH = db_path
+              ai_gateway_config.DB_PATH = Path(db_path)
 
               import main
 
@@ -89,6 +92,7 @@ jobs:
               assert '/oauth/youtube/authorize/{account_id}' in route_paths
               assert '/oauth/youtube/exchange' in route_paths
               assert '/settings/network/proxy' in route_paths
+              assert '/settings/ai-gateway' in route_paths
 
               middleware_names = {
                   middleware.cls.__name__ for middleware in main.app.user_middleware
@@ -117,6 +121,13 @@ jobs:
               disabled = network_config.save_proxy_settings(mode='disabled')
               assert disabled['mode'] == 'disabled'
               assert network_config.get_proxy_status()['runtime_configured'] is False
+
+              ai_saved = ai_gateway_config.save_ai_gateway_settings(
+                  'https://relay.example.test/v1/video'
+              )
+              assert ai_saved['configured'] is True
+              assert ai_saved['source'] == 'os_settings'
+              assert ai_saved['local_inference'] is False
 
           print('control center verification passed')
           PY
