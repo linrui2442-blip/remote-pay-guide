@@ -36,13 +36,14 @@ export function collectPublishTaskAnalytics(id, data = {}) {
 export function collectAccountAnalytics(accountId, platform, data = {}) {
   return apiPost(`/analytics/collector/collect/account/${encodeURIComponent(accountId)}`, {
     platform,
+    active_limit: 10,
     ...data,
   });
 }
 
 export function getAccounts() { return apiGet('/accounts'); }
 export function createAccount(data) { return apiPost('/accounts', data); }
-export function syncAccount(accountId, maxResults = 50) {
+export function syncAccount(accountId, maxResults = 10) {
   return apiPost(`/accounts/${encodeURIComponent(accountId)}/sync`, { max_results: maxResults });
 }
 export function getYouTubeOAuthStatus() { return apiGet('/oauth/youtube/status'); }
