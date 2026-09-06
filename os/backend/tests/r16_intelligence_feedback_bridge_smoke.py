@@ -18,6 +18,7 @@ from intelligence.feedback_bridge import (
     materialize_feedback_task,
     refresh_account_feedback,
 )
+from production.tasks.execution import get_execution_readiness
 from production.tasks.manager import get_tasks
 
 
@@ -135,6 +136,15 @@ def main():
     assert task['parameters']['intelligence_snapshot_id'] == latest[0]['id']
     assert task['parameters']['source_content_id'] == 'winner-content'
 
+    # Generic Intelligence currently suggests GitHub for non-AI-video strategy
+    # output. It must NOT guess a protected legacy workflow. The task remains a
+    # recommendation until an explicit execution workflow is selected.
+    readiness = get_execution_readiness(task)
+    assert task['provider'] == 'github'
+    assert task['workflow'] == ''
+    assert readiness['ready'] is False
+    assert 'workflow' in readiness['missing']
+
     reused = materialize_feedback_task(latest[0]['id'])
     assert reused['created'] is False
     assert reused['production_task']['id'] == task['id']
@@ -144,6 +154,7 @@ def main():
     print('Data Center ACTIVE rows -> feedback -> strategy snapshot')
     print('Conversion winner outranks higher-traffic vanity winner')
     print('Refresh is de-duplicated; ProductionTask requires explicit materialization')
+    print('Materialized GitHub task does not guess protected legacy workflow')
     print('Explicit materialization is idempotent and leaves task in created state')
 
 
