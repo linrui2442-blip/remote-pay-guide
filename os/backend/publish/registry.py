@@ -116,6 +116,7 @@ def get_registry_status():
                 "platform": platform,
                 "adapter": adapter.__class__.__name__,
                 "status": status,
+                "capabilities": get_platform_capability(platform),
             }
         )
     return result
