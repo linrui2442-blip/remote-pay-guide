@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
-from analytics.collector import AnalyticsCollector
+from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
 from analytics.manager import (
     get_content_metrics,
     get_latest_content_metrics,
@@ -17,6 +18,15 @@ from analytics.models import AnalyticsMetric
 
 router = APIRouter()
 collector = AnalyticsCollector()
+
+
+class AnalyticsCollectionRequest(BaseModel):
+    video_id: str
+    platform: str
+    account_id: int
+    content_id: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 @router.post('/analytics/metrics')
@@ -37,6 +47,26 @@ def current_metrics():
 @router.get('/analytics/collector/status/{platform}')
 def collector_status(platform: str, account_id: int | None = None):
     return collector.readiness(platform, account_id=account_id)
+
+
+@router.post('/analytics/collector/collect')
+def collect_metrics(request: AnalyticsCollectionRequest):
+    try:
+        return collector.collect(
+            request.video_id,
+            request.platform,
+            account_id=request.account_id,
+            content_id=request.content_id,
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+    except AnalyticsCollectionNotReady as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"analytics collection failed: {exc}",
+        ) from exc
 
 
 @router.get('/analytics/metrics/video/{video_id}')
