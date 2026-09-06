@@ -85,3 +85,11 @@ export function getNetworkProxySettings() {
 export function saveNetworkProxySettings(data) {
   return apiPost('/settings/network/proxy', data);
 }
+
+export function getAIGatewaySettings() {
+  return apiGet('/settings/ai-gateway');
+}
+
+export function saveAIGatewaySettings(data) {
+  return apiPost('/settings/ai-gateway', data);
+}
