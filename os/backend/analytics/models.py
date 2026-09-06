@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AnalyticsMetric(BaseModel):
@@ -19,4 +19,8 @@ class AnalyticsMetric(BaseModel):
     average_view_duration: float | None = None
     retention: float | None = None
     shares: int = 0
+    # Platform-specific Analytics values live here so adding a provider metric
+    # never requires a new SQLite column. Common cross-platform metrics above
+    # remain first-class fields for compatibility with the current Data Center.
+    metrics: dict = Field(default_factory=dict)
     collected_at: str | None = None
