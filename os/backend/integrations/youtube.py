@@ -1,8 +1,6 @@
 import requests
 
 from assets.manager import create_video_asset
-from data.growth import get_intent_events, record_intent
-from data.models import IntentEvent
 from integrations.google_transport import build_authorized_session
 from oauth.manager import get_token, update_token
 from oauth.providers.youtube import YouTubeOAuthProvider
@@ -16,9 +14,10 @@ NETWORK_TIMEOUT_ERRNOS = {60, 110, 10060}
 class YouTubeDataAPIRequestsClient:
     """Minimal official YouTube Data API v3 client using requests transport.
 
-    Remote Pay Guide OS owns its proxy preference, so this client applies that
-    proxy directly to a Google-authorized requests session instead of relying
-    on library-specific proxy discovery.
+    googleapiclient uses httplib2 internally, whose proxy behavior can differ
+    from requests on Windows. Remote Pay Guide OS owns its proxy preference,
+    so this client applies that proxy directly to a Google-authorized requests
+    session instead of relying on library-specific environment discovery.
     """
 
     BASE_URL = "https://www.googleapis.com/youtube/v3"
@@ -67,16 +66,14 @@ class YouTubeDataAPIRequestsClient:
     def videos_list(self, **params):
         return self._get("videos", params)
 
-    def comment_threads_list(self, **params):
-        return self._get("commentThreads", params)
-
 
 class YouTubeContentSync:
-    """Import existing YouTube content and audience feedback into the OS.
+    """Import existing videos from an authorized YouTube account into the OS.
 
-    This does not publish, download, back up, or modify anything on YouTube.
-    It reads metadata and top-level comments from the official YouTube Data API
-    and stores only external asset records plus Data Center intent signals.
+    This does not publish, download, back up, or modify anything on YouTube. It
+    only reads metadata from the official API and creates local external Video
+    Asset / Publish Center records so existing videos can enter the Analytics
+    -> Data Center loop.
     """
 
     def __init__(self, service=None):
@@ -87,6 +84,8 @@ class YouTubeContentSync:
         try:
             return request.execute(num_retries=2)
         except TypeError:
+            # Test doubles and a few lightweight request wrappers do not expose
+            # googleapiclient's optional num_retries argument.
             return request.execute()
         except OSError as exc:
             error_code = getattr(exc, "winerror", None) or getattr(exc, "errno", None)
@@ -189,96 +188,8 @@ class YouTubeContentSync:
                 details[item.get("id")] = item
         return details
 
-    def _comment_threads(self, service, video_id, max_results):
-        params = {
-            "part": "snippet",
-            "videoId": video_id,
-            "maxResults": min(100, max_results),
-            "order": "time",
-            "textFormat": "plainText",
-        }
-        try:
-            if isinstance(service, YouTubeDataAPIRequestsClient):
-                response = service.comment_threads_list(**params)
-            else:
-                response = self._execute(service.commentThreads().list(**params))
-        except RuntimeError as exc:
-            message = str(exc).lower()
-            if "commentsdisabled" in message or "disabled comments" in message or "comments are disabled" in message:
-                return []
-            raise
-        return (response.get("items") or [])[:max_results]
-
-    @staticmethod
-    def _comment_payload(thread):
-        top = thread.get("snippet", {}).get("topLevelComment", {})
-        snippet = top.get("snippet", {})
-        comment_id = top.get("id") or thread.get("id")
-        text = snippet.get("textOriginal") or snippet.get("textDisplay") or ""
-        return {
-            "comment_id": comment_id,
-            "text": str(text).strip(),
-            "like_count": int(snippet.get("likeCount") or 0),
-            "reply_count": int(thread.get("snippet", {}).get("totalReplyCount") or 0),
-            "published_at": snippet.get("publishedAt"),
-            "updated_at": snippet.get("updatedAt"),
-        }
-
-    def _sync_feedback(self, service, video_id, title, max_comments):
-        existing_comment_ids = {
-            str((event.get("metadata") or {}).get("comment_id"))
-            for event in get_intent_events(video_id)
-            if event.get("source") == "youtube_comment"
-            and (event.get("metadata") or {}).get("comment_id")
-        }
-
-        imported = 0
-        existing = 0
-        samples = []
-        for thread in self._comment_threads(service, video_id, max_comments):
-            payload = self._comment_payload(thread)
-            comment_id = payload.get("comment_id")
-            text = payload.get("text") or ""
-            if not comment_id or not text:
-                continue
-
-            samples.append(text[:500])
-            if str(comment_id) in existing_comment_ids:
-                existing += 1
-                continue
-
-            record_intent(
-                IntentEvent(
-                    content_id=video_id,
-                    video_id=video_id,
-                    source="youtube_comment",
-                    event_type="content_feedback",
-                    event_value={"text": text},
-                    metadata={
-                        "platform": "youtube",
-                        "comment_id": comment_id,
-                        "video_title": title,
-                        "like_count": payload.get("like_count", 0),
-                        "reply_count": payload.get("reply_count", 0),
-                        "updated_at": payload.get("updated_at"),
-                        "synced_from": "youtube_data_api_v3_commentThreads",
-                    },
-                    occurred_at=payload.get("published_at"),
-                )
-            )
-            imported += 1
-            existing_comment_ids.add(str(comment_id))
-
-        return {
-            "found": imported + existing,
-            "imported": imported,
-            "already_present": existing,
-            "samples": samples[:5],
-        }
-
-    def sync(self, account_id, max_results=50, max_comments_per_video=20):
+    def sync(self, account_id, max_results=50):
         max_results = max(1, min(int(max_results or 50), 200))
-        max_comments_per_video = max(0, min(int(max_comments_per_video or 0), 100))
         service = self._service(account_id)
         channel = self._channel(service)
         playlist_items = self._playlist_items(
@@ -305,11 +216,6 @@ class YouTubeContentSync:
 
         imported = []
         existing = []
-        feedback_found = 0
-        feedback_imported = 0
-        feedback_existing = 0
-        feedback_samples = []
-
         for item in playlist_items:
             snippet = item.get("snippet", {})
             video_id = (
@@ -354,38 +260,27 @@ class YouTubeContentSync:
 
             if video_id in existing_tasks:
                 existing.append(video_id)
-            else:
-                task = create_publish_task(
-                    PublishTask(
-                        asset_id=asset_id,
-                        video_id=video_id,
-                        platform="youtube",
-                        account_id=account_id,
-                        status="published",
-                        title=title,
-                        privacy_status=privacy,
-                    )
-                )
-                update_publish_status(
-                    task["id"],
-                    "published",
-                    platform_video_id=video_id,
-                    published_url=url,
-                )
-                imported.append(video_id)
-                existing_tasks.add(video_id)
+                continue
 
-            if max_comments_per_video > 0:
-                feedback = self._sync_feedback(
-                    service,
-                    video_id,
-                    title,
-                    max_comments=max_comments_per_video,
+            task = create_publish_task(
+                PublishTask(
+                    asset_id=asset_id,
+                    video_id=video_id,
+                    platform="youtube",
+                    account_id=account_id,
+                    status="published",
+                    title=title,
+                    privacy_status=privacy,
                 )
-                feedback_found += feedback["found"]
-                feedback_imported += feedback["imported"]
-                feedback_existing += feedback["already_present"]
-                feedback_samples.extend(feedback["samples"])
+            )
+            update_publish_status(
+                task["id"],
+                "published",
+                platform_video_id=video_id,
+                published_url=url,
+            )
+            imported.append(video_id)
+            existing_tasks.add(video_id)
 
         return {
             "platform": "youtube",
@@ -396,8 +291,4 @@ class YouTubeContentSync:
             "imported": len(imported),
             "already_present": len(existing),
             "imported_video_ids": imported,
-            "feedback_found": feedback_found,
-            "feedback_imported": feedback_imported,
-            "feedback_already_present": feedback_existing,
-            "feedback_samples": feedback_samples[:10],
         }
