@@ -106,16 +106,33 @@ def list_registered_platforms():
     return sorted(platform_registry)
 
 
+def _normalize_adapter_status(adapter):
+    raw = adapter.get_status() if hasattr(adapter, "get_status") else {}
+    status = raw if isinstance(raw, dict) else {"status": raw}
+    publish_ready = status.get("publish_ready")
+    if publish_ready is None:
+        # Compatibility rule for third-party adapters written before the
+        # explicit readiness contract existed: a real ready adapter remains
+        # usable unless it declares otherwise.
+        publish_ready = status.get("status") == "ready"
+    execution_mode = status.get("execution_mode") or (
+        "live" if publish_ready else "unavailable"
+    )
+    return status, bool(publish_ready), execution_mode
+
+
 def get_registry_status():
     result = []
     for platform in list_registered_platforms():
         adapter = platform_registry[platform]
-        status = adapter.get_status() if hasattr(adapter, "get_status") else None
+        status, publish_ready, execution_mode = _normalize_adapter_status(adapter)
         result.append(
             {
                 "platform": platform,
                 "adapter": adapter.__class__.__name__,
                 "status": status,
+                "publish_ready": publish_ready,
+                "execution_mode": execution_mode,
                 "capabilities": get_platform_capability(platform),
             }
         )
