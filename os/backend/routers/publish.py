@@ -6,6 +6,7 @@ from publish.models import PublishTask
 from publish.orchestrator import (
     PublishContractError,
     execute_publish_task,
+    get_publish_account_readiness,
     get_publish_execution_readiness,
     prepare_publish_task,
 )
@@ -49,9 +50,21 @@ def run_publish_task(task_id: int):
 
 
 @router.get('/publish/readiness/{platform}')
-def publish_readiness(platform: str):
+def publish_readiness(platform: str, account_id: int | None = None):
     try:
-        return get_publish_execution_readiness(platform)
+        adapter = get_publish_execution_readiness(platform)
+        account = (
+            get_publish_account_readiness(platform, account_id)
+            if account_id is not None
+            else None
+        )
+        return {
+            **adapter,
+            'account_readiness': account,
+            'ready': bool(adapter.get('publish_ready')) and (
+                account is None or bool(account.get('ready'))
+            ),
+        }
     except PublishContractError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
