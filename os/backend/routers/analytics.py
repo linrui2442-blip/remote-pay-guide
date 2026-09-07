@@ -12,6 +12,12 @@ from analytics.backfill import (
     plan_backfill,
     run_backfill,
 )
+from analytics.backfill_runtime import (
+    cancel_operation,
+    create_operation,
+    get_operation,
+    list_operations,
+)
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
 from analytics.manager import (
     get_content_metrics,
@@ -66,6 +72,41 @@ class AnalyticsBackfillRequest(BaseModel):
 
 class AnalyticsBackfillRunRequest(AnalyticsBackfillRequest):
     max_requests: int = Field(default=100, ge=1, le=500)
+
+
+@router.post('/analytics/backfill/operations/{account_id}', status_code=202)
+def create_backfill_operation(
+    account_id: int,
+    request: AnalyticsBackfillRequest | None = None,
+):
+    request = request or AnalyticsBackfillRequest()
+    try:
+        return create_operation(account_id, **request.model_dump())
+    except BackfillValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get('/analytics/backfill/operations')
+def backfill_operations(account_id: int | None = None, platform: str | None = None):
+    return list_operations(account_id=account_id, platform=platform)
+
+
+@router.get('/analytics/backfill/operations/{operation_id}')
+def backfill_operation(operation_id: int):
+    operation = get_operation(operation_id)
+    if not operation:
+        raise HTTPException(status_code=404, detail="backfill operation was not found")
+    return operation
+
+
+@router.post('/analytics/backfill/operations/{operation_id}/cancel')
+def cancel_backfill_operation(operation_id: int):
+    operation = cancel_operation(operation_id)
+    if not operation:
+        raise HTTPException(status_code=404, detail="backfill operation was not found")
+    return operation
 
 
 @router.get('/analytics/backfill/status/{account_id}')

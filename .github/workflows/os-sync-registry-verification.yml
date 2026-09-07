@@ -19,6 +19,7 @@ on:
       - 'os/backend/oauth/registry.py'
       - 'os/backend/analytics/collector.py'
       - 'os/backend/analytics/backfill.py'
+      - 'os/backend/analytics/backfill_runtime.py'
       - 'os/backend/analytics/errors.py'
       - 'os/backend/analytics/registry.py'
       - 'os/backend/analytics/youtube_api.py'
@@ -32,6 +33,7 @@ on:
       - 'os/backend/tests/r16_intelligence_feedback_bridge_smoke.py'
       - 'os/backend/tests/r22_background_daily_sync_scheduler_smoke.py'
       - 'os/backend/tests/r23_daily_analytics_backfill_smoke.py'
+      - 'os/backend/tests/r24_analytics_backfill_operation_runtime_smoke.py'
       - '.github/workflows/os-sync-registry-verification.yml'
 
 jobs:
@@ -74,6 +76,12 @@ jobs:
         env:
           OS_DISABLE_BACKGROUND_ACCOUNT_SYNC: '1'
         run: python os/backend/tests/r23_daily_analytics_backfill_smoke.py
+
+      - name: Verify analytics backfill operation runtime
+        env:
+          OS_DISABLE_BACKGROUND_ACCOUNT_SYNC: '1'
+          OS_DISABLE_ANALYTICS_BACKFILL_WORKER: '1'
+        run: python os/backend/tests/r24_analytics_backfill_operation_runtime_smoke.py
 
       - name: Re-run account analytics regression
         env:

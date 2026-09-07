@@ -146,6 +146,7 @@ def get_backfill_status(account_id, *, platform=None):
 def run_backfill(
     account_id, *, platform=None, date_range="28d", start_date=None,
     end_date=None, max_requests=DEFAULT_MAX_REQUESTS, collector=None, now=None,
+    backoff_on_cap=True,
 ):
     current = _utc_datetime(now)
     plan = plan_backfill(account_id, platform=platform, date_range=date_range, start_date=start_date, end_date=end_date)
@@ -183,11 +184,14 @@ def run_backfill(
             failed_at=attempted_at, backoff_seconds=BACKOFF_SECONDS, status=status,
         )
     elif remaining:
-        status = "partial"
-        saved_state = mark_backfill_failure(
-            account_id, plan["platform"], f"request cap reached with {remaining} work item(s) remaining",
-            failed_at=attempted_at, backoff_seconds=BACKOFF_SECONDS, status=status,
-        )
+        status = "partial" if backoff_on_cap else "running"
+        if backoff_on_cap:
+            saved_state = mark_backfill_failure(
+                account_id, plan["platform"], f"request cap reached with {remaining} work item(s) remaining",
+                failed_at=attempted_at, backoff_seconds=BACKOFF_SECONDS, status=status,
+            )
+        else:
+            saved_state = get_sync_state(account_id, plan["platform"])
     else:
         status = "success"
         saved_state = mark_backfill_success(account_id, plan["platform"], succeeded_at=attempted_at)
