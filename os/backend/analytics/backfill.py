@@ -5,6 +5,7 @@ from accounts.manager import get_account
 from analytics.collector import AnalyticsCollector
 from analytics.manager import get_account_metrics
 from analytics.registry import get_analytics_adapter_registration
+from data.tracking import DEFAULT_ACTIVE_LIMIT, get_active_publish_tasks
 from data.sync_state import (
     get_sync_state,
     mark_backfill_failure,
@@ -103,15 +104,29 @@ def plan_backfill(account_id, *, platform=None, date_range="28d", start_date=Non
         today=today or provider_today,
     )
     requested_dates = _dates(period)
-    metrics = get_account_metrics(account_id, platform=normalized)
+    tasks = get_active_publish_tasks(
+        account_id,
+        normalized,
+        active_limit=DEFAULT_ACTIVE_LIMIT,
+    )
     videos = {}
+    for task in tasks:
+        video_id = task.get("platform_video_id")
+        if not video_id:
+            continue
+        content_id = task.get("video_id") or task.get("asset_id") or video_id
+        key = (str(video_id), str(content_id))
+        videos[key] = {"video_id": key[0], "content_id": key[1]}
+
+    metrics = get_account_metrics(account_id, platform=normalized)
     existing_by_video = {}
     for metric in metrics:
         video_id = metric.get("video_id")
         if not video_id:
             continue
         key = (str(video_id), str(metric.get("content_id") or video_id))
-        videos[key] = {"video_id": key[0], "content_id": key[1]}
+        if key not in videos:
+            continue
         if metric.get("period_start") == metric.get("period_end") and metric.get("period_start") in requested_dates:
             existing_by_video.setdefault(key, set()).add(metric["period_start"])
     work = []

@@ -22,8 +22,11 @@ from analytics.backfill_runtime import (
 )
 from analytics.manager import get_account_video_metrics, save_metric
 from analytics.models import AnalyticsMetric
+from assets.manager import create_video_asset
 from data.query import query_data_center
 from integrations.sync_scheduler import due_accounts
+from publish.manager import create_publish_task, update_publish_status
+from publish.models import PublishTask
 from routers.analytics import router
 
 
@@ -52,6 +55,36 @@ def seed(account_id, video_id):
             (account_id, f"account-{account_id}"),
         )
         conn.commit()
+    content_id = f"content-{video_id}"
+    asset_id = f"asset-{video_id}"
+    create_video_asset(
+        {
+            "asset_id": asset_id,
+            "video_id": content_id,
+            "source_provider": "youtube",
+            "storage_type": "external",
+            "asset_url": f"https://example.invalid/{video_id}",
+            "status": "published",
+            "metadata": {"published_at": "2026-08-01T00:00:00+00:00"},
+            "source": "youtube",
+            "location": f"https://example.invalid/{video_id}",
+        }
+    )
+    task = create_publish_task(
+        PublishTask(
+            asset_id=asset_id,
+            video_id=content_id,
+            platform="youtube",
+            account_id=account_id,
+            status="published",
+        )
+    )
+    update_publish_status(
+        task["id"],
+        "published",
+        platform_video_id=video_id,
+        published_url=f"https://example.invalid/{video_id}",
+    )
     save_metric(
         AnalyticsMetric(
             video_id=video_id,

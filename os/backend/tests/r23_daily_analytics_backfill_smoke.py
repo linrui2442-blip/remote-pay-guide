@@ -20,8 +20,11 @@ from analytics.backfill import (
 from analytics.manager import get_account_video_metrics, save_metric
 from analytics.models import AnalyticsMetric
 from analytics.youtube_api import YouTubeAnalyticsAPIClient
+from assets.manager import create_video_asset
 from data.query import query_data_center
 from integrations.sync_scheduler import due_accounts
+from publish.manager import create_publish_task, update_publish_status
+from publish.models import PublishTask
 from routers.analytics import router
 
 
@@ -62,6 +65,37 @@ def save_window(start, end, views, collected_at):
             views=views,
             collected_at=collected_at,
         )
+    )
+
+
+def seed_tracked_video():
+    create_video_asset(
+        {
+            "asset_id": "asset-video-1",
+            "video_id": "content-1",
+            "source_provider": "youtube",
+            "storage_type": "external",
+            "asset_url": "https://example.invalid/video-1",
+            "status": "published",
+            "metadata": {"published_at": "2026-08-01T00:00:00+00:00"},
+            "source": "youtube",
+            "location": "https://example.invalid/video-1",
+        }
+    )
+    task = create_publish_task(
+        PublishTask(
+            asset_id="asset-video-1",
+            video_id="content-1",
+            platform="youtube",
+            account_id=ACCOUNT_ID,
+            status="published",
+        )
+    )
+    update_publish_status(
+        task["id"],
+        "published",
+        platform_video_id="video-1",
+        published_url="https://example.invalid/video-1",
     )
 
 
@@ -106,6 +140,7 @@ class EmptyReportService:
 
 def main():
     reset_test_db()
+    seed_tracked_video()
     save_window("2026-08-10", "2026-09-06", 2800, "2026-09-07T00:00:00+00:00")
     save_window("2026-09-01", "2026-09-01", 1, "2026-09-02T00:00:00+00:00")
     save_window("2026-09-01", "2026-09-01", 1, "2026-09-02T01:00:00+00:00")
