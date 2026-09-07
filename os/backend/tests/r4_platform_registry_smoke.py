@@ -14,10 +14,25 @@ with tempfile.TemporaryDirectory() as tmpdir:
     expected = {"youtube", "tiktok", "instagram", "facebook"}
     registered = set(registry.list_registered_platforms())
     assert expected.issubset(registered), registered
-    for platform in expected:
+
+    youtube_status = registry.get_adapter("youtube").get_status()
+    assert youtube_status["status"] == "ready"
+    assert youtube_status["publish_ready"] is True
+    assert youtube_status["execution_mode"] == "live_api"
+
+    for platform in {"facebook", "instagram", "tiktok"}:
         adapter = registry.get_adapter(platform)
         assert adapter is not None
-        assert adapter.get_status()["status"] == "ready"
+        status = adapter.get_status()
+        assert status["status"] == "placeholder"
+        assert status["publish_ready"] is False
+        assert status["execution_mode"] == "simulated"
+
+    registry_status = {item["platform"]: item for item in registry.get_registry_status()}
+    assert registry_status["youtube"]["publish_ready"] is True
+    for platform in {"facebook", "instagram", "tiktok"}:
+        assert registry_status[platform]["publish_ready"] is False
+        assert registry_status[platform]["execution_mode"] == "simulated"
 
     adapters_dir = Path(__file__).resolve().parents[1] / "publish" / "adapters"
     module_path = adapters_dir / "verifyfuture.py"
@@ -56,6 +71,14 @@ class VerifyFutureAdapter:
         adapter = registry.get_adapter("verify-future")
         assert adapter is not None
         assert adapter.get_status()["status"] == "ready"
+
+        # Backward compatibility: adapters written before the explicit
+        # publish_ready field can still opt in through their ready status.
+        future_registry = {
+            item["platform"]: item for item in registry.get_registry_status()
+        }["verify-future"]
+        assert future_registry["publish_ready"] is True
+        assert future_registry["execution_mode"] == "live"
 
         capability = platform_capabilities.get_platform_capability("verify-future")
         assert capability["publish_supported"] is True
