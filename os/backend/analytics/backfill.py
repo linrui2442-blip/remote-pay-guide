@@ -3,16 +3,18 @@ from zoneinfo import ZoneInfo
 
 from accounts.manager import get_account
 from analytics.collector import AnalyticsCollector
-from analytics.errors import sanitize_analytics_error
+from analytics.errors import AnalyticsNoData, sanitize_analytics_error
 from analytics.manager import get_account_metrics
 from analytics.registry import get_analytics_adapter_registration
 from data.tracking import DEFAULT_ACTIVE_LIMIT, get_active_publish_tasks
 from data.sync_state import (
     get_sync_state,
+    get_backfill_no_data_coverage,
     mark_backfill_failure,
     mark_backfill_progress,
     mark_backfill_started,
     mark_backfill_success,
+    record_backfill_no_data,
 )
 
 
@@ -21,6 +23,8 @@ MAX_BACKFILL_DAYS = 90
 DEFAULT_MAX_REQUESTS = 100
 MAX_BACKFILL_REQUESTS = 500
 BACKOFF_SECONDS = (300, 900, 3600)
+NO_DATA_RECENT_DAYS = 3
+NO_DATA_RECHECK_HOURS = 24
 
 
 class BackfillValidationError(ValueError):
@@ -120,6 +124,7 @@ def plan_backfill(account_id, *, platform=None, date_range="28d", start_date=Non
         videos[key] = {"video_id": key[0], "content_id": key[1]}
 
     metrics = get_account_metrics(account_id, platform=normalized)
+    no_data_coverage = get_backfill_no_data_coverage(account_id, normalized)
     existing_by_video = {}
     for metric in metrics:
         video_id = metric.get("video_id")
@@ -132,10 +137,27 @@ def plan_backfill(account_id, *, platform=None, date_range="28d", start_date=Non
             existing_by_video.setdefault(key, set()).add(metric["period_start"])
     work = []
     eligible = []
+    current_time = datetime.now(timezone.utc)
+    recent_cutoff = provider_today - timedelta(days=NO_DATA_RECENT_DAYS)
     for key in sorted(videos):
         existing = sorted(existing_by_video.get(key, set()))
-        missing = [day for day in requested_dates if day not in existing_by_video.get(key, set())]
-        eligible.append({**videos[key], "existing_dates": existing, "missing_dates": missing})
+        coverage_key = f"{key[0]}\u001f{key[1]}"
+        observations = no_data_coverage.get(coverage_key) or {}
+        observed = []
+        for day in requested_dates:
+            if day in existing_by_video.get(key, set()) or day not in observations:
+                continue
+            valid = date.fromisoformat(day) < recent_cutoff
+            if not valid:
+                try:
+                    observed_at = _utc_datetime(observations[day])
+                    valid = current_time - observed_at < timedelta(hours=NO_DATA_RECHECK_HOURS)
+                except (TypeError, ValueError):
+                    valid = False
+            if valid:
+                observed.append(day)
+        missing = [day for day in requested_dates if day not in existing_by_video.get(key, set()) and day not in observed]
+        eligible.append({**videos[key], "existing_dates": existing, "observed_no_data_dates": observed, "missing_dates": missing})
         work.extend({**videos[key], "date": day} for day in missing)
     return {
         "account_id": account_id,
@@ -179,6 +201,7 @@ def run_backfill(
     mark_backfill_started(account_id, plan["platform"], plan["period"]["start_date"], plan["period"]["end_date"], attempted_at=attempted_at)
     active_collector = collector or AnalyticsCollector()
     completed = []
+    no_data = []
     failures = []
     for item in plan["work"][:limit]:
         try:
@@ -190,9 +213,17 @@ def run_backfill(
                 raise RuntimeError("collector did not persist the requested single reporting-day window")
             completed.append({**item, "metric_id": metric.get("id")})
             mark_backfill_progress(account_id, plan["platform"], item["date"], updated_at=attempted_at)
+        except AnalyticsNoData as exc:
+            observed = {**item, "observed_at": attempted_at}
+            no_data.append(observed)
+            record_backfill_no_data(
+                account_id, plan["platform"], item["video_id"], item["content_id"],
+                item["date"], observed_at=attempted_at,
+            )
+            mark_backfill_progress(account_id, plan["platform"], item["date"], updated_at=attempted_at)
         except Exception as exc:
             failures.append({**item, "error": sanitize_analytics_error(exc)})
-    remaining = max(0, len(plan["work"]) - len(completed) - len(failures))
+    remaining = max(0, len(plan["work"]) - len(completed) - len(no_data) - len(failures))
     if failures:
         status = "partial" if completed else "failed"
         error = (
@@ -215,4 +246,4 @@ def run_backfill(
     else:
         status = "success"
         saved_state = mark_backfill_success(account_id, plan["platform"], succeeded_at=attempted_at)
-    return {"status": status, "plan": {key: value for key, value in plan.items() if key != "work"}, "attempted": min(len(plan["work"]), limit), "completed": completed, "failures": failures, "remaining": remaining, "state": saved_state}
+    return {"status": status, "plan": {key: value for key, value in plan.items() if key != "work"}, "attempted": min(len(plan["work"]), limit), "completed": completed, "no_data": no_data, "failures": failures, "remaining": remaining, "state": saved_state}

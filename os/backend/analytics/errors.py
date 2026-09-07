@@ -5,6 +5,10 @@ class AnalyticsCollectionNotReady(RuntimeError):
     """Raised when a platform analytics adapter cannot collect safely."""
 
 
+class AnalyticsNoData(RuntimeError):
+    """The provider accepted an Analytics query but returned no data row."""
+
+
 def sanitize_analytics_error(error, *, max_length=500):
     """Return a bounded operational error without credential material."""
     text = str(error or "")[:max_length]

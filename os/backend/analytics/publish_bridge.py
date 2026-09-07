@@ -1,4 +1,5 @@
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
+from analytics.errors import AnalyticsNoData
 from data.sync_state import (
     mark_sync_failure,
     mark_sync_partial,
@@ -118,8 +119,10 @@ def collect_account_publish_metrics(
         active_collector = collector or AnalyticsCollector()
         collected = []
         failures = []
+        no_data = []
         account_metric = None
         account_failure = None
+        account_no_data = False
 
         collect_account = getattr(active_collector, "collect_account", None)
         if callable(collect_account):
@@ -130,6 +133,8 @@ def collect_account_publish_metrics(
                     start_date=start_date,
                     end_date=end_date,
                 )
+            except AnalyticsNoData:
+                account_no_data = True
             except Exception as exc:
                 account_failure = str(exc)
 
@@ -148,6 +153,13 @@ def collect_account_publish_metrics(
                         "metric": metric,
                     }
                 )
+            except AnalyticsNoData:
+                no_data.append(
+                    {
+                        "task_id": task["id"],
+                        "video_id": task.get("platform_video_id"),
+                    }
+                )
             except Exception as exc:
                 failures.append(
                     {
@@ -163,7 +175,7 @@ def collect_account_publish_metrics(
             fallback=end_date,
         )
         failure_count = len(failures) + (1 if account_failure else 0)
-        success_count = len(collected) + (1 if account_metric else 0)
+        success_count = len(collected) + len(no_data) + (1 if account_metric else 0) + int(account_no_data)
         total_operations = len(tasks) + (1 if callable(collect_account) else 0)
 
         if failure_count and success_count:
@@ -198,8 +210,11 @@ def collect_account_publish_metrics(
             "found": len(tasks),
             "collected": len(collected),
             "failed": len(failures),
+            "no_data": len(no_data),
+            "no_data_results": no_data,
             "account_metric": account_metric,
             "account_failure": account_failure,
+            "account_no_data": account_no_data,
             "analytics_cursor": cursor,
             "results": collected,
             "failures": failures,

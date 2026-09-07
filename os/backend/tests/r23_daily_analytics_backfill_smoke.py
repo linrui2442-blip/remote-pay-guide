@@ -17,6 +17,7 @@ from analytics.backfill import (
     plan_backfill,
     run_backfill,
 )
+from analytics.errors import AnalyticsNoData
 from analytics.manager import get_account_video_metrics, save_metric
 from analytics.models import AnalyticsMetric
 from analytics.youtube_api import YouTubeAnalyticsAPIClient
@@ -189,8 +190,8 @@ def main():
             "video-1", "2026-09-01", "2026-09-01"
         )
         raise AssertionError("an absent provider row must not become a zero snapshot")
-    except RuntimeError as exc:
-        assert "no complete row" in str(exc)
+    except AnalyticsNoData as exc:
+        assert "returned no row" in str(exc)
 
     first_collector = FakeCollector(fail_once={"2026-09-03"})
     first = run_backfill(

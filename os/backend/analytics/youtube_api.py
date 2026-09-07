@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 import requests
 
+from analytics.errors import AnalyticsNoData
 from integrations.google_transport import build_authorized_session
 
 
@@ -168,8 +169,10 @@ class YouTubeAnalyticsAPIClient:
         }
         response = self._query(params)
         if not (response or {}).get("rows"):
-            raise RuntimeError(
-                "YouTube Analytics returned no complete row for the requested reporting window"
+            raise AnalyticsNoData(
+                "YouTube Analytics returned no row "
+                f"(platform=youtube, video_id={video_id}, "
+                f"start_date={resolved_start}, end_date={resolved_end})"
             )
 
         metrics = self.normalize_response(response)
@@ -193,6 +196,12 @@ class YouTubeAnalyticsAPIClient:
             "metrics": ",".join(YOUTUBE_CHANNEL_ANALYTICS_METRICS),
         }
         response = self._query(params)
+        if not (response or {}).get("rows"):
+            raise AnalyticsNoData(
+                "YouTube Analytics returned no row "
+                f"(platform=youtube, channel=MINE, "
+                f"start_date={resolved_start}, end_date={resolved_end})"
+            )
         metrics = self.normalize_channel_response(response)
         metrics.update(
             {

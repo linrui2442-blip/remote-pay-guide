@@ -47,6 +47,7 @@ def _ensure_table():
                 request_json TEXT NOT NULL,
                 total_work INTEGER NOT NULL DEFAULT 0,
                 completed_work INTEGER NOT NULL DEFAULT 0,
+                no_data_work INTEGER NOT NULL DEFAULT 0,
                 failed_work INTEGER NOT NULL DEFAULT 0,
                 remaining_work INTEGER NOT NULL DEFAULT 0,
                 current_reporting_date TEXT,
@@ -60,6 +61,15 @@ def _ensure_table():
             )
             """
         )
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(analytics_backfill_operations)").fetchall()
+        }
+        if "no_data_work" not in columns:
+            conn.execute(
+                "ALTER TABLE analytics_backfill_operations "
+                "ADD COLUMN no_data_work INTEGER NOT NULL DEFAULT 0"
+            )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_backfill_operations_active "
             "ON analytics_backfill_operations(account_id, platform, status)"
@@ -267,7 +277,9 @@ class AnalyticsBackfillWorker:
                         conn.commit()
                     return get_operation(operation["operation_id"])
                 refreshed = plan_backfill(operation["account_id"], **request)
+                observed = len(result["no_data"])
                 completed = max(0, operation["total_work"] - refreshed["estimated_request_count"])
+                no_data_work = int(operation.get("no_data_work") or 0) + observed
                 failed = len(result["failures"])
                 remaining = refreshed["estimated_request_count"]
                 if not remaining:
@@ -285,11 +297,14 @@ class AnalyticsBackfillWorker:
                         """
                         UPDATE analytics_backfill_operations
                         SET status=?, completed_work=?, failed_work=?, remaining_work=?,
+                            no_data_work=?,
                             current_reporting_date=?, next_retry_at=?, retry_count=?,
                             updated_at=?, finished_at=?, last_error=? WHERE id=?
                         """,
-                        (status, completed, failed, remaining, current_date, retry_at,
-                         retry_count, now, finished_at, _safe_error(error), operation["operation_id"]),
+                        (status, completed, failed, remaining, no_data_work, current_date, retry_at,
+                         retry_count, now, finished_at,
+                         _safe_error(error) if error else None,
+                         operation["operation_id"]),
                     )
                     conn.commit()
             except Exception as exc:

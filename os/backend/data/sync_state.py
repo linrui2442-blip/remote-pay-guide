@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -69,6 +70,7 @@ def _ensure_table():
             "backfill_next_retry_at": "TEXT",
             "backfill_retry_count": "INTEGER NOT NULL DEFAULT 0",
             "backfill_error": "TEXT",
+            "backfill_no_data_coverage": "TEXT",
         }
         for name, field_type in scheduler_columns.items():
             if name not in columns:
@@ -115,6 +117,42 @@ def get_sync_state(account_id, platform, *, create=True):
     if row is None and create:
         return ensure_sync_state(account_id, normalized_platform)
     return _serialize(row)
+
+
+def get_backfill_no_data_coverage(account_id, platform):
+    state = get_sync_state(account_id, platform)
+    try:
+        value = json.loads(state.get("backfill_no_data_coverage") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def record_backfill_no_data(
+    account_id, platform, video_id, content_id, reporting_date, *, observed_at=None
+):
+    normalized = _normalize_platform(platform)
+    coverage = get_backfill_no_data_coverage(account_id, normalized)
+    key = f"{video_id}\u001f{content_id}"
+    observations = coverage.setdefault(key, {})
+    observations[str(reporting_date)] = observed_at or _now()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).date().isoformat()
+    coverage = {
+        item_key: {
+            day: timestamp for day, timestamp in item_dates.items() if day >= cutoff
+        }
+        for item_key, item_dates in coverage.items()
+        if isinstance(item_dates, dict)
+    }
+    coverage = {key: dates for key, dates in coverage.items() if dates}
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE platform_sync_state SET backfill_no_data_coverage=?, updated_at=? "
+            "WHERE account_id=? AND platform=?",
+            (json.dumps(coverage, sort_keys=True), observed_at or _now(), account_id, normalized),
+        )
+        conn.commit()
+    return coverage
 
 
 def list_sync_states(account_id=None, platform=None):
