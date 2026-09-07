@@ -23,6 +23,25 @@ export async function apiPost(path, data) {
   return parseResponse(response);
 }
 
+export function buildDataCenterQueryParams(filters = {}) {
+  const params = new URLSearchParams();
+  const keys = [
+    "account_id", "platform", "scope", "metrics", "sort_by", "sort_direction",
+    "limit", "date_range", "start_date", "end_date", "interval",
+  ];
+  keys.forEach((key) => {
+    const value = filters[key];
+    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+  });
+  if (filters.compare_previous_period) params.set("compare_previous_period", "true");
+  return params;
+}
+
+export function getDataCenterQuery(filters = {}) {
+  const params = buildDataCenterQueryParams(filters);
+  return apiGet(`/data/query${params.toString() ? `?${params.toString()}` : ""}`);
+}
+
 export function getProductionTasks() { return apiGet('/production/tasks'); }
 export function getProductionStatus() { return apiGet('/production/status'); }
 export function getProductionProviders() { return apiGet('/production/providers'); }

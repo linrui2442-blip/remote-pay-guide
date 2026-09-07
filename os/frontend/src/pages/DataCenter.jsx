@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { apiGet, apiPost } from "../api";
+import { apiGet, apiPost, getDataCenterQuery } from "../api";
 
 const PLATFORM_LABELS = {
   youtube: "YouTube",
@@ -16,6 +16,14 @@ const STRATEGY_LABELS = {
   revise_underperformer: "重做低表现内容",
   iterate: "控制变量迭代",
 };
+
+const TREND_METRICS = [
+  ["views", "观看量"],
+  ["watch_time", "观看时长"],
+  ["likes", "赞"],
+  ["comments", "评论数"],
+  ["shares", "分享"],
+];
 
 function platformLabel(name) {
   const key = String(name || "").toLowerCase();
@@ -103,6 +111,65 @@ function MetricCard({ label, value, hint }) {
   );
 }
 
+function formatMetricValue(metric, value) {
+  if (value == null || !Number.isFinite(Number(value))) return "Unavailable";
+  return metric === "watch_time" ? formatSeconds(value) : formatNumber(value);
+}
+
+function ComparisonGrid({ comparison }) {
+  const metrics = comparison?.metrics || {};
+  return (
+    <div className="dc-comparison-grid">
+      {TREND_METRICS.map(([key, label]) => {
+        const item = metrics[key] || {};
+        return (
+          <div className="dc-comparison-card" key={key}>
+            <span>{label}</span>
+            <strong>{formatMetricValue(key, item.current)}</strong>
+            <small>上一周期 {formatMetricValue(key, item.previous)}</small>
+            <small>
+              变化 {formatSignedNumber(item.change)} · {item.change_percent == null ? "Unavailable" : formatPercent(item.change_percent)}
+            </small>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DailyTrend({ timeSeries, metric, onMetricChange }) {
+  const points = timeSeries?.points || [];
+  const values = points.map((point) => Number(point.metric_values?.[metric]));
+  const finiteValues = values.filter(Number.isFinite);
+  const maximum = Math.max(...finiteValues, 0);
+  return (
+    <section className="panel dc-v2-panel">
+      <div className="panel-header dc-v2-header">
+        <div><span className="section-kicker">DAILY TREND</span><h2>每日趋势</h2></div>
+        <select value={metric} onChange={(event) => onMetricChange(event.target.value)}>
+          {TREND_METRICS.map(([key, label]) => <option value={key} key={key}>{label}</option>)}
+        </select>
+      </div>
+      {!timeSeries?.available ? (
+        <div className="dc-trend-unavailable">当前周期缺少真实每日 Analytics 快照，无法生成可信趋势。</div>
+      ) : (
+        <div className="dc-trend" aria-label="Daily analytics trend">
+          {points.map((point, index) => {
+            const value = values[index];
+            const height = Number.isFinite(value) && maximum > 0 ? Math.max(4, value / maximum * 100) : 0;
+            return (
+              <div className="dc-trend-column" key={point.date} title={`${point.date}: ${formatMetricValue(metric, value)}`}>
+                <div className="dc-trend-track"><span style={{ height: `${height}%` }} /></div>
+                <small>{point.date.slice(5)}</small>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function DataCenter() {
   const [accounts, setAccounts] = useState([]);
   const [platforms, setPlatforms] = useState([]);
@@ -110,6 +177,11 @@ export default function DataCenter() {
   const [platform, setPlatform] = useState("");
   const [scope, setScope] = useState("active");
   const [sortBy, setSortBy] = useState("views");
+  const [dateRange, setDateRange] = useState("28d");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [comparePreviousPeriod, setComparePreviousPeriod] = useState(false);
+  const [trendMetric, setTrendMetric] = useState("views");
   const [query, setQuery] = useState({ summary: {}, rows: [], returned: 0, total_matching: 0 });
   const [accountMetrics, setAccountMetrics] = useState([]);
   const [intelligenceSnapshots, setIntelligenceSnapshots] = useState([]);
@@ -187,14 +259,26 @@ export default function DataCenter() {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams();
-      if (accountId) params.set("account_id", accountId);
-      if (platform) params.set("platform", platform);
-      params.set("scope", scope);
-      params.set("sort_by", sortBy);
-      params.set("sort_direction", "desc");
-      params.set("limit", "200");
-      const result = await apiGet(`/data/query?${params.toString()}`);
+      const useV2 = scope === "active";
+      if (useV2 && dateRange === "custom" && (!customStartDate || !customEndDate)) {
+        setLoading(false);
+        return;
+      }
+      const result = await getDataCenterQuery({
+        account_id: accountId,
+        platform,
+        scope,
+        sort_by: sortBy,
+        sort_direction: "desc",
+        limit: 200,
+        ...(useV2 ? {
+          date_range: dateRange,
+          start_date: dateRange === "custom" ? customStartDate : undefined,
+          end_date: dateRange === "custom" ? customEndDate : undefined,
+          compare_previous_period: comparePreviousPeriod && dateRange !== "lifetime",
+          interval: "daily",
+        } : {}),
+      });
       setQuery(result || { summary: {}, rows: [] });
       await loadAccountMetrics();
     } catch (requestError) {
@@ -212,7 +296,7 @@ export default function DataCenter() {
 
   useEffect(() => {
     loadQuery();
-  }, [accountId, platform, scope, sortBy]);
+  }, [accountId, platform, scope, sortBy, dateRange, customStartDate, customEndDate, comparePreviousPeriod]);
 
   useEffect(() => {
     loadIntelligence();
@@ -224,6 +308,11 @@ export default function DataCenter() {
   );
 
   const reportPeriod = useMemo(() => {
+    if (query.period) {
+      return query.period.date_range === "lifetime"
+        ? "Lifetime"
+        : formatPeriod(query.period.start_date, query.period.end_date);
+    }
     const periods = (query.rows || [])
       .filter((row) => row.period_start && row.period_end)
       .map((row) => `${row.period_start} → ${row.period_end}`);
@@ -231,9 +320,10 @@ export default function DataCenter() {
     if (unique.length === 1) return unique[0];
     if (unique.length > 1) return "包含多个同步周期";
     return scope === "historical" ? "历史汇总" : "等待下一次 Analytics 同步记录周期";
-  }, [query.rows, scope]);
+  }, [query.period, query.rows, scope]);
 
   const summary = query.summary || {};
+  const v2Enabled = scope === "active";
 
   const togglePin = async (row) => {
     if (row.account_id == null || !row.platform || !row.platform_video_id) return;
@@ -320,6 +410,7 @@ export default function DataCenter() {
           <select value={scope} onChange={(event) => setScope(event.target.value)}>
             <option value="active">ACTIVE · 最新 10 条</option>
             <option value="historical">HISTORICAL · 历史结果</option>
+            <option value="archived">ARCHIVED · 已归档</option>
             <option value="all">全部</option>
           </select>
         </label>
@@ -338,10 +429,51 @@ export default function DataCenter() {
             <option value="conversion_value">Conversion Value</option>
           </select>
         </label>
+        <label>
+          <span>时间范围</span>
+          <select
+            value={dateRange}
+            onChange={(event) => {
+              const nextRange = event.target.value;
+              setDateRange(nextRange);
+              if (nextRange === "lifetime") setComparePreviousPeriod(false);
+            }}
+            disabled={!v2Enabled}
+          >
+            <option value="7d">7D</option>
+            <option value="28d">28D</option>
+            <option value="90d">90D</option>
+            <option value="lifetime">Lifetime</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        {v2Enabled && dateRange === "custom" ? (
+          <>
+            <label><span>开始日期</span><input type="date" value={customStartDate} onChange={(event) => setCustomStartDate(event.target.value)} /></label>
+            <label><span>结束日期</span><input type="date" value={customEndDate} onChange={(event) => setCustomEndDate(event.target.value)} /></label>
+          </>
+        ) : null}
+        <label className="dc-compare-toggle">
+          <input
+            type="checkbox"
+            checked={comparePreviousPeriod}
+            onChange={(event) => setComparePreviousPeriod(event.target.checked)}
+            disabled={!v2Enabled || dateRange === "lifetime"}
+          />
+          <span>Compare previous period</span>
+        </label>
         <button className="secondary-button dc-refresh" onClick={loadQuery} disabled={loading}>
           {loading ? "读取中…" : "刷新本地数据"}
         </button>
       </section>
+
+      {!v2Enabled ? (
+        <div className="notice dc-v2-notice">
+          Historical / Archived / All 当前保留 Query V1 行为；Backend 第一阶段尚不支持可信的历史时间过滤，因此时间范围和周期比较已禁用。
+        </div>
+      ) : dateRange === "custom" && (!customStartDate || !customEndDate) ? (
+        <div className="notice dc-v2-notice">请选择 Custom 的开始日期和结束日期；周期以 Backend 返回结果为准。</div>
+      ) : null}
 
       {error ? <div className="notice dc-error">{error}</div> : null}
 
@@ -360,6 +492,29 @@ export default function DataCenter() {
         <MetricCard label="Conversions" value={formatNumber(summary.conversions)} />
         <MetricCard label="Conversion Value" value={formatMoney(summary.conversion_value)} />
       </div>
+
+      {v2Enabled && query.query_version === "v2" ? (
+        <>
+          {comparePreviousPeriod ? (
+            <section className="panel dc-v2-panel">
+              <div className="panel-header dc-v2-header">
+                <div>
+                  <span className="section-kicker">PERIOD COMPARISON</span>
+                  <h2>上一周期对比</h2>
+                </div>
+                <span className="muted">{formatPeriod(query.comparison?.period?.start_date, query.comparison?.period?.end_date)}</span>
+              </div>
+              {query.comparison ? <ComparisonGrid comparison={query.comparison} /> : <div className="dc-trend-unavailable">Comparison unavailable</div>}
+            </section>
+          ) : null}
+
+          <DailyTrend timeSeries={query.time_series} metric={trendMetric} onMetricChange={setTrendMetric} />
+
+          <div className="dc-semantics-note">
+            周期汇总优先使用精确窗口的最新快照；没有精确窗口时只汇总去重后的真实单日快照。每日趋势只使用真实单日 Analytics 快照，不会把多日汇总平均拆分或插值。
+          </div>
+        </>
+      ) : null}
 
       <section className="panel dc-table-panel">
         <div className="panel-header dc-table-header">
