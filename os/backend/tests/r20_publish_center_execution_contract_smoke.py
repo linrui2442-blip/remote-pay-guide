@@ -11,11 +11,14 @@ os.chdir(ROOT)
 from accounts.manager import create_account
 from accounts.models import Account
 from assets.manager import create_video_asset
+from oauth.manager import create_token
+from oauth.providers.youtube import YOUTUBE_UPLOAD_SCOPE
 from publish.manager import get_publish_task
 from publish.models import PublishTask
 from publish.orchestrator import (
     PublishContractError,
     execute_publish_task,
+    get_publish_account_readiness,
     get_publish_execution_readiness,
     prepare_publish_task,
 )
@@ -104,6 +107,56 @@ def main():
                 "location": local_path,
             }
         )
+
+        # YouTube task preparation must prove account upload credentials before
+        # persisting a pending task. This is a local DB preflight only and does
+        # not call Google or upload anything.
+        youtube_account = create_account(
+            Account(platform="youtube", account_name="R20 YouTube Account")
+        )
+        youtube_account_status = get_publish_account_readiness(
+            "youtube", youtube_account["id"]
+        )
+        assert youtube_account_status["checked"] is True
+        assert youtube_account_status["ready"] is False
+        assert youtube_account_status["credential_found"] is False
+        expect_contract_error(
+            lambda: prepare_publish_task(
+                PublishTask(
+                    asset_id=asset.asset_id,
+                    platform="youtube",
+                    account_id=youtube_account["id"],
+                    privacy_status="private",
+                )
+            ),
+            "OAuth credential not found",
+        )
+
+        create_token(
+            {
+                "account_id": youtube_account["id"],
+                "provider": "youtube",
+                "access_token": "r20-local-only-token",
+                "scopes": [YOUTUBE_UPLOAD_SCOPE],
+            }
+        )
+        youtube_account_status = get_publish_account_readiness(
+            "youtube", youtube_account["id"]
+        )
+        assert youtube_account_status["ready"] is True
+        assert youtube_account_status["upload_scope_granted"] is True
+        youtube_prepared = prepare_publish_task(
+            PublishTask(
+                asset_id=asset.asset_id,
+                platform="youtube",
+                account_id=youtube_account["id"],
+                title="R20 YouTube preflight only",
+                privacy_status="private",
+            )
+        )
+        assert youtube_prepared["created"] is True
+        assert youtube_prepared["task"]["status"] == "pending"
+
         account = create_account(
             Account(platform="r20-test", account_name="R20 Publish Account")
         )
@@ -181,6 +234,7 @@ def main():
             pass
 
     print("R20 Publish Center execution contract smoke test passed")
+    print("YouTube account OAuth upload scope -> preflighted without network")
     print("prepare -> idempotent pending task; no upload")
     print("simulated adapters -> blocked before execution")
     print("explicit execute -> one worker publish -> persisted published result")
