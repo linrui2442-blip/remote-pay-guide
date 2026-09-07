@@ -8,9 +8,9 @@
 >
 > 默认分支：`main`
 >
-> 本文编写时确认的 main HEAD：`418cd098148dbd8a9ac44a1e1bbe4a80cc79a560`
+> 本文最近一次仓库对齐审计基线：`4f8a85f4b55b121fbc3f282bcd28ecb85988008b`
 >
-> HEAD 提交说明：`Verify account OAuth preflight before YouTube publish task creation`
+> 基线提交说明：`docs: clarify source code and runtime architecture boundary`
 
 ---
 
@@ -238,23 +238,23 @@ Legacy Publish / Postiz compatibility
 
 # 5. 当前本地运行方式
 
-用户本地仓库：
+从当前 repo root 启动。仓库目录名不是架构要求；本次审计时本地目录名为 `remote-pay-guide-git`。
 
 ```text
-C:\Users\L-R\Desktop\remote-pay-guide-main
+<repo-root>
 ```
 
 后端：
 
 ```powershell
-cd C:\Users\L-R\Desktop\remote-pay-guide-main
+cd <repo-root>
 python -m uvicorn main:app --app-dir os/backend --host 127.0.0.1 --port 8000
 ```
 
 前端：
 
 ```powershell
-cd C:\Users\L-R\Desktop\remote-pay-guide-main\os\frontend
+cd <repo-root>\os\frontend
 npm.cmd run dev
 ```
 
@@ -899,7 +899,7 @@ Publish Center UI 当前已经包含：
 
 ---
 
-# 19. 当前最近一轮关键提交
+# 19. Publish Center 历史关键提交
 
 本次 Publish Center 收口相关提交顺序（从较早到当前）包括：
 
@@ -941,17 +941,23 @@ Expose account publish preflight readiness
 Verify account OAuth preflight before YouTube publish task creation
 ```
 
-当前 main HEAD 即：
+上述 Publish Center 收口阶段的基线 HEAD 为：
 
 ```text
 418cd098148dbd8a9ac44a1e1bbe4a80cc79a560
 ```
 
+本次仓库对齐审计的 main 基线已前进到：
+
+```text
+4f8a85f4b55b121fbc3f282bcd28ecb85988008b
+```
+
 ---
 
-# 20. 当前 CI 状态
+# 20. 已记录的历史 CI 状态
 
-本文交接时确认：
+Publish Center 收口阶段曾确认：
 
 ```text
 OS YouTube Publish Readiness
@@ -960,7 +966,8 @@ HEAD: 418cd098148dbd8a9ac44a1e1bbe4a80cc79a560
 Conclusion: success
 ```
 
-这说明最新 account OAuth preflight / Publish readiness 契约在 CI 中通过。
+这说明该历史 HEAD 的 account OAuth preflight / Publish readiness 契约在 CI 中通过；
+不要把它误读为当前 main 的实时 Actions 结论。
 
 此前 Publish Center 前端接入后，OS Frontend Verification 也已经通过构建和前端约束检查。
 
@@ -1053,36 +1060,28 @@ status = published
 ## 当前断点定义
 
 ```text
-Publish Center 的安全执行层已经建立。
-YouTube Adapter 已经是 official live API 路径。
-账号 OAuth/upload scope preflight 已经前移到 PublishTask 创建前。
-CI 已通过。
-下一步不应该继续重构 Publish 架构。
+Data Center Query V1 已存在并由前端实际使用。
+它支持 account/platform/scope/metrics/sorting，以及 referral、conversion、conversion value。
+Query V2 尚未实现 date range、time series、previous-period comparison、interval/group_by。
+下一步不应重构 Publish；应先定义安全的时序指标语义，再扩展 Query V2。
 ```
 
-新窗口接管后首先要做的不是“再设计 Publish Center”，而是验证当前断点在用户本地 OS 的真实运行行为。
+当前断点精确位于 `os/backend/data/query.py::query_data_center`、
+`os/backend/routers/data.py::data_query` 与 `os/frontend/src/pages/DataCenter.jsx::loadQuery`。
+YouTube Analytics 当前采集的是默认 28 个完整日或调用方指定窗口的窗口聚合；不能直接
+`SUM(snapshot.views)` 构造时间序列，否则重叠窗口会重复计数。
 
 ---
 
 # 24. 后续开发顺序：严格按此顺序，避免漂移
 
-## P0 — 先确认用户本地已经同步到当前 main
+## P0 — Data Center Query V2 的时序契约与最小实现
 
-检查本地至少包含这些最新文件：
+先固定统一 metric contract 和窗口语义，再为 `/data/query` 增加 `start_date`、`end_date`、
+`interval/group_by`、time-series 和 previous-period comparison。验收必须证明重叠的 28 日窗口
+不会被相加重复计数，并覆盖 account/platform/scope/growth 指标组合。
 
-```text
-os/backend/publish/orchestrator.py
-os/backend/publish/adapters/youtube.py
-os/backend/routers/publish.py
-os/backend/tests/r20_publish_center_execution_contract_smoke.py
-os/frontend/src/api.js
-os/frontend/src/App.jsx
-os/frontend/src/pages/PublishCenter.jsx
-```
-
-如本地没有最新代码，先同步，再重启 backend / 刷新 frontend。
-
-不要在旧本地版本上继续修 bug。
+不要新增第二个 Query Engine，也不要添加 `youtube_views` 一类平台专属核心列。
 
 ## P1 — 验证 Publish Center 本地非破坏性 preflight
 
@@ -1278,8 +1277,8 @@ Actions 检查可按 head SHA 查询。
 1. docs/PROJECT_HANDOVER.md
 2. docs/REMOTE_PAY_GUIDE_OS_BLUEPRINT.md
 
-当前交接基线 HEAD 是：
-418cd098148dbd8a9ac44a1e1bbe4a80cc79a560
+当前交接审计基线 HEAD 是：
+4f8a85f4b55b121fbc3f282bcd28ecb85988008b
 
 如果 main 已经前进，以当前 main 代码为最高事实来源，但必须保持交接文档里的架构边界和禁止项。
 
@@ -1288,7 +1287,7 @@ Actions 检查可按 head SHA 查询。
 不要把 AI Gateway 改成本地 GPU 推理。
 不要让正式 OS Publish 回退 Postiz。
 
-当前断点是：Publish Center 的 guarded prepare/run、YouTube official live API adapter、account OAuth/upload-scope preflight 已经完成并通过 CI；本轮真实 YouTube private upload 尚未作为最终验证完成。
+当前断点是：Data Center Query V1 已存在并由前端使用；Query V2 的 date range、time series、period comparison、interval/group_by 尚未实现。先解决窗口聚合 snapshot 的时序语义，禁止直接 SUM 重叠窗口。Publish 的真实 YouTube private upload 仍需用户明确授权后验证。
 
 进入执行模式：先检查当前 main 与用户本地是否同步，然后从 docs/PROJECT_HANDOVER.md 的 P0 → P1 顺序继续。能直接检查/修复/提交/跑 CI 的事情就直接做，不要频繁问我。只有涉及真实 OAuth、真实上传、外部付费生成等用户动作时再停下来。
 ```
@@ -1324,4 +1323,4 @@ Production Runtime
 再扩平台 / AI Provider
 ```
 
-新窗口应从本文第 24 节的 P0 / P1 继续。
+新窗口应从本文第 24 节的 P0 继续。
