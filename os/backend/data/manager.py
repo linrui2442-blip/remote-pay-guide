@@ -139,6 +139,11 @@ def query_data_center_view(
     sort_by='views',
     sort_direction='desc',
     limit=100,
+    date_range=None,
+    start_date=None,
+    end_date=None,
+    compare_previous_period=False,
+    interval=None,
 ):
     return query_data_center(
         account_id=account_id,
@@ -148,4 +153,9 @@ def query_data_center_view(
         sort_by=sort_by,
         sort_direction=sort_direction,
         limit=limit,
+        date_range=date_range,
+        start_date=start_date,
+        end_date=end_date,
+        compare_previous_period=compare_previous_period,
+        interval=interval,
     )

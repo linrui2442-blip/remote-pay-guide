@@ -1,6 +1,7 @@
 import re
+from datetime import date, timedelta
 
-from analytics.manager import get_latest_metrics
+from analytics.manager import get_latest_metrics, get_metrics
 from assets.manager import get_asset
 from data.growth import get_content_funnel
 from data.tracking import get_history_summaries, get_tracking_records
@@ -20,6 +21,13 @@ DEFAULT_SELECTED_METRICS = (
     "conversion_value",
 )
 METRIC_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+DATE_RANGES = {"7d": 7, "28d": 28, "90d": 90}
+VALID_DATE_RANGES = {*DATE_RANGES, "lifetime", "custom"}
+ADDITIVE_METRICS = {
+    "impressions", "views", "clicks", "likes", "comments", "watch_time", "shares",
+}
+WEIGHTED_METRICS = {"ctr", "average_view_duration", "retention", "average_view_percentage"}
+WEIGHT_FIELDS = {"ctr": "impressions", "average_view_duration": "views", "retention": "views", "average_view_percentage": "views"}
 
 
 def _normalize(value):
@@ -93,10 +101,17 @@ def _metric_map(metric, *, referral_clicks=0, conversions=0, conversion_value=0)
     return values
 
 
-def _current_rows(account_id=None, platform=None, scope="active"):
+def _current_rows(
+    account_id=None,
+    platform=None,
+    scope="active",
+    metric_records=None,
+    growth_start=None,
+    growth_end=None,
+):
     normalized_platform = _normalize(platform) or None
     publish_index = _publish_index()
-    metrics = get_latest_metrics()
+    metrics = get_latest_metrics() if metric_records is None else metric_records
 
     account_ids = {
         metric.get("account_id")
@@ -136,7 +151,7 @@ def _current_rows(account_id=None, platform=None, scope="active"):
 
         content_id = metric.get("content_id") or metric.get("video_id")
         metadata = _asset_metadata(content_id)
-        funnel = get_content_funnel(content_id)
+        funnel = get_content_funnel(content_id, growth_start, growth_end)
         intent_by_type = funnel.get("intent", {}).get("by_type", {})
         conversion = funnel.get("conversion", {})
         referral_clicks = int(
@@ -174,6 +189,7 @@ def _current_rows(account_id=None, platform=None, scope="active"):
                 "period_start": metric.get("period_start"),
                 "period_end": metric.get("period_end"),
                 "collected_at": metric.get("collected_at"),
+                "snapshot_selection": metric.get("snapshot_selection"),
                 "views": int(metric.get("views") or 0),
                 "watch_time": int(metric.get("watch_time") or 0),
                 "average_view_duration": metric.get("average_view_duration"),
@@ -313,6 +329,163 @@ def _decorate_selected_metrics(rows, selected_metrics):
     return rows
 
 
+def _parse_date(value, name):
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be an ISO date (YYYY-MM-DD)") from None
+
+
+def _resolve_period(date_range, start_date=None, end_date=None):
+    normalized = _normalize(date_range)
+    if normalized not in VALID_DATE_RANGES:
+        raise ValueError("date_range must be one of 7d, 28d, 90d, lifetime, custom")
+    if normalized == "lifetime":
+        if start_date or end_date:
+            raise ValueError("start_date/end_date are not supported with date_range=lifetime")
+        return {"date_range": normalized, "start_date": None, "end_date": None, "days": None}
+    resolved_end = _parse_date(end_date, "end_date") if end_date else date.today() - timedelta(days=1)
+    if normalized == "custom":
+        if not start_date or not end_date:
+            raise ValueError("custom date_range requires start_date and end_date")
+        resolved_start = _parse_date(start_date, "start_date")
+    else:
+        resolved_start = resolved_end - timedelta(days=DATE_RANGES[normalized] - 1)
+        if start_date and _parse_date(start_date, "start_date") != resolved_start:
+            raise ValueError(f"start_date does not match date_range={normalized}")
+    if resolved_start > resolved_end:
+        raise ValueError("start_date must be on or before end_date")
+    return {"date_range": normalized, "start_date": resolved_start.isoformat(), "end_date": resolved_end.isoformat(), "days": (resolved_end - resolved_start).days + 1}
+
+
+def _previous_period(period):
+    if period["days"] is None:
+        return None
+    current_start = _parse_date(period["start_date"], "start_date")
+    previous_end = current_start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=period["days"] - 1)
+    return {"date_range": "previous_period", "start_date": previous_start.isoformat(), "end_date": previous_end.isoformat(), "days": period["days"]}
+
+
+def _identity(metric):
+    return (metric.get("video_id"), _normalize(metric.get("platform")), metric.get("account_id"))
+
+
+def _latest_by(records, key):
+    selected = {}
+    for record in records:
+        record_key = key(record)
+        current = selected.get(record_key)
+        rank = (str(record.get("collected_at") or ""), int(record.get("id") or 0))
+        current_rank = (str(current.get("collected_at") or ""), int(current.get("id") or 0)) if current else None
+        if current is None or rank > current_rank:
+            selected[record_key] = record
+    return list(selected.values())
+
+
+def _metric_number(record, name):
+    value = record.get("retention") if name == "average_view_percentage" else _metric_value(record, name)
+    return value if isinstance(value, (int, float)) else None
+
+
+def _weighted_value(values, name):
+    weight_field = WEIGHT_FIELDS[name]
+    weights = [max(float(_metric_number(item, weight_field) or 0), 0) for item, _ in values]
+    return sum(value * weight for (_, value), weight in zip(values, weights)) / sum(weights) if sum(weights) else values[-1][1]
+
+
+def _aggregate_snapshots(records, start_date, end_date):
+    exact = _latest_by(
+        [record for record in records if record.get("period_start") == start_date and record.get("period_end") == end_date],
+        _identity,
+    )
+    exact_keys = {_identity(item) for item in exact}
+    daily = _latest_by(
+        [record for record in records if record.get("period_start") == record.get("period_end") and record.get("period_start") and start_date <= record["period_start"] <= end_date and _identity(record) not in exact_keys],
+        lambda item: (_identity(item), item.get("period_start")),
+    )
+    grouped = {}
+    for item in daily:
+        grouped.setdefault(_identity(item), []).append(item)
+    aggregated = list(exact)
+    for items in grouped.values():
+        base = dict(items[-1])
+        payload = {}
+        names = {name for item in items for name in (item.get("metrics") or {})} | ADDITIVE_METRICS | WEIGHTED_METRICS
+        for name in names:
+            values = [(item, _metric_number(item, name)) for item in items]
+            values = [(item, value) for item, value in values if value is not None]
+            if name in ADDITIVE_METRICS:
+                payload[name] = sum(value for _, value in values)
+            elif name in WEIGHTED_METRICS and values:
+                payload[name] = _weighted_value(values, name)
+        for name in ADDITIVE_METRICS:
+            base[name] = payload.get(name, 0)
+        base["average_view_duration"] = payload.get("average_view_duration")
+        base["retention"] = payload.get("retention", payload.get("average_view_percentage"))
+        base["ctr"] = payload.get("ctr")
+        base["metrics"] = payload
+        base["period_start"] = start_date
+        base["period_end"] = end_date
+        base["snapshot_selection"] = "daily_rollup"
+        aggregated.append(base)
+    for item in aggregated:
+        item.setdefault("snapshot_selection", "exact_window_latest")
+    return aggregated
+
+
+def _period_metric_records(period, records):
+    if period["days"] is None:
+        selected = _latest_by(records, _identity)
+        for item in selected:
+            item.setdefault("snapshot_selection", "latest_available_window")
+        return selected
+    return _aggregate_snapshots(records, period["start_date"], period["end_date"])
+
+
+def _daily_time_series(records, period, selected_metrics):
+    if period["days"] is None:
+        return []
+    daily = _latest_by(
+        [record for record in records if record.get("period_start") == record.get("period_end") and record.get("period_start") and period["start_date"] <= record["period_start"] <= period["end_date"]],
+        lambda item: (_identity(item), item.get("period_start")),
+    )
+    points = []
+    cursor = _parse_date(period["start_date"], "start_date")
+    end = _parse_date(period["end_date"], "end_date")
+    while cursor <= end:
+        day = cursor.isoformat()
+        day_records = [item for item in daily if item.get("period_start") == day]
+        values = {}
+        for name in selected_metrics:
+            metric_values = [(item, _metric_number(item, name)) for item in day_records]
+            metric_values = [(item, value) for item, value in metric_values if value is not None]
+            if name in ADDITIVE_METRICS:
+                values[name] = sum(value for _, value in metric_values)
+            elif name in WEIGHTED_METRICS and metric_values:
+                values[name] = _weighted_value(metric_values, name)
+            else:
+                values[name] = None
+        points.append({"date": day, "metric_values": values, "snapshot_count": len(day_records)})
+        cursor += timedelta(days=1)
+    return points
+
+
+def _comparison(current, previous, selected_metrics):
+    result = {}
+    summary_names = {"views": "total_views", "watch_time": "total_watch_time"}
+    for name in selected_metrics:
+        key = summary_names.get(name, name)
+        current_value = current.get(key)
+        previous_value = previous.get(key)
+        if not isinstance(current_value, (int, float)) or not isinstance(previous_value, (int, float)):
+            result[name] = {"current": current_value, "previous": previous_value, "change": None, "change_percent": None}
+            continue
+        change = current_value - previous_value
+        result[name] = {"current": current_value, "previous": previous_value, "change": change, "change_percent": (change / previous_value * 100) if previous_value else None}
+    return result
+
+
 def query_data_center(
     *,
     account_id=None,
@@ -322,6 +495,11 @@ def query_data_center(
     sort_by="views",
     sort_direction="desc",
     limit=100,
+    date_range=None,
+    start_date=None,
+    end_date=None,
+    compare_previous_period=False,
+    interval=None,
 ):
     normalized_scope = _normalize(scope) or "active"
     if normalized_scope not in VALID_SCOPES:
@@ -329,6 +507,22 @@ def query_data_center(
     selected_metrics = _normalize_metrics(metrics)
     if sort_by != "published_at" and not METRIC_NAME_RE.match(str(sort_by or "")):
         raise ValueError(f"invalid sort field: {sort_by}")
+
+    v2_requested = bool(date_range or start_date or end_date or compare_previous_period or interval)
+    period = _resolve_period(date_range or "custom", start_date, end_date) if v2_requested else None
+    if period and (_normalize(interval) or "daily") != "daily":
+        raise ValueError("interval currently supports daily only")
+    if period and normalized_scope != "active":
+        raise ValueError("Query V2 time ranges currently support scope=active only")
+
+    metric_history = get_metrics() if period else None
+    filtered_metrics = metric_history
+    if filtered_metrics is not None:
+        if account_id is not None:
+            filtered_metrics = [item for item in filtered_metrics if item.get("account_id") == account_id]
+        if _normalize(platform):
+            filtered_metrics = [item for item in filtered_metrics if _normalize(item.get("platform")) == _normalize(platform)]
+        filtered_metrics = _period_metric_records(period, filtered_metrics)
 
     if normalized_scope in {"historical", "archived"}:
         rows = _historical_rows(
@@ -341,6 +535,9 @@ def query_data_center(
             account_id=account_id,
             platform=platform,
             scope=normalized_scope,
+            metric_records=filtered_metrics,
+            growth_start=period and period["start_date"],
+            growth_end=period and period["end_date"],
         )
         if normalized_scope == "all":
             current_keys = {
@@ -368,7 +565,7 @@ def query_data_center(
         }
     )
 
-    return {
+    result = {
         "filters": {
             "account_id": account_id,
             "platform": _normalize(platform) or None,
@@ -384,3 +581,51 @@ def query_data_center(
         "total_matching": len(rows),
         "rows": limited,
     }
+    if not period:
+        return result
+
+    result["query_version"] = "v2"
+    result["filters"].update({
+        "date_range": period["date_range"],
+        "start_date": period["start_date"],
+        "end_date": period["end_date"],
+        "compare_previous_period": bool(compare_previous_period),
+        "interval": "daily",
+    })
+    result["period"] = period
+    trend_source = metric_history or []
+    if account_id is not None:
+        trend_source = [item for item in trend_source if item.get("account_id") == account_id]
+    if _normalize(platform):
+        trend_source = [item for item in trend_source if _normalize(item.get("platform")) == _normalize(platform)]
+    points = _daily_time_series(trend_source, period, selected_metrics)
+    result["time_series"] = {"interval": "daily", "available": any(point["snapshot_count"] for point in points), "points": points}
+    result["snapshot_semantics"] = {
+        "storage": "window_aggregate_snapshots",
+        "selection": "latest exact-window snapshot per video/platform/account; otherwise de-duplicated daily rollup",
+        "overlapping_windows_summed": False,
+        "trend_requires_daily_snapshots": True,
+        "period_aggregate_metrics": sorted(ADDITIVE_METRICS | WEIGHTED_METRICS),
+        "trend_metrics": sorted(ADDITIVE_METRICS | WEIGHTED_METRICS),
+        "provider_specific_metrics": "trend only when numeric daily snapshots exist; never inferred from overlapping windows",
+        "growth_events": "referral/intent/conversion aggregates use occurred_at inside the inclusive period; daily growth trend is not included in phase 1",
+        "historical_scope": "time ranges are unavailable for compact historical/archive summaries in phase 1",
+    }
+    if compare_previous_period:
+        previous = _previous_period(period)
+        if previous is None:
+            raise ValueError("compare_previous_period is not supported for lifetime")
+        previous_records = _period_metric_records(previous, trend_source)
+        previous_rows = _current_rows(
+            account_id=account_id,
+            platform=platform,
+            scope=normalized_scope,
+            metric_records=previous_records,
+            growth_start=previous["start_date"],
+            growth_end=previous["end_date"],
+        ) if normalized_scope not in {"historical", "archived"} else []
+        previous_summary = _summary(previous_rows)
+        result["comparison"] = {"period": previous, "summary": previous_summary, "metrics": _comparison(result["summary"], previous_summary, selected_metrics)}
+    else:
+        result["comparison"] = None
+    return result

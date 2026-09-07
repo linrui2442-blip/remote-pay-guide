@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from analytics.manager import get_latest_content_metrics
@@ -159,7 +159,25 @@ def record_conversion(record):
     return _serialize_conversion(row)
 
 
-def get_intent_events(content_id=None):
+def _in_date_range(value, start_date=None, end_date=None):
+    if not start_date and not end_date:
+        return True
+    if not value:
+        return False
+    try:
+        occurred = datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            occurred = date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return False
+    return (
+        (not start_date or occurred >= date.fromisoformat(start_date))
+        and (not end_date or occurred <= date.fromisoformat(end_date))
+    )
+
+
+def get_intent_events(content_id=None, start_date=None, end_date=None):
     _ensure_tables()
     with _connect() as conn:
         if content_id is None:
@@ -169,10 +187,14 @@ def get_intent_events(content_id=None):
                 "SELECT * FROM intent_events WHERE content_id=? ORDER BY id",
                 (content_id,),
             ).fetchall()
-    return [_serialize_intent(row) for row in rows]
+    return [
+        item
+        for item in (_serialize_intent(row) for row in rows)
+        if _in_date_range(item.get("occurred_at"), start_date, end_date)
+    ]
 
 
-def get_conversions(content_id=None):
+def get_conversions(content_id=None, start_date=None, end_date=None):
     _ensure_tables()
     with _connect() as conn:
         if content_id is None:
@@ -182,20 +204,24 @@ def get_conversions(content_id=None):
                 "SELECT * FROM conversion_records WHERE content_id=? ORDER BY id",
                 (content_id,),
             ).fetchall()
-    return [_serialize_conversion(row) for row in rows]
+    return [
+        item
+        for item in (_serialize_conversion(row) for row in rows)
+        if _in_date_range(item.get("occurred_at"), start_date, end_date)
+    ]
 
 
 def _sum_metric(metrics, key):
     return sum((item.get(key) or 0) for item in metrics)
 
 
-def get_content_funnel(content_id):
+def get_content_funnel(content_id, start_date=None, end_date=None):
     # Platform APIs usually return cumulative snapshots. Use the newest
     # snapshot per video/platform so scheduled collection does not inflate the
     # growth funnel by summing the same traffic repeatedly.
     traffic = get_latest_content_metrics(content_id)
-    intent = get_intent_events(content_id)
-    conversions = get_conversions(content_id)
+    intent = get_intent_events(content_id, start_date, end_date)
+    conversions = get_conversions(content_id, start_date, end_date)
 
     intent_by_type = {}
     for event in intent:

@@ -62,6 +62,11 @@ def data_query(
     sort_by: str = 'views',
     sort_direction: str = 'desc',
     limit: int = 100,
+    date_range: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    compare_previous_period: bool = False,
+    interval: str | None = None,
 ):
     try:
         return query_data_center_view(
@@ -72,6 +77,11 @@ def data_query(
             sort_by=sort_by,
             sort_direction=sort_direction,
             limit=limit,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            compare_previous_period=compare_previous_period,
+            interval=interval,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -16,6 +16,7 @@ on:
       - 'os/backend/tests/r8_data_query_layer_smoke.py'
       - 'os/backend/tests/r9_archive_tracking_policy_smoke.py'
       - 'os/backend/tests/r19_data_center_contract_smoke.py'
+      - 'os/backend/tests/r21_data_query_v2_time_range_smoke.py'
       - '.github/workflows/os-data-center-verification.yml'
 
 jobs:
@@ -52,6 +53,11 @@ jobs:
         env:
           PYTHONPATH: os/backend
         run: python os/backend/tests/r8_data_query_layer_smoke.py
+
+      - name: Verify Data Center Query V2 time range contract
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r21_data_query_v2_time_range_smoke.py
 
       - name: Verify archive tracking policy
         env:
