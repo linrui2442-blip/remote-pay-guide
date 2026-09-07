@@ -42,6 +42,55 @@ export function getDataCenterQuery(filters = {}) {
   return apiGet(`/data/query${params.toString() ? `?${params.toString()}` : ""}`);
 }
 
+export function buildAnalyticsBackfillRequest(filters = {}) {
+  const request = {
+    platform: filters.platform || undefined,
+    date_range: filters.date_range || "28d",
+  };
+  if (request.date_range === "custom") {
+    request.start_date = filters.start_date;
+    request.end_date = filters.end_date;
+  }
+  return request;
+}
+
+export function planAnalyticsBackfill(accountId, filters = {}) {
+  return apiPost(
+    `/analytics/backfill/plan/${encodeURIComponent(accountId)}`,
+    buildAnalyticsBackfillRequest(filters),
+  );
+}
+
+export function createAnalyticsBackfillOperation(accountId, filters = {}) {
+  return apiPost(
+    `/analytics/backfill/operations/${encodeURIComponent(accountId)}`,
+    buildAnalyticsBackfillRequest(filters),
+  );
+}
+
+export function getAnalyticsBackfillOperation(operationId) {
+  return apiGet(`/analytics/backfill/operations/${encodeURIComponent(operationId)}`);
+}
+
+export function listAnalyticsBackfillOperations(accountId, platform) {
+  const params = new URLSearchParams();
+  if (accountId != null && accountId !== "") params.set("account_id", String(accountId));
+  if (platform) params.set("platform", platform);
+  return apiGet(`/analytics/backfill/operations?${params.toString()}`);
+}
+
+export function cancelAnalyticsBackfillOperation(operationId) {
+  return apiPost(
+    `/analytics/backfill/operations/${encodeURIComponent(operationId)}/cancel`,
+    {},
+  );
+}
+
+export function isAnalyticsBackfillPollable(operation) {
+  return ["queued", "running", "partial"].includes(operation?.status)
+    || (operation?.status === "failed" && Boolean(operation?.next_retry_at));
+}
+
 export function getProductionTasks() { return apiGet('/production/tasks'); }
 export function getProductionStatus() { return apiGet('/production/status'); }
 export function getProductionProviders() { return apiGet('/production/providers'); }

@@ -32,6 +32,10 @@ jobs:
         working-directory: os/frontend
         run: npm run test:query-v2
 
+      - name: Verify Data Center backfill control plane contract
+        working-directory: os/frontend
+        run: npm run test:backfill-control
+
       - name: Verify provider-neutral platform account UI
         run: |
           ! grep -q 'PLATFORM_CONNECTORS' os/frontend/src/App.jsx

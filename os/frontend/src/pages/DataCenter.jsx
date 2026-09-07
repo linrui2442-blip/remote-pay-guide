@@ -1,5 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { apiGet, apiPost, getDataCenterQuery } from "../api";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  apiGet,
+  apiPost,
+  cancelAnalyticsBackfillOperation,
+  createAnalyticsBackfillOperation,
+  getAnalyticsBackfillOperation,
+  getDataCenterQuery,
+  isAnalyticsBackfillPollable,
+  listAnalyticsBackfillOperations,
+  planAnalyticsBackfill,
+} from "../api";
 
 const PLATFORM_LABELS = {
   youtube: "YouTube",
@@ -24,6 +34,15 @@ const TREND_METRICS = [
   ["comments", "评论数"],
   ["shares", "分享"],
 ];
+
+const BACKFILL_STATUS = {
+  queued: "等待中",
+  running: "正在回填",
+  partial: "部分完成 / 等待重试",
+  success: "已完成",
+  failed: "失败",
+  cancelled: "已取消",
+};
 
 function platformLabel(name) {
   const key = String(name || "").toLowerCase();
@@ -170,6 +189,191 @@ function DailyTrend({ timeSeries, metric, onMetricChange }) {
   );
 }
 
+function AnalyticsBackfillControl({ accountId, platform, onSuccess }) {
+  const [range, setRange] = useState("28d");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [plan, setPlan] = useState(null);
+  const [operation, setOperation] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const refreshedOperation = useRef(null);
+
+  const request = {
+    platform,
+    date_range: range,
+    start_date: range === "custom" ? startDate : undefined,
+    end_date: range === "custom" ? endDate : undefined,
+  };
+
+  useEffect(() => {
+    setPlan(null);
+    setOperation(null);
+    setMessage("");
+    refreshedOperation.current = null;
+    if (!accountId || !platform) return undefined;
+    let active = true;
+    listAnalyticsBackfillOperations(accountId, platform)
+      .then((items) => {
+        if (!active) return;
+        const rows = items || [];
+        setOperation(rows.find(isAnalyticsBackfillPollable) || rows[0] || null);
+      })
+      .catch((requestError) => active && setMessage(requestError.message));
+    return () => { active = false; };
+  }, [accountId, platform]);
+
+  useEffect(() => {
+    if (!operation?.operation_id || !isAnalyticsBackfillPollable(operation)) return undefined;
+    let active = true;
+    const timer = window.setInterval(() => {
+      getAnalyticsBackfillOperation(operation.operation_id)
+        .then((next) => active && setOperation(next))
+        .catch((requestError) => active && setMessage(requestError.message));
+    }, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [operation?.operation_id, operation?.status, operation?.next_retry_at]);
+
+  useEffect(() => {
+    if (operation?.status !== "success") return;
+    if (refreshedOperation.current === operation.operation_id) return;
+    refreshedOperation.current = operation.operation_id;
+    onSuccess();
+  }, [operation?.operation_id, operation?.status, onSuccess]);
+
+  const checkMissing = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      setPlan(await planAnalyticsBackfill(accountId, request));
+    } catch (requestError) {
+      setPlan(null);
+      setMessage(requestError.message || "缺失数据检查失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startBackfill = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      setOperation(await createAnalyticsBackfillOperation(accountId, request));
+    } catch (requestError) {
+      const detail = requestError.message || "历史数据回填创建失败";
+      setMessage(
+        /active backfill operation|already exists/i.test(detail)
+          ? "该账号已有正在进行的历史数据回填任务。"
+          : detail,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelBackfill = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      setOperation(await cancelAnalyticsBackfillOperation(operation.operation_id));
+    } catch (requestError) {
+      setMessage(requestError.message || "取消回填失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canPlan = accountId && platform
+    && (range !== "custom" || (startDate && endDate));
+  const canStart = plan && Number(plan.estimated_request_count || 0) > 0
+    && !isAnalyticsBackfillPollable(operation);
+  const canCancel = operation
+    && ["queued", "running", "partial", "failed"].includes(operation.status);
+
+  return (
+    <section className="panel dc-backfill-panel">
+      <div className="panel-header dc-backfill-header">
+        <div>
+          <span className="section-kicker">ANALYTICS HISTORICAL BACKFILL</span>
+          <h2>历史 Analytics 回填</h2>
+        </div>
+        {operation ? <span className={`dc-backfill-status status-${operation.status}`}>{BACKFILL_STATUS[operation.status] || operation.status}</span> : null}
+      </div>
+
+      {!accountId || !platform ? (
+        <div className="dc-backfill-empty">请先选择一个账号；平台会使用该账号的真实绑定平台。</div>
+      ) : (
+        <>
+          <div className="dc-backfill-controls">
+            <label>
+              <span>回填范围</span>
+              <select value={range} onChange={(event) => { setRange(event.target.value); setPlan(null); }}>
+                <option value="7d">7D</option>
+                <option value="28d">28D</option>
+                <option value="90d">90D</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            {range === "custom" ? (
+              <>
+                <label><span>开始日期</span><input type="date" value={startDate} onChange={(event) => { setStartDate(event.target.value); setPlan(null); }} /></label>
+                <label><span>结束日期</span><input type="date" value={endDate} onChange={(event) => { setEndDate(event.target.value); setPlan(null); }} /></label>
+              </>
+            ) : null}
+            <button className="secondary-button" disabled={!canPlan || busy} onClick={checkMissing}>检查缺失数据</button>
+          </div>
+
+          {plan ? (
+            <div className="dc-backfill-plan">
+              <div><span>平台报告时区</span><strong>{plan.reporting_timezone || "—"}</strong></div>
+              <div><span>请求周期</span><strong>{formatPeriod(plan.period?.start_date, plan.period?.end_date)}</strong></div>
+              <div><span>可回填视频</span><strong>{formatNumber(plan.eligible_videos?.length)}</strong></div>
+              <div><span>已有日期</span><strong>{formatNumber(plan.existing_dates?.length)}</strong></div>
+              <div><span>缺失日期</span><strong>{formatNumber(plan.missing_dates?.length)}</strong></div>
+              <div><span>预计请求 / 上限</span><strong>{formatNumber(plan.estimated_request_count)} / {formatNumber(plan.request_cap)}</strong></div>
+              <p>历史数据按平台报告日计算，不按本机时区计算。</p>
+            </div>
+          ) : null}
+
+          {canStart ? (
+            <div className="dc-backfill-start">
+              <p>此操作会读取平台 Analytics，并只写入本地 OS 数据库；不会上传或修改远程内容，也不会下载视频。</p>
+              <button disabled={busy} onClick={startBackfill}>开始历史数据回填</button>
+            </div>
+          ) : null}
+
+          {operation ? (
+            <div className="dc-backfill-operation">
+              <div className="dc-backfill-progress"><span style={{ width: `${Math.max(0, Math.min(100, Number(operation.progress_percentage || 0)))}%` }} /></div>
+              <div className="dc-backfill-operation-grid">
+                <span>进度 <strong>{formatPercent(operation.progress_percentage)}</strong></span>
+                <span>总计 <strong>{formatNumber(operation.total_work)}</strong></span>
+                <span>完成 <strong>{formatNumber(operation.completed_work)}</strong></span>
+                <span>失败 <strong>{formatNumber(operation.failed_work)}</strong></span>
+                <span>剩余 <strong>{formatNumber(operation.remaining_work)}</strong></span>
+                <span>当前报告日 <strong>{operation.current_reporting_date || "—"}</strong></span>
+                <span>重试次数 <strong>{formatNumber(operation.retry_count)}</strong></span>
+                <span>创建时间 <strong>{formatDate(operation.created_at)}</strong></span>
+                <span>开始时间 <strong>{formatDate(operation.started_at)}</strong></span>
+                <span>更新时间 <strong>{formatDate(operation.updated_at)}</strong></span>
+                <span>结束时间 <strong>{formatDate(operation.finished_at)}</strong></span>
+              </div>
+              {operation.next_retry_at ? <p>系统将在 {new Date(operation.next_retry_at).toLocaleString()} 后自动重试。</p> : null}
+              {operation.last_error ? <p className="dc-backfill-error">{operation.last_error}</p> : null}
+              {canCancel ? <button className="secondary-button" disabled={busy} onClick={cancelBackfill}>取消剩余回填</button> : null}
+              {canCancel ? <small>取消不会删除已经成功写入的历史 Analytics。</small> : null}
+            </div>
+          ) : null}
+          {message ? <div className="dc-backfill-message">{message}</div> : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function DataCenter() {
   const [accounts, setAccounts] = useState([]);
   const [platforms, setPlatforms] = useState([]);
@@ -306,6 +510,13 @@ export default function DataCenter() {
     () => Object.fromEntries(accounts.map((account) => [String(account.id), account])),
     [accounts]
   );
+  const selectedAccountPlatform = String(
+    accountMap[String(accountId)]?.platform || "",
+  ).toLowerCase();
+  const backfillPlatform = selectedAccountPlatform
+    && (!platform || platform === selectedAccountPlatform)
+    ? selectedAccountPlatform
+    : "";
 
   const reportPeriod = useMemo(() => {
     if (query.period) {
@@ -476,6 +687,12 @@ export default function DataCenter() {
       ) : null}
 
       {error ? <div className="notice dc-error">{error}</div> : null}
+
+      <AnalyticsBackfillControl
+        accountId={accountId}
+        platform={backfillPlatform}
+        onSuccess={loadQuery}
+      />
 
       <div className="dc-metric-grid">
         <MetricCard label="总观看量" value={formatNumber(summary.total_views)} hint={`${summary.content_count || 0} 条内容`} />

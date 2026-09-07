@@ -69,6 +69,39 @@
 .dc-trend-unavailable { padding: 24px 20px; color: #667085; font-size: 11px; }
 .dc-semantics-note { color: #667085; font-size: 10px; line-height: 1.6; margin: -4px 2px 16px; }
 
+.dc-backfill-panel { margin-bottom: 14px; padding-bottom: 18px; }
+.dc-backfill-header { align-items: center; }
+.dc-backfill-status { border-radius: 999px; padding: 5px 9px; background: #f2f4f7; color: #475467; font-size: 10px; font-weight: 800; }
+.dc-backfill-status.status-running { background: #eef4ff; color: #3538cd; }
+.dc-backfill-status.status-success { background: #ecfdf3; color: #027a48; }
+.dc-backfill-status.status-partial,
+.dc-backfill-status.status-failed { background: #fff4ed; color: #b93815; }
+.dc-backfill-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; padding: 0 20px 16px; }
+.dc-backfill-controls label { display: flex; flex-direction: column; gap: 5px; }
+.dc-backfill-controls label span { color: #667085; font-size: 10px; font-weight: 800; }
+.dc-backfill-controls select,
+.dc-backfill-controls input { min-width: 150px; padding: 9px 10px; }
+.dc-backfill-empty { padding: 0 20px 18px; color: #667085; font-size: 11px; }
+.dc-backfill-plan { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 0 20px 16px; }
+.dc-backfill-plan > div { border: 1px solid #e7eaf0; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 5px; }
+.dc-backfill-plan span { color: #667085; font-size: 9px; }
+.dc-backfill-plan strong { color: #344054; font-size: 11px; }
+.dc-backfill-plan p { grid-column: 1 / -1; margin: 0; color: #667085; font-size: 10px; }
+.dc-backfill-start,
+.dc-backfill-operation { margin: 0 20px; padding: 12px; border-radius: 12px; background: #f9fafb; }
+.dc-backfill-start { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.dc-backfill-start p,
+.dc-backfill-operation p { margin: 0; color: #667085; font-size: 10px; line-height: 1.5; }
+.dc-backfill-progress { height: 7px; overflow: hidden; border-radius: 999px; background: #e4e7ec; margin-bottom: 12px; }
+.dc-backfill-progress span { display: block; height: 100%; background: #6172f3; }
+.dc-backfill-operation-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 14px; margin-bottom: 12px; }
+.dc-backfill-operation-grid span { color: #667085; font-size: 9px; }
+.dc-backfill-operation-grid strong { display: block; color: #344054; font-size: 11px; margin-top: 3px; }
+.dc-backfill-operation > button { margin-top: 12px; }
+.dc-backfill-operation > small { display: inline-block; margin-left: 10px; color: #667085; font-size: 9px; }
+.dc-backfill-error { color: #b42318 !important; margin-top: 8px !important; }
+.dc-backfill-message { margin: 10px 20px 0; color: #b42318; font-size: 10px; }
+
 .dc-table-panel { padding: 0; overflow: hidden; }
 .dc-table-header { padding: 20px 20px 0; }
 .dc-table-wrap { max-height: 620px; overflow: auto; }
@@ -147,4 +180,6 @@
 @media (max-width: 1500px) {
   .dc-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .dc-comparison-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dc-backfill-plan { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dc-backfill-operation-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
