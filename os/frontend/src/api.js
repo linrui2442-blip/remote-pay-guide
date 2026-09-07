@@ -31,6 +31,10 @@ export function runProductionTask(id) { return apiPost(`/production/tasks/${id}/
 export function refreshProductionTask(id) { return apiPost(`/production/tasks/${id}/refresh`, {}); }
 
 export function getPublishTasks() { return apiGet('/publish/tasks'); }
+export function createPublishTask(data) { return apiPost('/publish/tasks', data); }
+export function runPublishTask(id) {
+  return apiPost(`/publish/tasks/${encodeURIComponent(id)}/run`, {});
+}
 export function collectPublishTaskAnalytics(id, data = {}) {
   return apiPost(`/analytics/collector/collect/publish-task/${encodeURIComponent(id)}`, data);
 }
