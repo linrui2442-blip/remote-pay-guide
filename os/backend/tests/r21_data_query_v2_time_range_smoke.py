@@ -66,6 +66,7 @@ def main():
     metric("2026-08-01", "2026-08-01", 4, "2026-08-02T00:00:00+00:00")
     metric("2026-08-01", "2026-08-01", 5, "2026-08-03T00:00:00+00:00")
     metric("2026-08-02", "2026-08-02", 10, "2026-08-03T00:00:00+00:00")
+    metric("2026-08-03", "2026-08-03", 0, "2026-08-04T00:00:00+00:00")
     record_intent(IntentEvent(content_id="v2-content", event_type="binance_referral_click", occurred_at="2026-08-01T12:00:00+00:00"))
     record_intent(IntentEvent(content_id="v2-content", event_type="binance_referral_click", occurred_at="2026-07-31T12:00:00+00:00"))
     record_conversion(ConversionRecord(content_id="v2-content", conversion_type="sale", value=25, occurred_at="2026-08-02T12:00:00+00:00"))
@@ -89,6 +90,46 @@ def main():
     assert custom["comparison"]["summary"]["total_views"] == 10
     assert custom["comparison"]["summary"]["referral_clicks"] == 1
     assert custom["comparison"]["metrics"]["views"]["change"] == 5
+
+    # Calendar continuity is explicit without fabricating zero Analytics. Five
+    # true daily dates include a provider-observed zero; two empty dates remain
+    # null gaps and do not affect the period summary or comparison.
+    week = query_data_center(
+        account_id=42,
+        platform="youtube",
+        date_range="custom",
+        start_date="2026-07-28",
+        end_date="2026-08-03",
+        compare_previous_period=True,
+        interval="daily",
+    )
+    assert len(week["time_series"]["points"]) == 7
+    real_points = [point for point in week["time_series"]["points"] if point["has_snapshot"]]
+    gaps = [point for point in week["time_series"]["points"] if not point["has_snapshot"]]
+    assert len(real_points) == 5
+    assert len(gaps) == 2
+    assert all(point["snapshot_count"] > 0 for point in real_points)
+    assert all(point["snapshot_count"] == 0 for point in gaps)
+    assert all(all(value is None for value in point["metric_values"].values()) for point in gaps)
+    real_zero = next(point for point in real_points if point["date"] == "2026-08-03")
+    assert real_zero["metric_values"]["views"] == 0
+    assert week["time_series"]["available"] is True
+    assert week["summary"]["total_views"] == 25
+    assert week["comparison"]["metrics"]["views"]["current"] == 25
+    assert "never synthetic zero" in week["snapshot_semantics"]["missing_calendar_dates"]
+
+    empty = query_data_center(
+        account_id=404,
+        platform="youtube",
+        date_range="custom",
+        start_date="2026-08-01",
+        end_date="2026-08-02",
+        interval="daily",
+    )
+    assert empty["time_series"]["available"] is False
+    assert len(empty["time_series"]["points"]) == 2
+    assert all(point["has_snapshot"] is False for point in empty["time_series"]["points"])
+    assert all(all(value is None for value in point["metric_values"].values()) for point in empty["time_series"]["points"])
 
     # A partially overlapping multi-day snapshot is never added to daily values.
     metric("2026-07-31", "2026-08-02", 999, "2026-08-04T00:00:00+00:00")

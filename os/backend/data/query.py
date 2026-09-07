@@ -456,6 +456,15 @@ def _daily_time_series(records, period, selected_metrics):
     while cursor <= end:
         day = cursor.isoformat()
         day_records = [item for item in daily if item.get("period_start") == day]
+        if not day_records:
+            points.append({
+                "date": day,
+                "has_snapshot": False,
+                "metric_values": {name: None for name in selected_metrics},
+                "snapshot_count": 0,
+            })
+            cursor += timedelta(days=1)
+            continue
         values = {}
         for name in selected_metrics:
             metric_values = [(item, _metric_number(item, name)) for item in day_records]
@@ -466,7 +475,7 @@ def _daily_time_series(records, period, selected_metrics):
                 values[name] = _weighted_value(metric_values, name)
             else:
                 values[name] = None
-        points.append({"date": day, "metric_values": values, "snapshot_count": len(day_records)})
+        points.append({"date": day, "has_snapshot": True, "metric_values": values, "snapshot_count": len(day_records)})
         cursor += timedelta(days=1)
     return points
 
@@ -605,6 +614,7 @@ def query_data_center(
         "selection": "latest exact-window snapshot per video/platform/account; otherwise de-duplicated daily rollup",
         "overlapping_windows_summed": False,
         "trend_requires_daily_snapshots": True,
+        "missing_calendar_dates": "Calendar dates without true daily snapshots are returned only as gaps with null metric values; they are never synthetic zero Analytics points.",
         "period_aggregate_metrics": sorted(ADDITIVE_METRICS | WEIGHTED_METRICS),
         "trend_metrics": sorted(ADDITIVE_METRICS | WEIGHTED_METRICS),
         "provider_specific_metrics": "trend only when numeric daily snapshots exist; never inferred from overlapping windows",

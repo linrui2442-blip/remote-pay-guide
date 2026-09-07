@@ -65,6 +65,7 @@
 .dc-trend-column { min-width: 20px; height: 100%; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; text-align: center; }
 .dc-trend-track { height: 140px; border-radius: 5px; background: #f2f4f7; display: flex; align-items: flex-end; overflow: hidden; }
 .dc-trend-track span { display: block; width: 100%; background: #6172f3; border-radius: 5px 5px 0 0; }
+.dc-trend-column.is-gap .dc-trend-track { background: repeating-linear-gradient(135deg, #f9fafb, #f9fafb 5px, #eaecf0 5px, #eaecf0 6px); }
 .dc-trend-column small { color: #98a2b3; font-size: 8px; white-space: nowrap; }
 .dc-trend-unavailable { padding: 24px 20px; color: #667085; font-size: 11px; }
 .dc-semantics-note { color: #667085; font-size: 10px; line-height: 1.6; margin: -4px 2px 16px; }

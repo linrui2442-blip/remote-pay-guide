@@ -158,7 +158,12 @@ function ComparisonGrid({ comparison }) {
 
 function DailyTrend({ timeSeries, metric, onMetricChange }) {
   const points = timeSeries?.points || [];
-  const values = points.map((point) => Number(point.metric_values?.[metric]));
+  const values = points.map((point) => {
+    const raw = point.metric_values?.[metric];
+    if (point.has_snapshot === false || raw == null) return null;
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) ? numeric : null;
+  });
   const finiteValues = values.filter(Number.isFinite);
   const maximum = Math.max(...finiteValues, 0);
   return (
@@ -176,9 +181,10 @@ function DailyTrend({ timeSeries, metric, onMetricChange }) {
           {points.map((point, index) => {
             const value = values[index];
             const height = Number.isFinite(value) && maximum > 0 ? Math.max(4, value / maximum * 100) : 0;
+            const isGap = value == null;
             return (
-              <div className="dc-trend-column" key={point.date} title={`${point.date}: ${formatMetricValue(metric, value)}`}>
-                <div className="dc-trend-track"><span style={{ height: `${height}%` }} /></div>
+              <div className={`dc-trend-column${isGap ? " is-gap" : ""}`} key={point.date} title={`${point.date}: ${isGap ? "Unavailable" : formatMetricValue(metric, value)}`}>
+                <div className="dc-trend-track">{isGap ? null : <span style={{ height: `${height}%` }} />}</div>
                 <small>{point.date.slice(5)}</small>
               </div>
             );

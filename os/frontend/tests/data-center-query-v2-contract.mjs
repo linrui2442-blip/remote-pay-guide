@@ -34,6 +34,10 @@ assert.equal(v1.has("date_range"), false);
 
 assert.match(page, /useState\("28d"\)/, "28D must be the explicit UI default");
 assert.match(page, /timeSeries\?\.available/, "trend availability must come from backend");
+assert.match(page, /point\.has_snapshot === false \|\| raw == null/, "calendar gaps must preserve null values");
+assert.doesNotMatch(page, /points\.map\(\(point\) => Number\(point\.metric_values/, "frontend must not coerce null gaps to zero");
+assert.match(page, /isGap \? null : <span/, "calendar gaps must not render a fake bar");
+assert.match(page, /isGap \? "Unavailable"/, "calendar gaps must be labelled unavailable");
 assert.match(page, /当前周期缺少真实每日 Analytics 快照，无法生成可信趋势。/);
 assert.match(page, /scope === "active"/, "V2 must be limited to the supported active scope");
 assert.match(page, /Historical \/ Archived \/ All 当前保留 Query V1 行为/);
