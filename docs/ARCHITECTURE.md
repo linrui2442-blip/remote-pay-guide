@@ -73,3 +73,7 @@ Do not create duplicate systems based on historical documents.
 Code is replaceable.
 
 Runtime state must remain stable.
+
+## Current Verified Analytics Boundary
+
+真实验证链已闭合：Google OAuth → token refresh → YouTube Analytics API → Historical Backfill Runtime → analytics_metrics / no-data coverage → Query V2 → Data Center。7 日窗口包含 5 个真实 snapshot dates 与 2 个 gap dates；gap 不得伪造为零流量。Scheduled Daily Analytics Sync 尚未完成真实无人值守 E2E，下一阶段仅做该验证。
