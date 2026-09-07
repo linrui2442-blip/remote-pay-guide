@@ -606,7 +606,7 @@ function App() {
             const connectorReady = runtime.account_connector_registered && runtime.account_connector?.configured !== false;
             return (
               <Badge key={item.platform} tone={connectorReady ? "success" : "neutral"}>
-                {platformLabel(item.platform)} · {connectorReady ? "可连接" : runtime.account_connector_registered ? "连接配置待完成" : "Adapter Ready"}
+                {platformLabel(item.platform)} · {connectorReady ? "可连接" : runtime.account_connector_registered ? "连接配置待完成" : "Adapter 已注册"}
               </Badge>
             );
           })}
@@ -688,8 +688,9 @@ function App() {
           const runtime = item.runtime || {};
           const name = String(item.platform || "").toLowerCase();
           return <section className="platform-card" key={item.platform}>
-            <div className="platform-card-header"><div className="platform-logo">{platformMark(name)}</div><div><strong>{platformLabel(name)}</strong><span>{item.adapter}</span></div><Badge tone="success">ready</Badge></div>
-            <div className="capability-row"><span>发布</span><Badge tone={capability.publish_supported ? "success" : "neutral"}>{capability.publish_supported ? "支持" : "未启用"}</Badge></div>
+            <div className="platform-card-header"><div className="platform-logo">{platformMark(name)}</div><div><strong>{platformLabel(name)}</strong><span>{item.adapter}</span></div><Badge tone={item.publish_ready ? "success" : "neutral"}>{item.publish_ready ? "live" : "placeholder"}</Badge></div>
+            <div className="capability-row"><span>发布 Adapter</span><Badge tone={capability.publish_supported ? "success" : "neutral"}>{capability.publish_supported ? "已注册" : "未注册"}</Badge></div>
+            <div className="capability-row"><span>实时发布</span><Badge tone={item.publish_ready ? "success" : "neutral"}>{item.publish_ready ? item.execution_mode || "已启用" : "未启用"}</Badge></div>
             <div className="capability-row"><span>账号连接</span><Badge tone={runtime.account_connector_registered ? "success" : "neutral"}>{runtime.account_connector_registered ? runtime.account_connector?.configured === false ? "待配置" : "已接入" : "待接入"}</Badge></div>
             <div className="capability-row"><span>内容同步</span><Badge tone={runtime.content_sync_registered ? "success" : "neutral"}>{runtime.content_sync_registered ? `已接入 · Active ${runtime.content_sync_active_limit || 10}` : "待接入"}</Badge></div>
             <div className="capability-row"><span>Analytics</span><Badge tone={runtime.analytics_sync_registered ? "success" : "neutral"}>{runtime.analytics_sync_registered ? "Collector 已接入" : capability.analytics_supported ? "能力已启用 · Collector 待接入" : "未启用"}</Badge></div>
