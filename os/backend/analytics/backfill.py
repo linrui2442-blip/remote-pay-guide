@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 from accounts.manager import get_account
 from analytics.collector import AnalyticsCollector
+from analytics.errors import sanitize_analytics_error
 from analytics.manager import get_account_metrics
 from analytics.registry import get_analytics_adapter_registration
 from data.tracking import DEFAULT_ACTIVE_LIMIT, get_active_publish_tasks
@@ -190,12 +191,16 @@ def run_backfill(
             completed.append({**item, "metric_id": metric.get("id")})
             mark_backfill_progress(account_id, plan["platform"], item["date"], updated_at=attempted_at)
         except Exception as exc:
-            failures.append({**item, "error": str(exc)})
+            failures.append({**item, "error": sanitize_analytics_error(exc)})
     remaining = max(0, len(plan["work"]) - len(completed) - len(failures))
     if failures:
         status = "partial" if completed else "failed"
+        error = (
+            f"{len(failures)} backfill request(s) failed; "
+            f"first error: {failures[0]['error']}"
+        )
         saved_state = mark_backfill_failure(
-            account_id, plan["platform"], f"{len(failures)} backfill request(s) failed",
+            account_id, plan["platform"], error,
             failed_at=attempted_at, backoff_seconds=BACKOFF_SECONDS, status=status,
         )
     elif remaining:

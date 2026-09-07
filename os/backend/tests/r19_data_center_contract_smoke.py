@@ -6,6 +6,8 @@ ROOT = Path(__file__).resolve().parents[3]
 BACKEND = ROOT / 'os' / 'backend'
 sys.path.insert(0, str(BACKEND))
 os.chdir(ROOT)
+os.environ.setdefault('YOUTUBE_OAUTH_CLIENT_ID', 'data-center-test-client')
+os.environ.setdefault('YOUTUBE_OAUTH_CLIENT_SECRET', 'data-center-test-secret')
 
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
 from analytics.manager import get_latest_metrics, get_metrics, save_metric

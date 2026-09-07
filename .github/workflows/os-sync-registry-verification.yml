@@ -35,6 +35,7 @@ on:
       - 'os/backend/tests/r23_daily_analytics_backfill_smoke.py'
       - 'os/backend/tests/r24_analytics_backfill_operation_runtime_smoke.py'
       - 'os/backend/tests/r25_analytics_backfill_tracking_bootstrap_smoke.py'
+      - 'os/backend/tests/r26_youtube_readiness_observability_smoke.py'
       - '.github/workflows/os-sync-registry-verification.yml'
 
 jobs:
@@ -89,6 +90,12 @@ jobs:
           OS_DISABLE_BACKGROUND_ACCOUNT_SYNC: '1'
           OS_DISABLE_ANALYTICS_BACKFILL_WORKER: '1'
         run: python os/backend/tests/r25_analytics_backfill_tracking_bootstrap_smoke.py
+
+      - name: Verify YouTube OAuth readiness and backfill error observability
+        env:
+          OS_DISABLE_BACKGROUND_ACCOUNT_SYNC: '1'
+          OS_DISABLE_ANALYTICS_BACKFILL_WORKER: '1'
+        run: python os/backend/tests/r26_youtube_readiness_observability_smoke.py
 
       - name: Re-run account analytics regression
         env:

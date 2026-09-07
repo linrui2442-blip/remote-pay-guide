@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from analytics.account_manager import save_account_metric
 from analytics.errors import AnalyticsCollectionNotReady
 from analytics.manager import save_metric
@@ -21,6 +23,14 @@ class YouTubeAnalyticsAdapter:
     def readiness(self, account_id=None):
         required_scopes = {YOUTUBE_READ_SCOPE, YOUTUBE_ANALYTICS_SCOPE}
         legacy_scope_assumption = False
+        oauth_provider = YouTubeOAuthProvider(scope_profile='analytics')
+        oauth_client_configured = bool(
+            oauth_provider.client_id and oauth_provider.client_secret
+        )
+        access_token_found = False
+        refresh_token_found = False
+        token_expired = None
+        token_near_expiry = None
 
         if account_id is None:
             configured_scopes = {YOUTUBE_UPLOAD_SCOPE}
@@ -30,6 +40,15 @@ class YouTubeAnalyticsAdapter:
             token = get_token(account_id)
             credential_found = bool(token)
             if token:
+                access_token_found = bool(token.get('access_token'))
+                refresh_token_found = bool(token.get('refresh_token'))
+                expiry = oauth_provider._parse_expiry(token.get('expires_at'))
+                if expiry is not None:
+                    seconds_remaining = (
+                        expiry - datetime.now(timezone.utc)
+                    ).total_seconds()
+                    token_expired = seconds_remaining <= 0
+                    token_near_expiry = 0 < seconds_remaining <= 60
                 configured_scopes = set(token.get('scopes') or [])
                 if not configured_scopes:
                     configured_scopes = {YOUTUBE_UPLOAD_SCOPE}
@@ -40,8 +59,26 @@ class YouTubeAnalyticsAdapter:
                 credential_source = 'stored_oauth_token'
 
         missing_scopes = sorted(required_scopes - configured_scopes)
-        credential_ready = not missing_scopes
-        ready = bool(account_id is not None and credential_found and credential_ready)
+        refresh_required = bool(
+            account_id is not None
+            and credential_found
+            and (
+                not access_token_found
+                or token_expired is True
+                or token_near_expiry is True
+                or (token.get('expires_at') is None and refresh_token_found)
+            )
+        )
+        refresh_ready = bool(refresh_token_found and oauth_client_configured)
+        credential_ready = bool(
+            account_id is not None
+            and credential_found
+            and access_token_found
+            and not missing_scopes
+            and oauth_client_configured
+            and (not refresh_required or refresh_ready)
+        )
+        ready = credential_ready
 
         if account_id is None:
             reason = 'account_id is required to evaluate a stored YouTube analytics credential.'
@@ -49,6 +86,12 @@ class YouTubeAnalyticsAdapter:
             reason = 'YouTube OAuth credential was not found for this account.'
         elif missing_scopes:
             reason = 'YouTube OAuth credential does not include analytics read scopes.'
+        elif not oauth_client_configured:
+            reason = 'YouTube OAuth client configuration is unavailable in the backend runtime.'
+        elif not access_token_found:
+            reason = 'YouTube OAuth access token is unavailable.'
+        elif refresh_required and not refresh_ready:
+            reason = 'YouTube OAuth token refresh is required but unavailable.'
         else:
             reason = None
 
@@ -60,6 +103,13 @@ class YouTubeAnalyticsAdapter:
             'credential_mode': 'oauth',
             'credential_source': credential_source,
             'credential_found': credential_found,
+            'access_token_found': access_token_found,
+            'refresh_token_found': refresh_token_found,
+            'oauth_client_configured': oauth_client_configured,
+            'token_expired': token_expired,
+            'token_near_expiry': token_near_expiry,
+            'refresh_required': refresh_required,
+            'refresh_ready': refresh_ready,
             'configured_scopes': sorted(configured_scopes),
             'required_scopes': sorted(required_scopes),
             'missing_scopes': missing_scopes,

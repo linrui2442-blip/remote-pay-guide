@@ -1,12 +1,12 @@
 import json
 import os
-import re
 import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
 from analytics.backfill import plan_backfill, run_backfill
+from analytics.errors import sanitize_analytics_error
 
 
 DB_PATH = Path("os/database/os.db")
@@ -23,8 +23,7 @@ def _now(value=None):
 
 
 def _safe_error(error):
-    text = str(error or "")[:500]
-    return re.sub(r"(?i)(access[_-]?token|api[_-]?key|secret)=([^\s&]+)", r"\1=[redacted]", text)
+    return sanitize_analytics_error(error)
 
 
 def _connect():
