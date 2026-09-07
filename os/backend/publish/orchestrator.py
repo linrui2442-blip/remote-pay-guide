@@ -60,6 +60,41 @@ def get_publish_execution_readiness(platform):
     }
 
 
+def get_publish_account_readiness(platform, account_id):
+    """Return non-network account readiness for adapters that expose preflight."""
+    normalized = _normalize_platform(platform)
+    adapter = get_adapter(normalized)
+    if adapter is None:
+        return {
+            "platform": normalized,
+            "account_id": account_id,
+            "checked": False,
+            "ready": False,
+            "reason": "publish adapter is not registered",
+        }
+
+    checker = getattr(adapter, "get_account_readiness", None)
+    if not callable(checker):
+        return {
+            "platform": normalized,
+            "account_id": account_id,
+            "checked": False,
+            "ready": True,
+            "reason": None,
+        }
+
+    raw = checker(account_id)
+    result = raw if isinstance(raw, dict) else {"ready": bool(raw)}
+    return {
+        "platform": normalized,
+        "account_id": account_id,
+        "checked": True,
+        "ready": bool(result.get("ready")),
+        "reason": result.get("reason"),
+        **result,
+    }
+
+
 def _resolve_asset(task: PublishTask):
     asset = None
     if task.asset_id:
@@ -95,6 +130,13 @@ def _validate_account(task: PublishTask, platform: str):
     if account_platform != platform:
         raise PublishContractError(
             f"account_id {task.account_id} is bound to {account_platform or 'unknown'}, not {platform}"
+        )
+
+    account_readiness = get_publish_account_readiness(platform, task.account_id)
+    if not account_readiness["ready"]:
+        raise PublishContractError(
+            account_readiness.get("reason")
+            or f"account_id {task.account_id} is not ready for {platform} publishing"
         )
     return account
 
