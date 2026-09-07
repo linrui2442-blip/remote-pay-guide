@@ -9,6 +9,7 @@ from analytics.youtube_api import YouTubeAnalyticsAPIClient
 class AnalyticsAdapterRegistration:
     platform: str
     factory: Callable[..., Any]
+    reporting_timezone: str = 'UTC'
 
 
 _ANALYTICS_ADAPTERS: dict[str, AnalyticsAdapterRegistration] = {}
@@ -23,6 +24,7 @@ def register_analytics_adapter(
     factory: Callable[..., Any],
     *,
     replace: bool = False,
+    reporting_timezone: str = 'UTC',
 ) -> AnalyticsAdapterRegistration:
     normalized = _normalize_platform(platform)
     if not normalized:
@@ -33,6 +35,7 @@ def register_analytics_adapter(
     registration = AnalyticsAdapterRegistration(
         platform=normalized,
         factory=factory,
+        reporting_timezone=reporting_timezone,
     )
     _ANALYTICS_ADAPTERS[normalized] = registration
     return registration
@@ -64,4 +67,8 @@ def _youtube_factory(**context):
     )
 
 
-register_analytics_adapter('youtube', _youtube_factory)
+register_analytics_adapter(
+    'youtube',
+    _youtube_factory,
+    reporting_timezone='America/Los_Angeles',
+)

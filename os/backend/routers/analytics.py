@@ -5,6 +5,13 @@ from analytics.account_manager import (
     get_account_metric_history,
     get_latest_account_metrics,
 )
+from analytics.backfill import (
+    BackfillRetryNotDue,
+    BackfillValidationError,
+    get_backfill_status,
+    plan_backfill,
+    run_backfill,
+)
 from analytics.collector import AnalyticsCollectionNotReady, AnalyticsCollector
 from analytics.manager import (
     get_content_metrics,
@@ -48,6 +55,47 @@ class AccountAnalyticsCollectionRequest(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     active_limit: int = Field(default=10, ge=1, le=200)
+
+
+class AnalyticsBackfillRequest(BaseModel):
+    platform: str | None = None
+    date_range: str = "28d"
+    start_date: str | None = None
+    end_date: str | None = None
+
+
+class AnalyticsBackfillRunRequest(AnalyticsBackfillRequest):
+    max_requests: int = Field(default=100, ge=1, le=500)
+
+
+@router.get('/analytics/backfill/status/{account_id}')
+def backfill_status(account_id: int, platform: str | None = None):
+    try:
+        return get_backfill_status(account_id, platform=platform)
+    except BackfillValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post('/analytics/backfill/plan/{account_id}')
+def backfill_plan(account_id: int, request: AnalyticsBackfillRequest | None = None):
+    request = request or AnalyticsBackfillRequest()
+    try:
+        return plan_backfill(account_id, **request.model_dump())
+    except BackfillValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post('/analytics/backfill/run/{account_id}')
+def backfill_run(account_id: int, request: AnalyticsBackfillRunRequest | None = None):
+    request = request or AnalyticsBackfillRunRequest()
+    try:
+        return run_backfill(account_id, collector=collector, **request.model_dump())
+    except BackfillRetryNotDue as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BackfillValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"analytics backfill failed: {exc}") from exc
 
 
 @router.post('/analytics/metrics')

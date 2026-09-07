@@ -83,19 +83,20 @@ def main():
 
     due = due_accounts(now=NOW, accounts=accounts)
     assert [item["account"]["id"] for item in due] == [connected_id]
-    assert due[0]["daily_date"] == "2026-09-06"
+    # 01:00 UTC is still Sep 6 Pacific; the latest complete reporting day is Sep 5.
+    assert due[0]["daily_date"] == "2026-09-05"
 
     successful = RecordingExecutor()
     first = scheduler(NOW, successful, accounts)
     outcome = first.run_once()
     assert outcome["checked"] == 1
     assert successful.calls[0][2]["analytics_windows"] == [
-        ("2026-09-06", "2026-09-06"),
+        ("2026-09-05", "2026-09-05"),
         (None, None),
     ]
     state = get_sync_state(connected_id, "youtube")
     assert state["scheduler_status"] == "success"
-    assert state["scheduler_last_daily_date"] == "2026-09-06"
+    assert state["scheduler_last_daily_date"] == "2026-09-05"
     assert state["scheduler_retry_count"] == 0
     assert state["scheduler_next_retry_at"] is None
     assert first.run_once()["checked"] == 0

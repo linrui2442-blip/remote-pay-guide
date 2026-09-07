@@ -1,10 +1,12 @@
 import os
 import threading
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from accounts.manager import get_accounts
 from analytics.collector import AnalyticsCollector
 from analytics.publish_bridge import collect_account_publish_metrics
+from analytics.registry import get_analytics_adapter_registration
 from data.sync_state import (
     get_sync_state,
     mark_scheduler_attempt,
@@ -197,7 +199,6 @@ def _utc_datetime(value=None):
 def due_accounts(*, now=None, accounts=None):
     """Return connected accounts whose last successful daily window is stale."""
     current = _utc_datetime(now)
-    target_day = (current.date() - timedelta(days=1)).isoformat()
     due = []
     for account in accounts if accounts is not None else get_accounts():
         if str(account.get('status') or '').strip().lower() != 'connected':
@@ -205,6 +206,12 @@ def due_accounts(*, now=None, accounts=None):
         platform = str(account.get('platform') or '').strip().lower()
         if not platform:
             continue
+        registration = get_analytics_adapter_registration(platform)
+        reporting_timezone = (
+            registration.reporting_timezone if registration else 'UTC'
+        )
+        provider_now = current.astimezone(ZoneInfo(reporting_timezone))
+        target_day = (provider_now.date() - timedelta(days=1)).isoformat()
         state = get_sync_state(account['id'], platform)
         plan = build_account_sync_plan(account['id'], platform)
         if not any(item.get('operation') == 'analytics_sync' for item in plan['operations']):

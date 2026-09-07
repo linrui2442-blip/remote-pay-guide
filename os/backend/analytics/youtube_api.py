@@ -23,6 +23,12 @@ YOUTUBE_CHANNEL_ANALYTICS_METRICS = YOUTUBE_ANALYTICS_METRICS + (
 class YouTubeAnalyticsAPIClient:
     """Small YouTube Analytics API v2 client used by the OS collector.
 
+    YouTube ``startDate``/``endDate`` values are inclusive reporting dates.
+    Per Google's Analytics dimension contract, each reporting day runs from
+    midnight to 23:59 Pacific time (including DST), not on UTC boundaries.
+    The provider-neutral OS date is passed through unchanged and this adapter
+    owns that provider interpretation.
+
     YouTube reports estimatedMinutesWatched in minutes. The OS normalizes
     watch_time to seconds so it shares the same unit as average_view_duration.
     Live calls use the same explicit proxy-aware Google requests transport as
@@ -161,6 +167,10 @@ class YouTubeAnalyticsAPIClient:
             "filters": f"video=={video_id}",
         }
         response = self._query(params)
+        if not (response or {}).get("rows"):
+            raise RuntimeError(
+                "YouTube Analytics returned no complete row for the requested reporting window"
+            )
 
         metrics = self.normalize_response(response)
         metrics.update(

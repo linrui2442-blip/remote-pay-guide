@@ -11,14 +11,17 @@ on:
       - 'os/backend/routers/oauth.py'
       - 'os/backend/routers/publish.py'
       - 'os/backend/routers/intelligence.py'
+      - 'os/backend/routers/analytics.py'
       - 'os/backend/data/manager.py'
       - 'os/backend/data/query.py'
       - 'os/backend/data/sync_state.py'
       - 'os/backend/main.py'
       - 'os/backend/oauth/registry.py'
       - 'os/backend/analytics/collector.py'
+      - 'os/backend/analytics/backfill.py'
       - 'os/backend/analytics/errors.py'
       - 'os/backend/analytics/registry.py'
+      - 'os/backend/analytics/youtube_api.py'
       - 'os/backend/analytics/adapters/**'
       - 'os/backend/intelligence/feedback.py'
       - 'os/backend/intelligence/feedback_bridge.py'
@@ -28,6 +31,7 @@ on:
       - 'os/backend/tests/r15_account_connector_runtime_smoke.py'
       - 'os/backend/tests/r16_intelligence_feedback_bridge_smoke.py'
       - 'os/backend/tests/r22_background_daily_sync_scheduler_smoke.py'
+      - 'os/backend/tests/r23_daily_analytics_backfill_smoke.py'
       - '.github/workflows/os-sync-registry-verification.yml'
 
 jobs:
@@ -65,6 +69,11 @@ jobs:
         env:
           OS_DISABLE_BACKGROUND_ACCOUNT_SYNC: '1'
         run: python os/backend/tests/r22_background_daily_sync_scheduler_smoke.py
+
+      - name: Verify resumable daily analytics backfill
+        env:
+          OS_DISABLE_BACKGROUND_ACCOUNT_SYNC: '1'
+        run: python os/backend/tests/r23_daily_analytics_backfill_smoke.py
 
       - name: Re-run account analytics regression
         env:
