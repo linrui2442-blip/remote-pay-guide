@@ -27,7 +27,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git pull --rebase origin main
           git add os/frontend/src/App.jsx
           git commit -m 'Wire guarded Publish Center UI into OS'
+          git pull --rebase origin main
           git push origin HEAD:main
