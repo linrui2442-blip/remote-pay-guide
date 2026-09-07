@@ -66,7 +66,16 @@ export default function PublishCenter({
   );
 
   const readyAssets = useMemo(
-    () => assets.filter((asset) => String(asset.status || "").toLowerCase() === "ready"),
+    () => assets.filter((asset) => {
+      if (String(asset.status || "").toLowerCase() !== "ready") return false;
+      const source = String(asset.source_provider || "").toLowerCase();
+      const syncedFrom = String(asset.metadata?.synced_from || "").toLowerCase();
+      // Content imported from a remote publishing platform belongs to the
+      // Data Center inventory. Do not offer it as a fresh upload candidate by
+      // default, which avoids accidentally re-uploading an already-published
+      // YouTube/TikTok/etc. video. Production assets remain eligible.
+      return !(source && syncedFrom && source === syncedFrom);
+    }),
     [assets]
   );
 
@@ -283,7 +292,7 @@ export default function PublishCenter({
             </div>
 
             {!selectedAccount ? <div className="muted">当前平台还没有可选账号，请先在“平台账号”完成连接。</div> : null}
-            {!selectedAsset ? <div className="muted">当前没有 status=ready 的 Video Asset；先从生产中心生成或登记资产。</div> : null}
+            {!selectedAsset ? <div className="muted">当前没有可发布的 Ready Video Asset；已从远端平台同步回来的历史视频不会作为新上传候选。</div> : null}
           </>
         )}
       </section>
