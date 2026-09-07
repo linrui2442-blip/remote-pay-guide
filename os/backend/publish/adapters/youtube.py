@@ -6,13 +6,15 @@ from .youtube_api import YouTubeAPIClient
 
 
 class YouTubeAdapter:
+    platform_name = "youtube"
+
     def __init__(self):
         self.status = "initialized"
         self.api_client = YouTubeAPIClient()
 
     def initialize(self):
         self.status = "ready"
-        return {"platform": "youtube", "status": "ready"}
+        return self.get_status()
 
     def _credentials_for_account(self, account_id):
         if account_id is None:
@@ -67,4 +69,10 @@ class YouTubeAdapter:
             }
 
     def get_status(self):
-        return {"platform": "youtube", "status": self.status}
+        return {
+            "platform": "youtube",
+            "status": self.status,
+            "execution_mode": "live_api",
+            "publish_ready": self.status == "ready",
+            "reason": None if self.status == "ready" else "YouTube adapter is not initialized",
+        }
