@@ -10,7 +10,9 @@ on:
       - 'os/backend/oauth/**'
       - 'os/backend/accounts/manager.py'
       - 'os/backend/routers/oauth.py'
+      - 'os/backend/routers/publish.py'
       - 'os/backend/tests/r3_youtube_readiness_smoke.py'
+      - 'os/backend/tests/r20_publish_center_execution_contract_smoke.py'
       - '.github/workflows/os-youtube-publish-readiness.yml'
 
 jobs:
@@ -36,6 +38,11 @@ jobs:
         env:
           PYTHONPATH: os/backend
         run: python os/backend/tests/r3_youtube_readiness_smoke.py
+
+      - name: Run Publish Center execution contract smoke tests
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r20_publish_center_execution_contract_smoke.py
 
       - name: Report external OAuth client configuration
         shell: bash
