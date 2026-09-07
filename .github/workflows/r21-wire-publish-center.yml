@@ -19,15 +19,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Wire PublishCenter component into App
-        run: python scripts/r21_wire_publish_center.py
+      - name: Make platform publish readiness UI truthful
+        run: python scripts/r21_fix_platform_readiness_ui.py
 
-      - name: Commit App wiring
+      - name: Commit App readiness UI
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add os/frontend/src/App.jsx
-          git commit -m 'Wire guarded Publish Center UI into OS'
+          git commit -m 'Show truthful live publish readiness in OS UI'
           git pull --rebase origin main
           git push origin HEAD:main
