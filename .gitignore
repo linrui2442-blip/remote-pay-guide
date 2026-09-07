@@ -1,0 +1,45 @@
+# Local OS runtime state (may contain OAuth credentials and account data)
+/os/database/
+
+# SQLite runtime databases and sidecar files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# JavaScript dependencies and frontend build output
+node_modules/
+/os/frontend/dist/
+
+# Local environment and secret material
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+credentials.json
+credentials.*.json
+client_secret.json
+client_secret.*.json
+
+# Generated API description
+/openapi.json
+
+# Logs, caches, and temporary output
+*.log
+*.tmp
+*.temp
+.cache/
+logs/
+tmp/
+temp/
