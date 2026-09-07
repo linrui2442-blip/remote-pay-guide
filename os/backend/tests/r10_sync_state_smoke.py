@@ -192,7 +192,7 @@ def main():
     assert failed["collected"] == 0
     assert failed["failed"] == 2
     assert failed["sync_state"]["analytics_status"] == "failed"
-    assert "all 2 analytics items failed" in failed["sync_state"]["last_error"]
+    assert "all 2 analytics operations failed" in failed["sync_state"]["last_error"]
 
     print("Platform account sync-state smoke test passed")
     print("Content sync -> bounded incremental checkpoint")

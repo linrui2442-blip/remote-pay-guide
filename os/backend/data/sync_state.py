@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -49,6 +49,23 @@ def _ensure_table():
             )
             """
         )
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(platform_sync_state)").fetchall()
+        }
+        scheduler_columns = {
+            "scheduler_status": "TEXT NOT NULL DEFAULT 'idle'",
+            "scheduler_last_attempt_at": "TEXT",
+            "scheduler_last_success_at": "TEXT",
+            "scheduler_last_daily_date": "TEXT",
+            "scheduler_next_retry_at": "TEXT",
+            "scheduler_retry_count": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for name, field_type in scheduler_columns.items():
+            if name not in columns:
+                conn.execute(
+                    f"ALTER TABLE platform_sync_state ADD COLUMN {name} {field_type}"
+                )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_platform_sync_state_account "
             "ON platform_sync_state(account_id, platform)"
@@ -216,6 +233,91 @@ def mark_sync_failure(account_id, platform, kind, error):
             WHERE account_id=? AND platform=?
             """,
             (str(error), now, now, account_id, normalized_platform),
+        )
+        conn.commit()
+    return get_sync_state(account_id, normalized_platform, create=False)
+
+
+def mark_scheduler_attempt(account_id, platform, *, attempted_at=None):
+    normalized_platform = _normalize_platform(platform)
+    ensure_sync_state(account_id, normalized_platform)
+    attempted_at = attempted_at or _now()
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE platform_sync_state
+            SET scheduler_status='running', scheduler_last_attempt_at=?, updated_at=?
+            WHERE account_id=? AND platform=?
+            """,
+            (attempted_at, attempted_at, account_id, normalized_platform),
+        )
+        conn.commit()
+    return get_sync_state(account_id, normalized_platform, create=False)
+
+
+def mark_scheduler_success(account_id, platform, daily_date, *, succeeded_at=None):
+    normalized_platform = _normalize_platform(platform)
+    ensure_sync_state(account_id, normalized_platform)
+    succeeded_at = succeeded_at or _now()
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE platform_sync_state
+            SET scheduler_status='success', scheduler_last_success_at=?,
+                scheduler_last_daily_date=?, scheduler_next_retry_at=NULL,
+                scheduler_retry_count=0, last_error=NULL, last_error_at=NULL,
+                updated_at=?
+            WHERE account_id=? AND platform=?
+            """,
+            (succeeded_at, str(daily_date), succeeded_at, account_id, normalized_platform),
+        )
+        conn.commit()
+    return get_sync_state(account_id, normalized_platform, create=False)
+
+
+def mark_scheduler_failure(
+    account_id,
+    platform,
+    error,
+    *,
+    failed_at=None,
+    backoff_seconds=(300, 900, 3600),
+    status="failed",
+):
+    normalized_platform = _normalize_platform(platform)
+    state = ensure_sync_state(account_id, normalized_platform)
+    failed = (
+        datetime.fromisoformat(failed_at)
+        if failed_at
+        else datetime.now(timezone.utc)
+    )
+    if failed.tzinfo is None:
+        failed = failed.replace(tzinfo=timezone.utc)
+    retry_count = int(state.get("scheduler_retry_count") or 0) + 1
+    delays = tuple(int(value) for value in backoff_seconds) or (3600,)
+    delay = delays[min(retry_count - 1, len(delays) - 1)]
+    next_retry = failed + timedelta(seconds=delay)
+    failed_iso = failed.isoformat()
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE platform_sync_state
+            SET scheduler_status=?, scheduler_last_attempt_at=?,
+                scheduler_next_retry_at=?, scheduler_retry_count=?,
+                last_error=?, last_error_at=?, updated_at=?
+            WHERE account_id=? AND platform=?
+            """,
+            (
+                "partial" if status == "partial" else "failed",
+                failed_iso,
+                next_retry.isoformat(),
+                retry_count,
+                str(error),
+                failed_iso,
+                failed_iso,
+                account_id,
+                normalized_platform,
+            ),
         )
         conn.commit()
     return get_sync_state(account_id, normalized_platform, create=False)

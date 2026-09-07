@@ -13,6 +13,7 @@ from config.network import configure_outbound_proxy
 configure_outbound_proxy()
 
 from integrations.github.client import GitHubClient
+from integrations.sync_scheduler import account_sync_scheduler
 from production.runtime.poller import runtime_poller
 
 from routers import (
@@ -35,8 +36,10 @@ from routers import (
 async def lifespan(app):
     runtime_poller.start()
     try:
+        account_sync_scheduler.start()
         yield
     finally:
+        account_sync_scheduler.stop()
         runtime_poller.stop()
 
 
