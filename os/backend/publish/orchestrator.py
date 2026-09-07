@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from accounts.manager import get_account
 from assets.manager import get_asset, get_asset_by_asset_id
@@ -95,6 +96,23 @@ def get_publish_account_readiness(platform, account_id):
     }
 
 
+def _usable_local_file(file_path):
+    if not file_path:
+        return False
+    try:
+        path = Path(file_path)
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _usable_http_url(value):
+    if not isinstance(value, str) or not value.strip():
+        return False
+    parsed = urlparse(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
 def _resolve_asset(task: PublishTask):
     asset = None
     if task.asset_id:
@@ -113,10 +131,25 @@ def _resolve_asset(task: PublishTask):
     asset_url = asset.get("asset_url")
     file_path = asset.get("file_path")
     location = asset.get("location")
-    if file_path and not Path(file_path).is_file():
-        raise PublishContractError(f"video asset local file does not exist: {file_path}")
-    if not asset_url and not file_path and not location:
-        raise PublishContractError("video asset has no resolvable location")
+
+    # Keep prepare-time validation aligned with AssetResolver.prepare(). A stale
+    # local path must not block a valid registered remote URL fallback, while an
+    # arbitrary non-URL location must not be treated as publishable readiness.
+    local_usable = _usable_local_file(file_path)
+    remote_candidate = asset_url
+    if not remote_candidate and _usable_http_url(location):
+        remote_candidate = location
+    remote_usable = _usable_http_url(remote_candidate)
+
+    if not local_usable and not remote_usable:
+        if file_path:
+            raise PublishContractError(
+                "video asset local file is unusable and no valid remote URL fallback "
+                f"is available: {file_path}"
+            )
+        raise PublishContractError(
+            "video asset has no usable file_path or http/https asset_url"
+        )
     return asset
 
 
