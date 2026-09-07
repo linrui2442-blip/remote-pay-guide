@@ -1,157 +1,52 @@
 # Remote Pay Guide — Project Status
 
-## Goal
+## Current State
 
-Remote Pay Guide is an overseas content acquisition MVP for people receiving USDT or USDC payments for the first time.
+Remote Pay Guide OS is in active OS development and runtime validation.
 
-## Current Stage
+The current repository is the source code baseline.
 
-MVP completed. The project has entered content scale testing and data feedback validation.
+Runtime data is handled separately.
 
-## Phase 11
+## Runtime Data Boundary
 
-### Dashboard Database Integration
+Active runtime database:
 
-Status:
-
-- SQLite connected
-- Dashboard reads exported database data
-
-## Phase 12B
-
-### Publish Sync Database Integration
-
-Status:
-
-- publish_status table created
-- publish sync remains read-only
-
-## Phase 12C
-
-### Publish Status Dashboard Integration
-
-Status:
-
-- Publish status integrated into dashboard
-- Dashboard reads publish data through SQLite export layer
-
-## Phase 13A
-
-### Analytics Layer Foundation
-
-Status:
-
-- analytics schema foundation created
-- read-only analytics layer initialized
-
-## Phase 13B
-
-### Analytics Database Integration
-
-Status:
-
-- analytics_metrics table created
-- analytics layer remains read-only
-
-## Phase 13C
-
-### Analytics Dashboard Integration
-
-Status:
-
-- analytics metrics connected to dashboard
-- analytics layer remains read-only
-
-## Phase 14A
-
-### Content Lifecycle State Machine
-
-Status:
-
-- lifecycle state calculation added
-- read-only lifecycle layer
-
-## Phase 14B
-
-### System Health Check Layer
-
-Status:
-
-- system health monitoring added
-- read-only diagnostics layer
-
-## Phase 14C
-
-### Lifecycle + Health Dashboard Integration
-
-Status:
-
-- lifecycle state connected to dashboard
-- system health connected to dashboard
-- dashboard remains read-only
-
-## Phase 14D
-
-### Dashboard UI Upgrade
-
-Status:
-
-- Remote Pay Guide OS Console UI created
-- lifecycle, analytics and health panels integrated
-- dashboard remains read-only
-
-## Phase 14E
-
-### Dashboard Runtime Verification
-
-Status:
-
-- dashboard files verified
-- data loading verified
-- UI structure verified
-
-## Data flow:
-
-```
-Content Registry
-        ↓
-SQLite Database
-        ↓
-Lifecycle State Machine
-        ↓
-Health Diagnostics
-        ↓
-Dashboard / Reports
+```text
+os/database/os.db
 ```
 
-## Implemented
+Important:
 
-### Distribution
+- Git updates source code.
+- Runtime database preserves local OS state.
+- A fresh repository checkout does not contain previous runtime state.
+- Do not replace the runtime database with an empty database during updates.
 
-Postiz publishing system completed.
+See:
 
-Confirmed platforms:
+```text
+docs/RUNTIME_DATA_POLICY.md
+```
 
-- Facebook ✅
-- Instagram ✅
-- YouTube Shorts ✅
+## Current Principle
 
-## Data Architecture
+Code changes:
 
 ```
-Content Registry
-        ↓
-SQLite Database
-        ↓
-Dashboard Export Layer
-        ↓
-Read-only Dashboard
-        ↓
-publish-sync read-only layer
-        ↓
-analytics read-only layer
-        ↓
-lifecycle read-only layer
-        ↓
-health read-only layer
+Git repository
 ```
+
+Runtime state:
+
+```
+os/database/os.db
+```
+
+They are separate lifecycle objects.
+
+## Historical Compatibility
+
+Existing production, publish, OAuth, analytics and data capabilities must be extended from the current implementation.
+
+Do not recreate completed systems from old phase documents.
