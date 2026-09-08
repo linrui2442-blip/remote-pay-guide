@@ -87,6 +87,7 @@ class MixedCollector:
 
 
 def main():
+    test_now = datetime.now(timezone.utc)
     reset_db()
     for index in range(1, 11):
         add_published(index)
@@ -110,7 +111,7 @@ def main():
     )
     finished = AnalyticsBackfillWorker(
         batch_size=10, collector=NoDataCollector(),
-        clock=lambda: datetime(2026, 9, 7, 12, tzinfo=timezone.utc),
+        clock=lambda: test_now,
     ).process_once()
     assert finished["operation_id"] == operation["operation_id"]
     assert finished["status"] == "success"
@@ -125,13 +126,13 @@ def main():
     assert len(coverage) == 10
     restarted_plan = plan_backfill(
         ACCOUNT_ID, date_range="custom", start_date="2026-09-06",
-        end_date="2026-09-06", today=datetime.now(timezone.utc).date(),
+        end_date="2026-09-06", today=test_now.date(),
     )
     assert restarted_plan["estimated_request_count"] == 0
     assert all(item["observed_no_data_dates"] == ["2026-09-06"] for item in restarted_plan["eligible_videos"])
 
     # Expired recent coverage is queried again after the 24-hour TTL.
-    expired_at = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+    expired_at = (test_now - timedelta(hours=25)).isoformat()
     with sqlite3.connect(DB_PATH) as conn:
         raw = conn.execute(
             "SELECT backfill_no_data_coverage FROM platform_sync_state WHERE account_id=? AND platform='youtube'",
@@ -139,12 +140,12 @@ def main():
         ).fetchone()[0]
         conn.execute(
             "UPDATE platform_sync_state SET backfill_no_data_coverage=replace(backfill_no_data_coverage, ?, ?)",
-            ("2026-09-07T12:00:00+00:00", expired_at),
+            (test_now.isoformat(), expired_at),
         )
         conn.commit()
     expired_plan = plan_backfill(
         ACCOUNT_ID, date_range="custom", start_date="2026-09-06",
-        end_date="2026-09-06", today=datetime.now(timezone.utc).date(),
+        end_date="2026-09-06", today=test_now.date(),
     )
     assert expired_plan["estimated_request_count"] == 10
 
@@ -161,7 +162,7 @@ def main():
     ))
     real_plan = plan_backfill(
         ACCOUNT_ID, date_range="custom", start_date="2026-09-06",
-        end_date="2026-09-06", today=datetime.now(timezone.utc).date(),
+        end_date="2026-09-06", today=test_now.date(),
     )
     indexed = {item["video_id"]: item for item in real_plan["eligible_videos"]}
     assert indexed["video-10"]["existing_dates"] == ["2026-09-06"]
