@@ -90,4 +90,8 @@ Production runtime poller
 
 Scheduled daily window 与 default aggregate window 保持不同语义。Daily no-data 会保留为 unavailable gap；aggregate rows 不得拆分成 daily points。当前开发位置是 **Scheduler Runtime Hardening / Production Observability**，重点包括 multi-process / cross-process scheduler safety、duplicate-worker protection / locking、runtime observability 与 scheduler operational health visibility。
 
-Scheduler coordination 使用现有 `platform_sync_state`，不新增 scheduler table 或第二套 runtime DB。候选发现可以并发，但执行前必须通过 SQLite 单事务条件 UPDATE claim `(account_id, platform, target_daily_date)`；持久 lease 的 owner 为每个 scheduler instance 的随机 ID，TTL 到期可回收。完成路径必须匹配当前 owner，因而过期的旧 process 无法覆盖已被新 owner reclaim 的状态。该层为 code/test verification；真实双进程 production-style E2E 仍是下一阶段。
+Scheduler coordination 使用现有 `platform_sync_state`，不新增 scheduler table 或第二套 runtime DB。Background Account Sync Scheduler 具备 SQLite atomic cross-process claim、owner-based lease、configurable TTL、expired lease reclaim、owner-aware compare-and-set success/failure/partial transitions、stale-owner overwrite protection、persistent scheduler health observability，以及 same-reporting-day idempotency。
+
+这些能力已于 2026-09-08 完成真正的 two-process local runtime E2E。并发场景中两个独立 FastAPI/Python process 同时发现 candidate，只有一个获得 claim 并执行；崩溃场景中 owner 被 hard kill 后，另一个 process 只在 TTL 到期后 reclaim，旧 owner 无法覆盖新状态。`GET /accounts/scheduler/status` 的 process health 与 persistent state 在两个 process 间真实共享可见。
+
+当前开发位置为 **Scheduler Operational Hardening — Long-running Reliability & Health**。默认 lease TTL 为 1800 秒；下一阶段先审计真实 account sync 执行时长是否可能超过 TTL，再根据证据决定是否需要 lease renewal / heartbeat，并评估 stuck-run detection、health severity/status 与 restart/recovery visibility。ProductionRuntimePoller 与 BackgroundAccountSyncScheduler 继续作为不同 runtime worker。

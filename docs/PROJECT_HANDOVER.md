@@ -1362,7 +1362,9 @@ OAuth 状态：stored OAuth token working，token refresh real PASS，Analytics 
 | Query V2 Backend | ✅ VERIFIED |
 | Query V2 Frontend | ✅ VERIFIED |
 | Scheduled Daily Analytics Sync | ✅ REAL UNATTENDED E2E VERIFIED |
-| Scheduler Cross-process Claim / Lease | ✅ CODE + TEST VERIFIED |
+| Scheduler Cross-process Coordination | ✅ REAL TWO-PROCESS E2E VERIFIED |
+| Scheduler Crash / Lease Recovery | ✅ REAL TWO-PROCESS E2E VERIFIED |
+| Scheduler Operational Health Contract | ✅ REAL RUNTIME VERIFIED |
 | Historical Daily Backfill | ✅ REAL E2E VERIFIED |
 | Backfill Operation Runtime | ✅ REAL E2E VERIFIED |
 | Backfill Control Plane UI | ✅ VERIFIED |
@@ -1404,13 +1406,25 @@ Query V2 对 `2026-09-06` 返回 `has_snapshot=false`、`snapshot_count=0`、met
 
 安全边界保持不变：ProductionTask `1 → 1`，scheduler 未自动创建 ProductionTask；未创建 backfill operation，existing backfill operation 1 保持 success 且未改变；YouTube upload、remote content modification、video download、comment-body sync 与 Postiz 均为 NO。
 
+## Scheduler Cross-process Coordination — Real Two-Process E2E
+
+验证日期 `2026-09-08`：**REAL TWO-PROCESS E2E VERIFIED**。
+
+Scenario 1 使用两个独立 OS/Python/FastAPI process。Process A PID 为 `80024`，Process B PID 为 `35468`；scheduler instance 分别为安全短标识 `88a782a6094f` 与 `6dfe1ec3cf6a`。两边在 claim 前都真实发现同一 candidate，最终 `claims won=1`、`sync executor executions=1`、loser executed sync 为 NO。winner 执行期间 active lease 为 1，两个 process 的 status endpoint 均观察到共享 persistent lease；成功后 lease 已释放、due accounts 为 0，下一 scheduler interval 没有 same-day rerun。Real cross-process concurrent duplicate prevention：**VERIFIED**。
+
+Scenario 2 使用另一组独立 process：Process A PID `18044`，Process B PID `69912`。A 获得 lease 并进入 executor 后被 hard kill，未执行 graceful release。B 在 lease TTL 前 execution count 为 0；TTL 到期后 execution count 为 1，成功 reclaim、完成 sync 并释放 lease。这是 crash recovery after lease expiry，不是正常并发下的 duplicate execution。
+
+B reclaim 后，使用 A 的旧 owner 发起 success transition 与 failure transition，均以 `lease_lost` 拒绝；stale owner cannot overwrite reclaimed scheduler state：**REAL VERIFIED**。
+
+`GET /accounts/scheduler/status` 已在两个真实 process 中验证 PASS。它暴露 `enabled`、`running`、`instance_id`、`interval_seconds`、`lease_seconds`、`last_check_at`、`check_count`、`last_error`，以及 persistent summary 的 `due_accounts_count`、`active_leases`、`expired_leases`、`accounts_in_retry`、`last_success_at`、`last_failure_at`。完整 lease owner UUID、OAuth secret/token 均未暴露。
+
+验证使用真实 calendar target day `2026-09-07` 和隔离临时 SQLite runtime。真实 `os/database/os.db` 验证前后均为 266240 bytes，SHA-256 均为 `5E90A4BD2C650260485CE7AAC26EBE487651BD35AA3C97A148C8BA2707B78409`，未修改。Production、Analytics、OAuth 与 Backfill runtime 均未触碰，Google API 与 YouTube API 调用均为 0。validation temp DB、harness 与 logs 已删除，ports 8011 / 8012 已释放。
+
 ## CURRENT NEXT STEP
 
-**Scheduler Runtime Hardening / Production Observability**。
+**Scheduler Operational Hardening — Long-running Reliability & Health**。
 
-已实现的基础保护为 SQLite atomic scheduler claim / lease：同一 `account_id + platform + target_daily_date` 同时只能由一个 scheduler instance 获得执行权。lease 使用随机 instance owner、可配置 TTL 与过期回收；success、failure 与 partial 都使用 owner-aware compare-and-set 释放 lease，stale owner 不得覆盖新 owner 的状态。`GET /accounts/scheduler/status` 与系统设置 Scheduler Health 区域提供只读 runtime/persistent health（due accounts、active/expired leases、retry、最近 success/failure），不提供手工 run API。
-
-该能力目前为 **CODE + TEST VERIFIED**，不是 Real Two-Process Scheduler Coordination E2E VERIFIED。下一阶段继续聚焦真实双进程验证、runtime observability、duplicate-worker protection / locking，以及 scheduler operational health visibility。
+下一阶段先审计真实 scheduler execution 是否可能超过当前默认 `lease_seconds=1800`，再决定是否需要 lease renewal / heartbeat。关注 long-running scheduler stability、lease duration / slow-run safety、stuck-run detection、operational health severity/status，以及 restart/recovery visibility；本轮不实现这些能力。
 
 ## Google OAuth Client Runtime Configuration
 
