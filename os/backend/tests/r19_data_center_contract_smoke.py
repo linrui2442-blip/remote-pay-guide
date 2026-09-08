@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import os
 import sys
 from pathlib import Path
@@ -43,7 +44,7 @@ from publish.manager import create_publish_task, update_publish_status
 
 
 def reset_test_db():
-    db_path = Path('os/database/os.db')
+    db_path = TEST_DATABASE_PATH
     db_path.parent.mkdir(parents=True, exist_ok=True)
     if db_path.exists():
         db_path.unlink()

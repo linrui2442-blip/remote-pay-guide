@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import os
 import sqlite3
 import sys
@@ -13,8 +14,7 @@ from analytics.models import AnalyticsMetric
 
 
 def reset_test_db():
-    Path("os/database").mkdir(parents=True, exist_ok=True)
-    db = Path("os/database/os.db")
+    db = TEST_DATABASE_PATH
     if db.exists():
         db.unlink()
 
@@ -53,7 +53,7 @@ def main():
     assert len(latest) == 1
     assert latest[0]["metrics"]["full_video_watched_rate"] == 0.438
 
-    with sqlite3.connect("os/database/os.db") as conn:
+    with sqlite3.connect(TEST_DATABASE_PATH) as conn:
         columns = {
             row[1]
             for row in conn.execute("PRAGMA table_info(analytics_metrics)").fetchall()

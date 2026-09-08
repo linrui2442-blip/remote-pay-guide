@@ -1,13 +1,14 @@
+from data.database_path import database_path
 import os
 import sqlite3
 from datetime import datetime
 
-DB_PATH = "os/database/os.db"
+DB_PATH = database_path()
 
 
 def _connect():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    database_path().parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(database_path())
     conn.row_factory = sqlite3.Row
     return conn
 

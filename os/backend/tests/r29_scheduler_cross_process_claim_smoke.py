@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH
 import os
 import gc
 import sys
@@ -46,7 +47,7 @@ class CountingExecutor:
 def main():
     temp_dir = tempfile.mkdtemp(prefix="rpg-scheduler-lease-")
     try:
-        sync_state.DB_PATH = Path(temp_dir) / "scheduler.db"
+        os.environ["OS_DATABASE_PATH"] = str(Path(temp_dir) / "scheduler.db")
         ensure_sync_state(1, "youtube")
 
         # Force both scheduler instances to discover the same stale candidate;

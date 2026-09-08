@@ -72,3 +72,6 @@ Scheduler Health / Stuck Detection：**CODE + TEST VERIFIED ✅**。状态包括
 CURRENT NEXT STEP：**Operational Runtime History / Health Event Persistence**。
 
 OAuth Client runtime configuration is provided by the Windows CurrentUser secure store. The fixed bootstrap/recovery file is `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json`; normal backend startup does not depend on reading that JSON. OAuth tokens remain in `os/database/os.db`.
+# Runtime DB Safety
+
+Test Database Isolation: **CODE + REGRESSION VERIFIED**. Production runtime DB is never used as a test database; smoke tests use temporary isolated databases only, and destructive test operations are hard-guarded.

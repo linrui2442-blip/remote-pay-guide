@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import os
 import sqlite3
 import sys
@@ -17,7 +18,7 @@ from data.sync_state import get_sync_state
 from integrations.sync_scheduler import BackgroundAccountSyncScheduler, due_accounts
 
 
-DB_PATH = Path("os/database/os.db")
+DB_PATH = TEST_DATABASE_PATH
 NOW = datetime(2026, 9, 7, 1, 0, tzinfo=timezone.utc)
 
 

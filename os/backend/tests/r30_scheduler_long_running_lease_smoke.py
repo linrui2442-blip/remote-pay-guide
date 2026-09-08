@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH
 import gc
 import os
 import sys
@@ -45,7 +46,7 @@ def main():
     temp_dir = tempfile.mkdtemp(prefix="rpg-scheduler-heartbeat-")
     original_due = scheduler_module.due_accounts
     try:
-        sync_state.DB_PATH = Path(temp_dir) / "scheduler.db"
+        os.environ["OS_DATABASE_PATH"] = str(Path(temp_dir) / "scheduler.db")
         ensure_sync_state(ACCOUNT["id"], ACCOUNT["platform"])
         candidate = {"account": ACCOUNT, "daily_date": DAY, "sync_state": {}}
         scheduler_module.due_accounts = lambda **kwargs: [candidate]

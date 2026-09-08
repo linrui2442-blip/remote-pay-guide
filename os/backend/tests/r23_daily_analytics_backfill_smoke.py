@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import os
 import sqlite3
 import sys
@@ -29,7 +30,7 @@ from publish.models import PublishTask
 from routers.analytics import router
 
 
-DB_PATH = Path("os/database/os.db")
+DB_PATH = TEST_DATABASE_PATH
 ACCOUNT_ID = 2300
 
 

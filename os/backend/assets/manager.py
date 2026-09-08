@@ -1,3 +1,4 @@
+from data.database_path import database_path
 import json
 import sqlite3
 import uuid
@@ -5,11 +6,11 @@ from datetime import datetime
 
 from assets.models import VideoAsset
 
-DB_PATH = "os/database/os.db"
+DB_PATH = database_path()
 
 
 def _connect():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(database_path())
     conn.row_factory = sqlite3.Row
     return conn
 

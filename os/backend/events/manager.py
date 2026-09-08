@@ -1,10 +1,11 @@
+from data.database_path import database_path
 import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-DB_PATH = Path("os/database/os.db")
+DB_PATH = database_path()
 
 
 class EventManager:

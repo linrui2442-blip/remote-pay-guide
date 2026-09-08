@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import os
 import sys
 from pathlib import Path
@@ -15,7 +16,7 @@ from data.growth import record_conversion, record_intent
 
 
 def reset_test_db():
-    path = Path("os/database/os.db")
+    path = TEST_DATABASE_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
 

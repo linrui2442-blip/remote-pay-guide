@@ -78,3 +78,8 @@ OAuth Client Configuration contains `client_id` and `client_secret`; OAuth Token
 The recovery JSON is outside the Git repository. A fresh clone does not contain it. Moving the OS to another computer therefore requires separately transferring or re-providing the OAuth Client recovery material, importing it into that Windows user's secure store, and separately restoring the required runtime database.
 
 The recovery JSON may use Google `installed`, Google `web`, or Remote Pay Guide minimal recovery format. It must never be committed, logged, returned through an API, or exposed to the frontend.
+# Test Database Isolation
+
+Production runtime DB: `os/database/os.db` — **NEVER USED AS TEST DATABASE**.
+
+Smoke tests run with `OS_TESTING=1` and an explicit `OS_DATABASE_PATH` under an operating-system temporary directory. Test reset and delete operations are hard-guarded against the production database path and the repository `os/database` directory. CI supplies a job-specific database under `runner.temp`.

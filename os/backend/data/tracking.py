@@ -1,3 +1,4 @@
+from data.database_path import database_path
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -8,7 +9,7 @@ from data.growth import get_content_funnel
 from publish.manager import get_publish_tasks
 
 
-DB_PATH = Path("os/database/os.db")
+DB_PATH = database_path()
 DEFAULT_ACTIVE_LIMIT = 10
 DEFAULT_ARCHIVE_AFTER_DAYS = 90
 TRACKING_STATES = {"active", "historical", "archived"}
@@ -16,7 +17,7 @@ TRACKING_STATES = {"active", "historical", "archived"}
 
 def _connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(database_path())
     conn.row_factory = sqlite3.Row
     return conn
 

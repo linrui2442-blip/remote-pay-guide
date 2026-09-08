@@ -1,10 +1,11 @@
+from data.database_path import database_path
 import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-DB_PATH = Path("os/database/os.db")
+DB_PATH = database_path()
 
 DEFAULT_PLATFORMS = (
     {
@@ -40,7 +41,7 @@ DEFAULT_PLATFORMS = (
 
 def _connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(database_path())
     conn.row_factory = sqlite3.Row
     return conn
 

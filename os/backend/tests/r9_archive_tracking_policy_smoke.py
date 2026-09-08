@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import os
 import sqlite3
 import sys
@@ -24,8 +25,7 @@ from publish.models import PublishTask
 
 
 def reset_test_db():
-    Path("os/database").mkdir(parents=True, exist_ok=True)
-    db = Path("os/database/os.db")
+    db = TEST_DATABASE_PATH
     if db.exists():
         db.unlink()
 
@@ -105,7 +105,7 @@ def main():
 
     # Simulate that both historical items left ACTIVE more than 90 days ago.
     stale_time = datetime(2026, 4, 1, tzinfo=timezone.utc) - timedelta(days=100)
-    with sqlite3.connect("os/database/os.db") as conn:
+    with sqlite3.connect(TEST_DATABASE_PATH) as conn:
         conn.execute(
             """
             UPDATE content_tracking

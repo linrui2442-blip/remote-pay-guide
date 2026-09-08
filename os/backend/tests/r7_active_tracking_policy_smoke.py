@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -45,8 +46,7 @@ class FakeCollector:
 
 
 def reset_test_db():
-    Path("os/database").mkdir(parents=True, exist_ok=True)
-    db = Path("os/database/os.db")
+    db = TEST_DATABASE_PATH
     if db.exists():
         db.unlink()
 

@@ -2,16 +2,18 @@ import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from data.database_path import database_path
 
 
-DB_PATH = Path("os/database/os.db")
+DB_PATH = database_path()
 SYNC_KINDS = {"content", "analytics"}
 SYNC_STATUSES = {"idle", "running", "success", "partial", "failed"}
 
 
 def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    path = database_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 

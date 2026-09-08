@@ -1,3 +1,4 @@
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import json
 import os
 import sqlite3
@@ -23,7 +24,7 @@ from publish.manager import create_publish_task, update_publish_status
 from publish.models import PublishTask
 
 
-DB_PATH = Path("os/database/os.db")
+DB_PATH = TEST_DATABASE_PATH
 CONFIG_KEYS = (
     "YOUTUBE_OAUTH_CLIENT_ID",
     "YOUTUBE_OAUTH_CLIENT_SECRET",

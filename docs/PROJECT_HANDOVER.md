@@ -1480,3 +1480,8 @@ youtube-oauth-client.json
 5. 只有现有 refresh token 真正失效时，才考虑重新 authorization。
 
 Provider 读取优先级保持：explicit constructor args → process environment → Windows CurrentUser secure store。现有 YouTube/Google 环境变量方式继续兼容。
+# Test Database Hard Protection
+
+Historical standalone smoke scripts previously reset `os/database/os.db` directly. The backend now resolves database paths centrally. Test mode requires both `OS_TESTING=1` and an explicit non-production `OS_DATABASE_PATH`; production paths and every path under the repository `os/database` directory are rejected before connect, directory creation, migration, or deletion.
+
+Production runtime DB: **NEVER USED AS TEST DATABASE**. Smoke tests: **TEMP ISOLATED DATABASE ONLY**. Test destructive operations: **HARD-GUARDED**.

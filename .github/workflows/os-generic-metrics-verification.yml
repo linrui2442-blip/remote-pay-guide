@@ -1,5 +1,9 @@
 name: OS Generic Metrics Verification
 
+env:
+  OS_TESTING: '1'
+  OS_DATABASE_PATH: ${{ runner.temp }}/remote-pay-guide-${{ github.job }}.db
+
 on:
   workflow_dispatch:
   push:
