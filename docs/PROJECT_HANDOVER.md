@@ -1388,3 +1388,49 @@ Account Scheduler
 ```
 
 本次 closeout 未执行该流程；Scheduled Daily Analytics 目前仅为 code/test complete，尚未标记为 Scheduled Daily Analytics Real E2E VERIFIED。
+
+## Google OAuth Client Runtime Configuration
+
+OAuth Client Configuration 与 OAuth Tokens 是两类独立数据：
+
+- OAuth Client Configuration 包含 `client_id` 与 `client_secret`。正常运行时由 Windows DPAPI CurrentUser secure store 保存，不进入 Git、`os.db`、日志、API 或 frontend。
+- OAuth Tokens 包含 access token、refresh token、scopes 与 expiry，继续保存在 `os/database/os.db` 的现有 `oauth_tokens` 中。
+
+OAuth client recovery JSON 的固定逻辑路径：
+
+```text
+%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json
+```
+
+该 JSON 只用于 bootstrap / recovery。支持 Google `installed`、Google `web` 与 Remote Pay Guide minimal recovery 三种格式；minimal recovery 仅含 `client_id` 和 `client_secret` 字段。文档和日志不得记录实际值。导入命令：
+
+```powershell
+$env:PYTHONPATH="os/backend"
+python -m oauth.runtime_config import-json "$env:LOCALAPPDATA\RemotePayGuide\secrets\youtube-oauth-client.json"
+```
+
+正常运行的刷新链为：
+
+```text
+Windows CurrentUser secure store
++ os/database/os.db refresh token
+→ OAuth token refresh
+```
+
+恢复链为：
+
+```text
+youtube-oauth-client.json
+→ secure-store import
+→ 恢复 OAuth client runtime configuration
+```
+
+如果 backend 报 OAuth client config missing：
+
+1. 先用 `python -m oauth.runtime_config status` 检查 Windows secure store。
+2. secure store 缺失时，检查上述 recovery JSON。
+3. 使用 `import-json` 恢复 secure store。
+4. 不要直接重新 OAuth。
+5. 只有现有 refresh token 真正失效时，才考虑重新 authorization。
+
+Provider 读取优先级保持：explicit constructor args → process environment → Windows CurrentUser secure store。现有 YouTube/Google 环境变量方式继续兼容。

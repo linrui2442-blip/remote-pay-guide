@@ -63,3 +63,18 @@ A repository checkout contains source code, but runtime state must be handled se
 Code changes frequently.
 
 Runtime state must remain stable.
+
+## Runtime Secret Boundary
+
+| Data | Location | Lifecycle |
+|---|---|---|
+| Source code | GitHub repository | Git-managed |
+| Runtime database and OAuth tokens | `os/database/os.db` | Local runtime data; preserve separately |
+| OAuth Client secure configuration | Windows CurrentUser secure store | DPAPI-protected local user data |
+| OAuth Client recovery JSON | `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json` | Bootstrap / recovery material only |
+
+OAuth Client Configuration contains `client_id` and `client_secret`; OAuth Tokens contain access token, refresh token, scopes and expiry. These are separate data classes. Client configuration must not be stored in `os.db`, and token material remains in the existing `oauth_tokens` storage.
+
+The recovery JSON is outside the Git repository. A fresh clone does not contain it. Moving the OS to another computer therefore requires separately transferring or re-providing the OAuth Client recovery material, importing it into that Windows user's secure store, and separately restoring the required runtime database.
+
+The recovery JSON may use Google `installed`, Google `web`, or Remote Pay Guide minimal recovery format. It must never be committed, logged, returned through an API, or exposed to the frontend.

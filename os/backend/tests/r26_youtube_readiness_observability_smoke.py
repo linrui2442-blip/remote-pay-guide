@@ -17,6 +17,7 @@ from analytics.adapters.youtube import YouTubeAnalyticsAdapter
 from analytics.backfill_runtime import AnalyticsBackfillWorker, create_operation
 from data.sync_state import get_sync_state
 from oauth.manager import create_token
+from oauth.providers import youtube as youtube_provider
 from oauth.providers.youtube import YOUTUBE_ANALYTICS_SCOPE, YOUTUBE_READ_SCOPE
 from publish.manager import create_publish_task, update_publish_status
 from publish.models import PublishTask
@@ -85,7 +86,9 @@ class AlwaysFailCollector:
 def main():
     reset_db()
     original = {key: os.environ.get(key) for key in CONFIG_KEYS}
+    original_get_secret = youtube_provider.get_secret
     try:
+        youtube_provider.get_secret = lambda name: None
         for key in CONFIG_KEYS:
             os.environ.pop(key, None)
 
@@ -169,6 +172,7 @@ def main():
         state_error = get_sync_state(2600, "youtube")["backfill_error"]
         assert state_error == result["last_error"]
     finally:
+        youtube_provider.get_secret = original_get_secret
         for key, value in original.items():
             if value is None:
                 os.environ.pop(key, None)

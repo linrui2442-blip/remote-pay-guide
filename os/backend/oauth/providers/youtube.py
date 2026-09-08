@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
+from config.secure_store import SecureStoreError, get_secret
+
 
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
@@ -18,6 +20,8 @@ YOUTUBE_SCOPE_PROFILES = {
 
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+YOUTUBE_CLIENT_ID_SECRET = "youtube_oauth_client_id"
+YOUTUBE_CLIENT_SECRET_SECRET = "youtube_oauth_client_secret"
 
 
 class YouTubeOAuthConfigurationError(RuntimeError):
@@ -41,16 +45,27 @@ class YouTubeOAuthProvider:
         client_secret=None,
         redirect_uri=None,
         scope_profile="publish",
+        secret_getter=None,
     ):
+        secret_getter = secret_getter or get_secret
+
+        def secure_value(name):
+            try:
+                return secret_getter(name)
+            except SecureStoreError:
+                return None
+
         self.client_id = (
             client_id
             or os.getenv("YOUTUBE_OAUTH_CLIENT_ID")
             or os.getenv("GOOGLE_CLIENT_ID")
+            or secure_value(YOUTUBE_CLIENT_ID_SECRET)
         )
         self.client_secret = (
             client_secret
             or os.getenv("YOUTUBE_OAUTH_CLIENT_SECRET")
             or os.getenv("GOOGLE_CLIENT_SECRET")
+            or secure_value(YOUTUBE_CLIENT_SECRET_SECRET)
         )
         self.redirect_uri = (
             redirect_uri
