@@ -77,7 +77,13 @@ Health Event Persistence：**REAL PROCESS E2E VERIFIED ✅**。健康状态转�
 
 History Retention：**CODE + TEST VERIFIED ✅**。
 
-CURRENT NEXT STEP：Operational Runtime History reconciliation 完成；等待安全 commit 推送授权。
+Operational Runtime History：**MAINLINE + CI VERIFIED ✅**。
+Crash / Recovery Lineage：**MAINLINE VERIFIED ✅**。
+Health Event Persistence：**MAINLINE VERIFIED ✅**。
+History Retention：**MAINLINE VERIFIED ✅**。
+Scheduler Operational Hardening：**CLOSED ✅**（证据层级为 synthetic real-process/two-process E2E + CI，不是长期生产运行）。
+
+CURRENT NEXT STEP：**OS Loop Gap Audit**。
 
 OAuth Client runtime configuration is provided by the Windows CurrentUser secure store. The fixed bootstrap/recovery file is `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json`; normal backend startup does not depend on reading that JSON. OAuth tokens remain in `os/database/os.db`.
 # Runtime DB Safety
