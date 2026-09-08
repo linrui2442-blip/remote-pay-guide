@@ -87,6 +87,27 @@ function formatRuntimeTime(value) {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
 }
 
+function formatRuntimeDuration(value) {
+  if (value == null) return "尚无记录";
+  const seconds = Math.max(0, Number(value) || 0);
+  return seconds < 60 ? `${seconds.toFixed(1)} 秒` : `${(seconds / 60).toFixed(1)} 分钟`;
+}
+
+const SCHEDULER_HEALTH_LABELS = {
+  healthy: "Healthy",
+  running: "Running",
+  retrying: "Retrying",
+  degraded: "Attention",
+  stuck_suspected: "Attention",
+  disabled: "Disabled",
+};
+
+const LEASE_HEALTH_LABELS = {
+  inactive: "Idle",
+  renewing: "Renewing",
+  at_risk: "At Risk",
+};
+
 function JsonDetails({ title = "查看原始数据", data }) {
   return (
     <details className="json-details">
@@ -734,7 +755,7 @@ function App() {
         <div className="panel-header">
           <div><span className="section-kicker">BACKGROUND SYNC</span><h2>Scheduler Health</h2></div>
           <Badge tone={schedulerHealthError ? "danger" : schedulerHealth?.enabled && schedulerHealth?.running ? "success" : "neutral"}>
-            {schedulerHealthError ? "Error" : !schedulerHealth?.enabled ? "Disabled" : schedulerHealth?.running ? "Running" : "Stopped"}
+            {schedulerHealthError ? "Error" : SCHEDULER_HEALTH_LABELS[schedulerHealth?.health] || "Unknown"}
           </Badge>
         </div>
 
@@ -743,7 +764,10 @@ function App() {
         ) : (
           <div className="settings-status scheduler-health-grid">
             <div><span>Last Check</span><strong>{formatRuntimeTime(schedulerHealth?.last_check_at)}</strong></div>
-            <div><span>Last Successful Daily Sync</span><strong>{formatRuntimeTime(schedulerHealth?.persistent?.last_success_at)}</strong></div>
+            <div><span>Current Run Age</span><strong>{formatRuntimeDuration(schedulerHealth?.persistent?.current_run_age_seconds)}</strong></div>
+            <div><span>Lease</span><strong>{LEASE_HEALTH_LABELS[schedulerHealth?.lease_health] || "Unknown"}</strong></div>
+            <div><span>Last Completed Sync</span><strong>{formatRuntimeTime(schedulerHealth?.persistent?.last_finished_at)}</strong></div>
+            <div><span>Last Duration</span><strong>{formatRuntimeDuration(schedulerHealth?.persistent?.last_duration_seconds)}</strong></div>
             <div><span>Accounts Due</span><strong>{schedulerHealth?.persistent?.due_accounts_count ?? "—"}</strong></div>
             <div><span>Accounts Retrying</span><strong>{schedulerHealth?.persistent?.accounts_in_retry ?? "—"}</strong></div>
             <div><span>Active Lease</span><strong>{schedulerHealth?.persistent?.active_leases ?? "—"}</strong></div>

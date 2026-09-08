@@ -67,6 +67,10 @@ def _ensure_table():
             "scheduler_lease_daily_date": "TEXT",
             "scheduler_lease_acquired_at": "TEXT",
             "scheduler_lease_expires_at": "TEXT",
+            "scheduler_lease_last_renewed_at": "TEXT",
+            "scheduler_last_started_at": "TEXT",
+            "scheduler_last_finished_at": "TEXT",
+            "scheduler_last_duration_seconds": "REAL",
             "backfill_status": "TEXT NOT NULL DEFAULT 'idle'",
             "backfill_start_date": "TEXT",
             "backfill_end_date": "TEXT",
@@ -338,8 +342,10 @@ def try_claim_scheduler_run(
             """
             UPDATE platform_sync_state
             SET scheduler_status='running', scheduler_last_attempt_at=?,
+                scheduler_last_started_at=?,
                 scheduler_lease_owner=?, scheduler_lease_daily_date=?,
                 scheduler_lease_acquired_at=?, scheduler_lease_expires_at=?,
+                scheduler_lease_last_renewed_at=?,
                 updated_at=?
             WHERE account_id=? AND platform=?
               AND (scheduler_last_daily_date IS NULL OR scheduler_last_daily_date != ?)
@@ -351,10 +357,12 @@ def try_claim_scheduler_run(
             """,
             (
                 claimed_iso,
+                claimed_iso,
                 str(owner_id),
                 str(daily_date),
                 claimed_iso,
                 expires_iso,
+                claimed_iso,
                 claimed_iso,
                 account_id,
                 normalized,
@@ -372,28 +380,74 @@ def try_claim_scheduler_run(
     }
 
 
+def renew_scheduler_lease(
+    account_id,
+    platform,
+    daily_date,
+    owner_id,
+    *,
+    renewed_at=None,
+    lease_seconds=1800,
+):
+    """Extend a live lease only while the same owner still holds it."""
+    normalized = _normalize_platform(platform)
+    renewed = datetime.fromisoformat(renewed_at) if isinstance(renewed_at, str) else renewed_at
+    renewed = renewed or datetime.now(timezone.utc)
+    if renewed.tzinfo is None:
+        renewed = renewed.replace(tzinfo=timezone.utc)
+    renewed = renewed.astimezone(timezone.utc)
+    renewed_iso = renewed.isoformat()
+    expires_iso = (renewed + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
+    with _connect() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE platform_sync_state
+            SET scheduler_lease_expires_at=?, scheduler_lease_last_renewed_at=?,
+                updated_at=?
+            WHERE account_id=? AND platform=?
+              AND scheduler_lease_owner=?
+              AND scheduler_lease_daily_date=?
+              AND scheduler_lease_expires_at IS NOT NULL
+              AND datetime(scheduler_lease_expires_at) > datetime(?)
+              AND (scheduler_last_daily_date IS NULL OR scheduler_last_daily_date != ?)
+            """,
+            (
+                expires_iso, renewed_iso, renewed_iso, account_id, normalized,
+                str(owner_id), str(daily_date), renewed_iso, str(daily_date),
+            ),
+        )
+        conn.commit()
+    return {
+        "applied": cursor.rowcount == 1,
+        "reason": "renewed" if cursor.rowcount == 1 else "lease_lost",
+        "sync_state": get_sync_state(account_id, normalized, create=False),
+    }
+
+
 def mark_scheduler_success(
-    account_id, platform, daily_date, *, owner_id, succeeded_at=None
+    account_id, platform, daily_date, *, owner_id, succeeded_at=None,
+    duration_seconds=None,
 ):
     normalized_platform = _normalize_platform(platform)
     ensure_sync_state(account_id, normalized_platform)
     succeeded_at = succeeded_at or _now()
     with _connect() as conn:
         owner_clause = " AND scheduler_lease_owner=?"
-        params = [succeeded_at, str(daily_date), succeeded_at, account_id, normalized_platform]
-        params.append(str(owner_id))
         cursor = conn.execute(
             """
             UPDATE platform_sync_state
             SET scheduler_status='success', scheduler_last_success_at=?,
                 scheduler_last_daily_date=?, scheduler_next_retry_at=NULL,
                 scheduler_retry_count=0, last_error=NULL, last_error_at=NULL,
+                scheduler_last_finished_at=?, scheduler_last_duration_seconds=?,
                 scheduler_lease_owner=NULL, scheduler_lease_daily_date=NULL,
                 scheduler_lease_acquired_at=NULL, scheduler_lease_expires_at=NULL,
+                scheduler_lease_last_renewed_at=NULL,
                 updated_at=?
             WHERE account_id=? AND platform=?
             """ + owner_clause,
-            tuple(params),
+            tuple([succeeded_at, str(daily_date), succeeded_at, duration_seconds,
+                   succeeded_at, account_id, normalized_platform, str(owner_id)]),
         )
         conn.commit()
     state = get_sync_state(account_id, normalized_platform, create=False)
@@ -413,6 +467,7 @@ def mark_scheduler_failure(
     backoff_seconds=(300, 900, 3600),
     status="failed",
     owner_id,
+    duration_seconds=None,
 ):
     normalized_platform = _normalize_platform(platform)
     state = ensure_sync_state(account_id, normalized_platform)
@@ -430,30 +485,24 @@ def mark_scheduler_failure(
     failed_iso = failed.isoformat()
     with _connect() as conn:
         owner_clause = " AND scheduler_lease_owner=?"
-        params = [
-            "partial" if status == "partial" else "failed",
-            failed_iso,
-            next_retry.isoformat(),
-            retry_count,
-            str(error),
-            failed_iso,
-            failed_iso,
-            account_id,
-            normalized_platform,
-        ]
-        params.append(str(owner_id))
         cursor = conn.execute(
             """
             UPDATE platform_sync_state
-            SET scheduler_status=?, scheduler_last_attempt_at=?,
-                scheduler_next_retry_at=?, scheduler_retry_count=?,
+            SET scheduler_status=?, scheduler_next_retry_at=?, scheduler_retry_count=?,
                 last_error=?, last_error_at=?,
+                scheduler_last_finished_at=?, scheduler_last_duration_seconds=?,
                 scheduler_lease_owner=NULL, scheduler_lease_daily_date=NULL,
                 scheduler_lease_acquired_at=NULL, scheduler_lease_expires_at=NULL,
+                scheduler_lease_last_renewed_at=NULL,
                 updated_at=?
             WHERE account_id=? AND platform=?
             """ + owner_clause,
-            tuple(params),
+            tuple([
+                "partial" if status == "partial" else "failed",
+                next_retry.isoformat(), retry_count, str(error), failed_iso,
+                failed_iso, duration_seconds, failed_iso, account_id,
+                normalized_platform, str(owner_id),
+            ]),
         )
         conn.commit()
     final_state = get_sync_state(account_id, normalized_platform, create=False)
@@ -464,7 +513,7 @@ def mark_scheduler_failure(
     }
 
 
-def get_scheduler_persistent_summary(*, now=None):
+def get_scheduler_persistent_summary(*, now=None, stuck_warning_seconds=3600):
     """Return provider-neutral scheduler health counters without secret data."""
     _ensure_table()
     current = datetime.fromisoformat(now) if isinstance(now, str) else now
@@ -489,14 +538,41 @@ def get_scheduler_persistent_summary(*, now=None):
                          THEN 1 ELSE 0 END) AS accounts_in_retry,
                 MAX(scheduler_last_success_at) AS last_success_at,
                 MAX(CASE WHEN scheduler_status IN ('failed', 'partial')
-                         THEN last_error_at END) AS last_failure_at
+                         THEN last_error_at END) AS last_failure_at,
+                MAX(scheduler_last_started_at) AS last_started_at,
+                MAX(scheduler_last_finished_at) AS last_finished_at,
+                (SELECT scheduler_last_duration_seconds FROM platform_sync_state
+                 WHERE scheduler_last_finished_at IS NOT NULL
+                 ORDER BY scheduler_last_finished_at DESC LIMIT 1) AS last_duration_seconds,
+                MIN(CASE WHEN scheduler_lease_owner IS NOT NULL
+                         AND datetime(scheduler_lease_expires_at) > datetime(?)
+                         THEN scheduler_lease_acquired_at END) AS run_started_at,
+                MAX(CASE WHEN scheduler_lease_owner IS NOT NULL
+                         AND datetime(scheduler_lease_expires_at) > datetime(?)
+                         THEN scheduler_lease_expires_at END) AS lease_expires_at,
+                MAX(CASE WHEN scheduler_lease_owner IS NOT NULL
+                         AND datetime(scheduler_lease_expires_at) > datetime(?)
+                         THEN scheduler_lease_last_renewed_at END) AS last_lease_renewed_at,
+                SUM(CASE WHEN scheduler_lease_owner IS NOT NULL
+                          AND datetime(scheduler_lease_expires_at) > datetime(?)
+                          AND (julianday(?) - julianday(scheduler_lease_acquired_at)) * 86400 > ?
+                         THEN 1 ELSE 0 END) AS stuck_accounts_count
             FROM platform_sync_state
             """,
-            (current_iso, current_iso, current_iso),
+            (current_iso, current_iso, current_iso, current_iso, current_iso,
+             current_iso, current_iso, current_iso, int(stuck_warning_seconds)),
         ).fetchone()
     result = _serialize(row) or {}
-    for key in ("active_leases", "expired_leases", "accounts_in_retry"):
+    for key in ("active_leases", "expired_leases", "accounts_in_retry", "stuck_accounts_count"):
         result[key] = int(result.get(key) or 0)
+    started = result.get("run_started_at")
+    expires = result.get("lease_expires_at")
+    result["current_run_age_seconds"] = max(
+        0.0, (current - datetime.fromisoformat(started)).total_seconds()
+    ) if started else None
+    result["lease_remaining_seconds"] = max(
+        0.0, (datetime.fromisoformat(expires) - current).total_seconds()
+    ) if expires else None
     return result
 
 

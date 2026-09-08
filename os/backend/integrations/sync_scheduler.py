@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -15,6 +16,7 @@ from data.sync_state import (
     mark_scheduler_success,
     mark_sync_failure,
     mark_sync_partial,
+    renew_scheduler_lease,
     try_claim_scheduler_run,
 )
 from integrations.sync_planner import build_account_sync_plan
@@ -247,6 +249,8 @@ class BackgroundAccountSyncScheduler:
         clock=None,
         backoff_seconds=(300, 900, 3600),
         lease_seconds=None,
+        heartbeat_seconds=None,
+        stuck_warning_seconds=None,
         owner_id=None,
     ):
         configured = (
@@ -265,6 +269,21 @@ class BackgroundAccountSyncScheduler:
             or 1800
         )
         self.lease_seconds = max(30, int(configured_lease))
+        configured_heartbeat = heartbeat_seconds or os.getenv(
+            'ACCOUNT_SYNC_LEASE_HEARTBEAT_SECONDS'
+        )
+        automatic_heartbeat = min(60.0, max(1.0, self.lease_seconds / 3))
+        self.heartbeat_seconds = (
+            max(0.5, min(float(configured_heartbeat), self.lease_seconds / 2))
+            if configured_heartbeat else automatic_heartbeat
+        )
+        configured_stuck = stuck_warning_seconds or os.getenv(
+            'ACCOUNT_SYNC_STUCK_WARNING_SECONDS'
+        )
+        self.stuck_warning_seconds = max(
+            self.heartbeat_seconds * 3,
+            float(configured_stuck) if configured_stuck else self.lease_seconds * 2,
+        )
         self.owner_id = str(owner_id or uuid.uuid4())
         self.instance_id = self.owner_id.replace('-', '')[:12]
         self._stop_event = threading.Event()
@@ -272,6 +291,37 @@ class BackgroundAccountSyncScheduler:
         self.last_check_at = None
         self.last_error = None
         self.check_count = 0
+
+    def _start_lease_heartbeat(self, account_id, platform, daily_date):
+        stop_event = threading.Event()
+        state = {'lease_lost': False, 'renewals': 0, 'last_error': None}
+
+        def heartbeat():
+            while not stop_event.wait(self.heartbeat_seconds):
+                try:
+                    transition = renew_scheduler_lease(
+                        account_id,
+                        platform,
+                        daily_date,
+                        self.owner_id,
+                        renewed_at=_utc_datetime(self.clock()),
+                        lease_seconds=self.lease_seconds,
+                    )
+                    if not transition['applied']:
+                        state['lease_lost'] = True
+                        state['last_error'] = transition['reason']
+                        return
+                    state['renewals'] += 1
+                except Exception as exc:
+                    state['last_error'] = str(exc)
+
+        thread = threading.Thread(
+            target=heartbeat,
+            name=f'account-sync-lease-heartbeat-{self.instance_id}',
+            daemon=True,
+        )
+        thread.start()
+        return stop_event, thread, state
 
     def run_once(self):
         now = _utc_datetime(self.clock())
@@ -299,6 +349,10 @@ class BackgroundAccountSyncScheduler:
                     'sync_state': claim['sync_state'],
                 })
                 continue
+            heartbeat_stop, heartbeat_thread, heartbeat_state = (
+                self._start_lease_heartbeat(account['id'], platform, daily_date)
+            )
+            started_monotonic = time.monotonic()
             try:
                 result = self.sync_executor(
                     account['id'],
@@ -306,6 +360,21 @@ class BackgroundAccountSyncScheduler:
                     sync_mode='incremental',
                     analytics_windows=[(daily_date, daily_date), (None, None)],
                 )
+                finished_at = _utc_datetime(self.clock()).isoformat()
+                duration_seconds = max(0.0, time.monotonic() - started_monotonic)
+                heartbeat_stop.set()
+                heartbeat_thread.join(timeout=min(self.heartbeat_seconds, 2.0))
+                if heartbeat_state['lease_lost']:
+                    outcomes.append({
+                        'account_id': account['id'],
+                        'platform': platform,
+                        'status': 'lease_lost',
+                        'lease_status': 'lease_lost',
+                        'heartbeat': heartbeat_state,
+                        'result': result,
+                        'sync_state': get_sync_state(account['id'], platform),
+                    })
+                    continue
                 result_status = result.get('status')
                 if result_status != 'success':
                     errors = result.get('failures') or []
@@ -315,9 +384,10 @@ class BackgroundAccountSyncScheduler:
                         else f"account sync returned {result_status}"
                     )
                     transition = mark_scheduler_failure(
-                        account['id'], platform, error, failed_at=attempted_at,
+                        account['id'], platform, error, failed_at=finished_at,
                         backoff_seconds=self.backoff_seconds, status=result_status,
                         owner_id=self.owner_id,
+                        duration_seconds=duration_seconds,
                     )
                     state = transition['sync_state']
                     outcome_status = result_status if transition['applied'] else 'lease_lost'
@@ -326,6 +396,7 @@ class BackgroundAccountSyncScheduler:
                         'platform': platform,
                         'status': outcome_status,
                         'lease_status': transition['reason'],
+                        'heartbeat': heartbeat_state,
                         'error': error,
                         'result': result,
                         'sync_state': state,
@@ -333,7 +404,8 @@ class BackgroundAccountSyncScheduler:
                     continue
                 transition = mark_scheduler_success(
                     account['id'], platform, daily_date,
-                    owner_id=self.owner_id, succeeded_at=attempted_at
+                    owner_id=self.owner_id, succeeded_at=finished_at,
+                    duration_seconds=duration_seconds,
                 )
                 state = transition['sync_state']
                 outcomes.append({
@@ -341,17 +413,31 @@ class BackgroundAccountSyncScheduler:
                     'platform': platform,
                     'status': 'success' if transition['applied'] else 'lease_lost',
                     'lease_status': transition['reason'],
+                    'heartbeat': heartbeat_state,
                     'result': result,
                     'sync_state': state,
                 })
             except Exception as exc:
+                finished_at = _utc_datetime(self.clock()).isoformat()
+                duration_seconds = max(0.0, time.monotonic() - started_monotonic)
+                heartbeat_stop.set()
+                heartbeat_thread.join(timeout=min(self.heartbeat_seconds, 2.0))
+                if heartbeat_state['lease_lost']:
+                    outcomes.append({
+                        'account_id': account['id'], 'platform': platform,
+                        'status': 'lease_lost', 'lease_status': 'lease_lost',
+                        'heartbeat': heartbeat_state, 'error': str(exc),
+                        'sync_state': get_sync_state(account['id'], platform),
+                    })
+                    continue
                 transition = mark_scheduler_failure(
                     account['id'],
                     platform,
                     exc,
-                    failed_at=attempted_at,
+                    failed_at=finished_at,
                     backoff_seconds=self.backoff_seconds,
                     owner_id=self.owner_id,
+                    duration_seconds=duration_seconds,
                 )
                 state = transition['sync_state']
                 outcomes.append({
@@ -359,6 +445,7 @@ class BackgroundAccountSyncScheduler:
                     'platform': platform,
                     'status': 'failed' if transition['applied'] else 'lease_lost',
                     'lease_status': transition['reason'],
+                    'heartbeat': heartbeat_state,
                     'error': str(exc),
                     'sync_state': state,
                 })
@@ -402,17 +489,44 @@ class BackgroundAccountSyncScheduler:
     def status(self):
         disabled = str(os.getenv('OS_DISABLE_BACKGROUND_ACCOUNT_SYNC') or '').lower() in {'1', 'true', 'yes'}
         now = _utc_datetime(self.clock())
-        persistent = get_scheduler_persistent_summary(now=now)
+        persistent = get_scheduler_persistent_summary(
+            now=now, stuck_warning_seconds=self.stuck_warning_seconds
+        )
         try:
             due_count = len(due_accounts(now=now, accounts=self.account_source()))
         except Exception:
             due_count = None
+        if disabled:
+            health = 'disabled'
+        elif persistent['stuck_accounts_count']:
+            health = 'stuck_suspected'
+        elif persistent['active_leases']:
+            health = 'running'
+        elif persistent['accounts_in_retry']:
+            health = 'retrying'
+        elif persistent.get('last_failure_at') and (
+            not persistent.get('last_success_at')
+            or persistent['last_failure_at'] > persistent['last_success_at']
+        ):
+            health = 'degraded'
+        else:
+            health = 'healthy'
+        remaining = persistent.get('lease_remaining_seconds')
+        lease_health = (
+            'inactive' if remaining is None else
+            'at_risk' if remaining <= self.heartbeat_seconds * 1.5 else
+            'renewing'
+        )
         return {
             'enabled': not disabled,
             'running': bool(self._thread and self._thread.is_alive()),
+            'health': health,
+            'lease_health': lease_health,
             'instance_id': self.instance_id,
             'interval_seconds': self.interval_seconds,
             'lease_seconds': self.lease_seconds,
+            'heartbeat_seconds': self.heartbeat_seconds,
+            'stuck_warning_seconds': self.stuck_warning_seconds,
             'last_check_at': self.last_check_at,
             'last_error': self.last_error,
             'check_count': self.check_count,

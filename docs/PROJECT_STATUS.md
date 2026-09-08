@@ -63,6 +63,12 @@ Scheduler Crash / Lease Recovery：**REAL TWO-PROCESS E2E VERIFIED ✅**。lease
 
 Scheduler Operational Health Contract：**REAL RUNTIME VERIFIED ✅**。`GET /accounts/scheduler/status` 已在两个真实 process 中验证 process health 与 persistent due/lease/retry/success/failure summary，且不暴露完整 owner UUID 或 OAuth secret/token。
 
-CURRENT NEXT STEP：**Scheduler Operational Hardening — Long-running Reliability & Health**。下一阶段先审计真实 scheduler 执行是否可能超过默认 1800 秒 lease，再按证据决定是否需要 renewal / heartbeat，并完善 stuck-run detection、health severity 与 restart/recovery visibility。
+Scheduler Lease Heartbeat：**REAL TWO-PROCESS E2E VERIFIED ✅**。30 秒 lease、5 秒 heartbeat 与 45 秒 synthetic executor 的两个真实 Python/FastAPI process 验证中，owner 持续续租，competitor 在原始 expiry 后仍不能 reclaim；A execution 1、B execution 0，成功后 lease 释放且 due 为 0。Process crash 后 heartbeat 停止，B 只在最后续租 TTL 到期后 reclaim，未形成永久 lease。
+
+Scheduler Runtime Timing：**VERIFIED ✅**。started/attempted 与真实 finished time 已分离，success/failure completion time 与 duration 持久化。
+
+Scheduler Health / Stuck Detection：**CODE + TEST VERIFIED ✅**。状态包括 healthy、running、retrying、degraded、stuck_suspected、disabled；API/UI 提供 run age、lease renewing/at-risk、last completion/duration、due/retry 等 provider-neutral 信息。
+
+CURRENT NEXT STEP：**Operational Runtime History / Health Event Persistence**。
 
 OAuth Client runtime configuration is provided by the Windows CurrentUser secure store. The fixed bootstrap/recovery file is `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json`; normal backend startup does not depend on reading that JSON. OAuth tokens remain in `os/database/os.db`.

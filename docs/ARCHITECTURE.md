@@ -94,4 +94,8 @@ Scheduler coordination 使用现有 `platform_sync_state`，不新增 scheduler 
 
 这些能力已于 2026-09-08 完成真正的 two-process local runtime E2E。并发场景中两个独立 FastAPI/Python process 同时发现 candidate，只有一个获得 claim 并执行；崩溃场景中 owner 被 hard kill 后，另一个 process 只在 TTL 到期后 reclaim，旧 owner 无法覆盖新状态。`GET /accounts/scheduler/status` 的 process health 与 persistent state 在两个 process 间真实共享可见。
 
-当前开发位置为 **Scheduler Operational Hardening — Long-running Reliability & Health**。默认 lease TTL 为 1800 秒；下一阶段先审计真实 account sync 执行时长是否可能超过 TTL，再根据证据决定是否需要 lease renewal / heartbeat，并评估 stuck-run detection、health severity/status 与 restart/recovery visibility。ProductionRuntimePoller 与 BackgroundAccountSyncScheduler 继续作为不同 runtime worker。
+Blocking account sync 期间由 per-run daemon heartbeat 通过 owner-aware SQLite CAS 延长 lease。默认 heartbeat interval 从 lease TTL 推导，也可独立配置，并保持小于 TTL。heartbeat 发现 `lease_lost` 后停止续租；正在运行的 executor 自然结束，但旧 owner 不具备 success/failure persistence 权限。Process crash 会同时终止 heartbeat，其他 process 只能在最后续租产生的 expiry 后 reclaim。
+
+该 heartbeat 已通过 network-free real two-process E2E：30 秒 TTL、5 秒 heartbeat、45 秒 executor 跨过原始 expiry，competitor 始终未执行；crash regression 证明 TTL 后仍能恢复。Runtime timing 持久化 started、finished 与 duration；health 分类覆盖 healthy、running、retrying、degraded、stuck_suspected、disabled。Stuck detection 只影响可观测性，不自动抢占 lease。
+
+当前开发位置为 **Operational Runtime History / Health Event Persistence**。ProductionRuntimePoller 与 BackgroundAccountSyncScheduler 继续作为不同 runtime worker。

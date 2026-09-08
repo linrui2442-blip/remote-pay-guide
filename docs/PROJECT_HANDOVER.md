@@ -1365,6 +1365,9 @@ OAuth 状态：stored OAuth token working，token refresh real PASS，Analytics 
 | Scheduler Cross-process Coordination | ✅ REAL TWO-PROCESS E2E VERIFIED |
 | Scheduler Crash / Lease Recovery | ✅ REAL TWO-PROCESS E2E VERIFIED |
 | Scheduler Operational Health Contract | ✅ REAL RUNTIME VERIFIED |
+| Scheduler Lease Heartbeat | ✅ REAL TWO-PROCESS E2E VERIFIED |
+| Scheduler Runtime Timing | ✅ VERIFIED |
+| Scheduler Health / Stuck Detection | ✅ CODE + TEST VERIFIED |
 | Historical Daily Backfill | ✅ REAL E2E VERIFIED |
 | Backfill Operation Runtime | ✅ REAL E2E VERIFIED |
 | Backfill Control Plane UI | ✅ VERIFIED |
@@ -1422,9 +1425,15 @@ B reclaim 后，使用 A 的旧 owner 发起 success transition 与 failure tran
 
 ## CURRENT NEXT STEP
 
-**Scheduler Operational Hardening — Long-running Reliability & Health**。
+**Operational Runtime History / Health Event Persistence**。
 
-下一阶段先审计真实 scheduler execution 是否可能超过当前默认 `lease_seconds=1800`，再决定是否需要 lease renewal / heartbeat。关注 long-running scheduler stability、lease duration / slow-run safety、stuck-run detection、operational health severity/status，以及 restart/recovery visibility；本轮不实现这些能力。
+Long-running scheduler lease 已完成 owner-aware heartbeat。每个已 claim 的 run 使用轻量 daemon heartbeat，在 blocking executor 期间通过 SQLite CAS 续租；默认 interval 根据 lease TTL 计算，也可用 `ACCOUNT_SYNC_LEASE_HEARTBEAT_SECONDS` 配置，并始终小于 TTL。renew 返回 `lease_lost` 时 heartbeat 停止，旧 executor 自然返回后不能覆盖新 owner；不使用不安全的线程强杀。
+
+Network-free real two-process E2E 使用 30 秒 lease、5 秒 heartbeat 与 45 秒 synthetic executor。Process A PID `73528`、Process B PID `22840`，instance 分别为 `1266054210d5`、`9274cae117b6`；A execution 为 1、B execution 为 0，观察到 9 次 renewal。原始 lease expiry 过去后 B 仍无法 reclaim，A success 后 lease 释放且 due 为 0：**Scheduler Lease Heartbeat REAL TWO-PROCESS E2E VERIFIED**。
+
+Crash regression 中 A 的 heartbeat 正常续租后被 hard kill；B 在最后一次续租形成的 TTL 前执行 0 次，TTL 后 reclaim 并成功执行 1 次，最终释放 lease。Heartbeat 不产生永久 lease。该验证是 synthetic network-free runtime E2E，不代表真实长时间 Google/YouTube production E2E。
+
+Scheduler timing 现在区分 started/attempted 与 finished，并持久化 `scheduler_last_duration_seconds`；success/failure 使用真实 completion time。Health contract 提供 `healthy`、`running`、`retrying`、`degraded`、`stuck_suspected`、`disabled`，并返回 current run age、lease remaining/last renewed、last finished/duration 和 stuck account count。stuck detection 仅产生 health signal，不改变 claim/reclaim contract。
 
 ## Google OAuth Client Runtime Configuration
 
