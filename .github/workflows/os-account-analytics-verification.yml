@@ -1,9 +1,5 @@
 name: OS Account Analytics Verification
 
-env:
-  OS_TESTING: '1'
-  OS_DATABASE_PATH: ${{ runner.temp }}/remote-pay-guide-${{ github.job }}.db
-
 on:
   workflow_dispatch:
   push:
@@ -27,6 +23,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Configure isolated test database
+        shell: bash
+        run: |
+          echo "OS_TESTING=1" >> "$GITHUB_ENV"
+          echo "OS_DATABASE_PATH=${RUNNER_TEMP}/remote-pay-guide-${GITHUB_JOB}.db" >> "$GITHUB_ENV"
 
       - name: Setup Python
         uses: actions/setup-python@v5
