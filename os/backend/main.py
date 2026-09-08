@@ -30,6 +30,7 @@ from routers import (
     oauth,
     accounts,
     settings,
+    attribution,
 )
 
 
@@ -77,6 +78,7 @@ app.include_router(assets.router)
 app.include_router(oauth.router)
 app.include_router(accounts.router)
 app.include_router(settings.router)
+app.include_router(attribution.router)
 
 
 class WorkflowRequest(BaseModel):

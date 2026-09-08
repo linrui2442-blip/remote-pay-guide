@@ -18,9 +18,9 @@ Scheduler Operational Hardening、Operational Runtime History、Crash/Recovery L
 | VideoAsset | CODE + TEST VERIFIED | YouTube external reference or runtime result URL/path | `assets/manager.py`, runtime worker, content sync | asset APIs, publish preflight | Created by content sync/runtime completion | YouTube/GitHub/AI result | Publish preflight and runtime contract tests | Asset readiness depends on provider result; no durable artifact replication contract | P1 |
 | Publish | PARTIAL | Official YouTube API adapter exists; most tests use doubles | `publish/manager.py`, queue/worker, YouTube adapter | Publish APIs/UI, status fields | Explicit run endpoint/queue; no account scheduler | YouTube OAuth upload scope | Readiness + simulated publish tests; no real upload E2E | Human must prepare/trigger and verify real publish; status reconciliation is incomplete | P0 |
 | Traffic | PARTIAL | YouTube views/engagement Analytics only | Analytics collector | Query V2/Data Center funnel traffic | Scheduled analytics reads | YouTube Analytics | Real Analytics E2E | No site/session attribution showing where traffic went | P0 |
-| Intent | SCAFFOLD | No production collector discovered | `data/growth.py` accepts API events; tests insert fixtures | `/data/intent`, funnel/query/UI | None | No landing/CTA/Telegram collector | Synthetic fixture only | No trusted event ingestion, identity/session linkage, or dedupe boundary | P0 |
-| Conversion | SCAFFOLD | No Binance/external conversion API discovered | `data/growth.py` accepts API records; tests insert fixtures | `/data/conversion`, funnel/query/UI | None | No Binance referral callback/API | Synthetic fixture only | No externally verified conversion attribution | P0 |
-| Feedback | CODE + TEST VERIFIED | Analytics plus optional local intent/conversion rows | `feedback_bridge.refresh_account_feedback` | feedback snapshots/API/UI | Explicit refresh; deduped snapshots | None for local rules | Synthetic analytics/funnel bridge E2E | Because Intent/Conversion are not real, feedback is not yet proven business feedback | P0 |
+| Intent | CODE + TEST VERIFIED | Trusted signed server/relay request; public source not configured | `/attribution/intent` → `data.growth.record_intent` | `/data/intent`, funnel/query/UI | Local contract only; no public collector | Runtime HMAC secret; optional external relay | r32 local contract PASS; public E2E not available | No public deployment/real landing collector yet | P0 |
+| Conversion | CODE + TEST VERIFIED | Provider-neutral signed ingestion contract; no real provider source | `/attribution/conversion/{provider}` → `data.growth.record_conversion` | `/data/conversion`, funnel/query/UI | Adapter boundary only | Runtime HMAC; provider callback required | r32 synthetic provider PASS | Binance source not configured/discovered | P0 |
+| Feedback | CODE + TEST VERIFIED | Analytics plus canonical signed/local intent/conversion rows | `feedback_bridge.refresh_account_feedback` | feedback snapshots/API/UI | Explicit refresh; deduped snapshots | None for local rules | Synthetic analytics/attribution bridge E2E | Public events and provider conversions still unavailable | P0 |
 | Next Strategy | CODE + TEST VERIFIED | Feedback snapshot fields and deterministic rules | `strategy.py`, `task_generator.py` | Snapshot/UI and explicit materialize API | Recommendation generated on refresh; task creation manual | Optional provider selection | Synthetic strategy/materialization tests | No automatic Conversion → Intelligence → next ProductionTask loop | P0 |
 
 ## Verified Loop and Breaks
@@ -29,7 +29,7 @@ Scheduler Operational Hardening、Operational Runtime History、Crash/Recovery L
 
 `Content Data → Analytics → Query V2/Data Center → analytics-backed Intelligence feedback → strategy recommendation → (manual) ProductionTask → (manual/explicit) Production Runtime → VideoAsset → (manual/explicit) Publish`
 
-FIRST BROKEN LINK: **Traffic → Intent**。系统有平台内 views/engagement，但没有已证明的站外流量归因或真实 Intent Collector；因此不能可靠回答“哪个内容带来了哪个用户意图”。
+FIRST BROKEN LINK: **Public Traffic → Trusted Intent**。本地 signed ingestion contract 已建立并通过 r32，但公网 relay/landing collector 尚未部署，因此尚不能证明真实站外 click 到达 OS。
 
 SECONDARY GAPS:
 
@@ -51,7 +51,7 @@ SECONDARY GAPS:
 | produce | MANUAL | explicit task/runtime execution boundary |
 | publish | MANUAL | explicit publish run; no scheduler auto-publish |
 | observe platform traffic | AUTOMATIC | Analytics sync |
-| observe site intent | MISSING | no production collector |
+| observe site intent | PARTIAL | local HMAC boundary exists; public collector missing |
 | observe conversion | MISSING | no external attribution source |
 | learn / feedback | PARTIAL | analytics/local funnel snapshot only |
 | create next task | MISSING | no automatic AI → task transition |
@@ -60,7 +60,7 @@ SECONDARY GAPS:
 
 ### P0
 
-1. 建立可信、去重且可关联 `content_id / session_id / source` 的站外 Intent Collector（至少覆盖 landing/CTA/referral click）。
+1. 部署可信、去重且可关联 `content_id / session_id / source` 的站外 Intent Collector（至少覆盖 landing/CTA/referral click），连接本阶段 signed boundary。
 2. 建立 Binance referral conversion 的外部回传或可验证 attribution，并连接 intent、content、account。
 3. 在真实 Intent/Conversion 数据存在后，打通 feedback → strategy → **受控** ProductionTask 创建边界，并保留人工审批/执行安全门。
 4. 完成真实 Publish 状态回写与上线后关联，使内容闭环能从 VideoAsset 到 platform_video_id 再回到 observation。

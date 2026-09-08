@@ -83,7 +83,9 @@ Health Event Persistence：**MAINLINE VERIFIED ✅**。
 History Retention：**MAINLINE VERIFIED ✅**。
 Scheduler Operational Hardening：**CLOSED ✅**（证据层级为 synthetic real-process/two-process E2E + CI，不是长期生产运行）。
 
-CURRENT NEXT STEP：**OS Loop Gap Audit**。
+CURRENT NEXT STEP：**External Intent Collector + Referral Attribution E2E**。
+
+Real Intent + Referral Attribution Ingestion：**LOCAL INGESTION CONTRACT VERIFIED ✅**（signed HMAC boundary、additive schema、dedupe、identifier validation、privacy limits、signed redirect/link、r32）。PUBLIC REFERRAL CLICK E2E：**NOT YET AVAILABLE**。CONVERSION PROVIDER INGESTION：**ADAPTER ONLY**；BINANCE referral conversion source：**NOT CONFIGURED / NOT DISCOVERED**。
 
 OAuth Client runtime configuration is provided by the Windows CurrentUser secure store. The fixed bootstrap/recovery file is `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json`; normal backend startup does not depend on reading that JSON. OAuth tokens remain in `os/database/os.db`.
 # Runtime DB Safety

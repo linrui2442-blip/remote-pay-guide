@@ -103,3 +103,5 @@ Operational Runtime History / Health Event Persistence 已完成。`runtime_oper
 `runtime_health_events` 只持久化实际 health transition，并对稳定状态去重。History/events 由既有 accounts read-only API 暴露，frontend 仅在 Scheduler Health 中增加 Recent Runs / Recent Health Events，不形成第二套日志中心。Retention 对 terminal history 与 health events 设置有界清理；running history 不因 retention 被删除。
 
 上述行为已通过 network-free real-process 与 two-process E2E：competition、crash recovery、heartbeat、restart persistence 均验证。所有验证使用 `OS_TESTING=1` 与 repo 外 `OS_DATABASE_PATH`；Test Database Isolation 为 **MAINLINE + CI VERIFIED**。Scheduler Operational Hardening 已 **CLOSED**，当前工作位置为 **OS Loop Gap Audit**。ProductionRuntimePoller 与 BackgroundAccountSyncScheduler 继续作为不同 runtime worker。
+
+归因阶段建立 provider-neutral signed HMAC ingestion boundary（`/attribution/intent`、`/attribution/conversion/{provider}`、signed redirect/link），复用现有 `intent_events` 与 `conversion_records` 并以 additive migration/unique idempotency index 扩展。它只证明 local contract；公网 relay、真实 landing traffic 与 Binance conversion provider 仍是外部依赖。

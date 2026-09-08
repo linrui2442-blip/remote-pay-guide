@@ -35,6 +35,12 @@ def _ensure_tables():
             )
             """
         )
+        for name, field_type in {
+            "event_id": "TEXT", "account_id": "INTEGER", "platform": "TEXT",
+            "platform_video_id": "TEXT", "campaign_id": "TEXT", "received_at": "TEXT",
+        }.items():
+            if name not in {row[1] for row in conn.execute("PRAGMA table_info(intent_events)")}:
+                conn.execute(f"ALTER TABLE intent_events ADD COLUMN {name} {field_type}")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS conversion_records (
@@ -52,6 +58,12 @@ def _ensure_tables():
             )
             """
         )
+        for name, field_type in {
+            "external_conversion_id": "TEXT", "provider": "TEXT", "account_id": "INTEGER",
+            "platform": "TEXT", "platform_video_id": "TEXT", "received_at": "TEXT",
+        }.items():
+            if name not in {row[1] for row in conn.execute("PRAGMA table_info(conversion_records)")}:
+                conn.execute(f"ALTER TABLE conversion_records ADD COLUMN {name} {field_type}")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_intent_content ON intent_events(content_id)"
         )
@@ -61,6 +73,8 @@ def _ensure_tables():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_conversion_content ON conversion_records(content_id)"
         )
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_intent_source_event ON intent_events(source, event_id) WHERE event_id IS NOT NULL")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_conversion_provider_external ON conversion_records(provider, external_conversion_id) WHERE external_conversion_id IS NOT NULL")
         conn.commit()
 
 
@@ -100,13 +114,19 @@ def record_intent(event):
         event = IntentEvent(**dict(event))
 
     occurred_at = event.occurred_at or datetime.now(timezone.utc).isoformat()
+    received_at = event.received_at or datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
+        if event.event_id and event.source:
+            existing = conn.execute("SELECT * FROM intent_events WHERE source=? AND event_id=?", (event.source, event.event_id)).fetchone()
+            if existing:
+                result = _serialize_intent(existing); result["created"] = False; result["duplicate"] = True; return result
         cursor = conn.execute(
             """
             INSERT INTO intent_events
             (content_id, video_id, session_id, source, event_type,
-             event_value, metadata, occurred_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             event_value, metadata, occurred_at, event_id, account_id, platform,
+             platform_video_id, campaign_id, received_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event.content_id,
@@ -117,12 +137,14 @@ def record_intent(event):
                 _json_dump(event.event_value),
                 _json_dump(event.metadata or {}),
                 occurred_at,
+                event.event_id, event.account_id, event.platform,
+                event.platform_video_id or event.video_id, event.campaign_id, received_at,
             ),
         )
         event_id = cursor.lastrowid
         conn.commit()
         row = conn.execute("SELECT * FROM intent_events WHERE id=?", (event_id,)).fetchone()
-    return _serialize_intent(row)
+    result = _serialize_intent(row); result["created"] = True; result["duplicate"] = False; return result
 
 
 def record_conversion(record):
@@ -131,13 +153,19 @@ def record_conversion(record):
         record = ConversionRecord(**dict(record))
 
     occurred_at = record.occurred_at or datetime.now(timezone.utc).isoformat()
+    received_at = record.received_at or datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
+        if record.provider and record.external_conversion_id:
+            existing = conn.execute("SELECT * FROM conversion_records WHERE provider=? AND external_conversion_id=?", (record.provider, record.external_conversion_id)).fetchone()
+            if existing:
+                result = _serialize_conversion(existing); result["created"] = False; result["duplicate"] = True; return result
         cursor = conn.execute(
             """
             INSERT INTO conversion_records
             (content_id, video_id, session_id, source, conversion_type,
-             value, currency, intent_event_id, metadata, occurred_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             value, currency, intent_event_id, metadata, occurred_at,
+             external_conversion_id, provider, account_id, platform, platform_video_id, received_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.content_id,
@@ -150,6 +178,8 @@ def record_conversion(record):
                 record.intent_event_id,
                 _json_dump(record.metadata or {}),
                 occurred_at,
+                record.external_conversion_id, record.provider, record.account_id,
+                record.platform, record.platform_video_id or record.video_id, received_at,
             ),
         )
         record_id = cursor.lastrowid
@@ -157,7 +187,7 @@ def record_conversion(record):
         row = conn.execute(
             "SELECT * FROM conversion_records WHERE id=?", (record_id,)
         ).fetchone()
-    return _serialize_conversion(row)
+    result = _serialize_conversion(row); result["created"] = True; result["duplicate"] = False; return result
 
 
 def _in_date_range(value, start_date=None, end_date=None):

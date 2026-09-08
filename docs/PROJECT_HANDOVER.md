@@ -1430,9 +1430,11 @@ B reclaim 后，使用 A 的旧 owner 发起 success transition 与 failure tran
 
 ## CURRENT NEXT STEP
 
-**OS Loop Gap Audit**。Scheduler Operational Hardening 与 Operational Runtime History 已完成收口。
+**External Intent Collector + Referral Attribution E2E**。Scheduler Operational Hardening 与 Operational Runtime History 已完成收口。
 
 Operational Runtime History：**MAINLINE + CI VERIFIED**。Crash / Recovery Lineage：**MAINLINE VERIFIED**。Health Event Persistence：**MAINLINE VERIFIED**。History Retention：**MAINLINE VERIFIED**。Test Database Isolation：**MAINLINE + CI VERIFIED**。这些状态基于 synthetic real-process/two-process E2E 与 CI，不表示长期生产运行。
+
+Real Intent + Referral Attribution Ingestion：本地 trusted ingestion contract 已通过 r32（HMAC、dedupe、identifier validation、privacy boundary、signed redirect/link）；这不是公网真实 click E2E。Conversion provider boundary 仅为 provider-neutral adapter contract；Binance conversion source 未发现/未配置，禁止宣称 Binance E2E。
 
 Scheduler claim 现在原子创建唯一 `run_id` 历史记录；heartbeat 更新同一 run，success、failure 与 partial 原子完成该记录。过期 lease 被 reclaim 时，旧 run 持久化为 `lease_expired`，新 run 的 `recovery_of_run_id` 指向旧 run；stale owner 无法覆盖任一历史终态。健康状态变化持久化到 `runtime_health_events` 并按状态转换去重，避免 heartbeat/event spam。历史与健康事件提供只读 API，并在既有 Scheduler Health UI 中显示 Recent Runs / Recent Health Events。
 
