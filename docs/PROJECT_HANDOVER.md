@@ -1368,6 +1368,10 @@ OAuth 状态：stored OAuth token working，token refresh real PASS，Analytics 
 | Scheduler Lease Heartbeat | ✅ REAL TWO-PROCESS E2E VERIFIED |
 | Scheduler Runtime Timing | ✅ VERIFIED |
 | Scheduler Health / Stuck Detection | ✅ CODE + TEST VERIFIED |
+| Operational Runtime Run History | ✅ REAL PROCESS E2E VERIFIED |
+| Crash / Recovery Lineage | ✅ REAL TWO-PROCESS E2E VERIFIED |
+| Health Event Persistence | ✅ REAL PROCESS E2E VERIFIED |
+| History Retention | ✅ CODE + TEST VERIFIED |
 | Historical Daily Backfill | ✅ REAL E2E VERIFIED |
 | Backfill Operation Runtime | ✅ REAL E2E VERIFIED |
 | Backfill Control Plane UI | ✅ VERIFIED |
@@ -1375,7 +1379,8 @@ OAuth 状态：stored OAuth token working，token refresh real PASS，Analytics 
 | No-Data Observation Semantics | ✅ REAL E2E VERIFIED |
 | Analytics Gap Semantics | ✅ REAL E2E VERIFIED |
 | Data Center Real Trend | ✅ REAL E2E VERIFIED |
-| GitHub CI | ✅ 6/6 SUCCESS |
+| Test Database Isolation | ✅ MAINLINE + CI VERIFIED |
+| GitHub CI | ✅ ALL TRIGGERED WORKFLOWS SUCCESS |
 
 ## Scheduled Daily Analytics Sync — Real Unattended E2E
 
@@ -1425,7 +1430,11 @@ B reclaim 后，使用 A 的旧 owner 发起 success transition 与 failure tran
 
 ## CURRENT NEXT STEP
 
-**Operational Runtime History / Health Event Persistence**。
+**Operational Runtime History / Health Event Persistence 已完成 reconcile 与验证**。
+
+Scheduler claim 现在原子创建唯一 `run_id` 历史记录；heartbeat 更新同一 run，success、failure 与 partial 原子完成该记录。过期 lease 被 reclaim 时，旧 run 持久化为 `lease_expired`，新 run 的 `recovery_of_run_id` 指向旧 run；stale owner 无法覆盖任一历史终态。健康状态变化持久化到 `runtime_health_events` 并按状态转换去重，避免 heartbeat/event spam。历史与健康事件提供只读 API，并在既有 Scheduler Health UI 中显示 Recent Runs / Recent Health Events。
+
+Network-free real-process 验证覆盖：两个 process 竞争只产生一个 winner history；owner crash 后旧 run 标记 `lease_expired`、reclaimer 创建带 lineage 的新 success run；long-running heartbeat 始终更新同一 run。Restart persistence 已验证，retention 为 **CODE + TEST VERIFIED**。所有验证使用 repo 外临时数据库；Test Database Isolation 为 **MAINLINE + CI VERIFIED**。
 
 Long-running scheduler lease 已完成 owner-aware heartbeat。每个已 claim 的 run 使用轻量 daemon heartbeat，在 blocking executor 期间通过 SQLite CAS 续租；默认 interval 根据 lease TTL 计算，也可用 `ACCOUNT_SYNC_LEASE_HEARTBEAT_SECONDS` 配置，并始终小于 TTL。renew 返回 `lease_lost` 时 heartbeat 停止，旧 executor 自然返回后不能覆盖新 owner；不使用不安全的线程强杀。
 

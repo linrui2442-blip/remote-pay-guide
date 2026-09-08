@@ -69,9 +69,17 @@ Scheduler Runtime Timing：**VERIFIED ✅**。started/attempted 与真实 finish
 
 Scheduler Health / Stuck Detection：**CODE + TEST VERIFIED ✅**。状态包括 healthy、running、retrying、degraded、stuck_suspected、disabled；API/UI 提供 run age、lease renewing/at-risk、last completion/duration、due/retry 等 provider-neutral 信息。
 
-CURRENT NEXT STEP：**Operational Runtime History / Health Event Persistence**。
+Operational Runtime Run History：**REAL PROCESS E2E VERIFIED ✅**。claim 与 history 原子创建，heartbeat 更新同一 `run_id`，success/failure/partial 完成同一记录；跨 process loser 不产生 history。
+
+Crash / Recovery Lineage：**REAL TWO-PROCESS E2E VERIFIED ✅**。过期 owner 的 run 持久化为 `lease_expired`，reclaim run 的 `recovery_of_run_id` 指向旧 run，stale owner 无法覆盖历史终态。
+
+Health Event Persistence：**REAL PROCESS E2E VERIFIED ✅**。健康状态转换持久化且去重，restart 后仍可通过只读 API 与 Scheduler Health UI 的 Recent Health Events 查看。
+
+History Retention：**CODE + TEST VERIFIED ✅**。
+
+CURRENT NEXT STEP：Operational Runtime History reconciliation 完成；等待安全 commit 推送授权。
 
 OAuth Client runtime configuration is provided by the Windows CurrentUser secure store. The fixed bootstrap/recovery file is `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json`; normal backend startup does not depend on reading that JSON. OAuth tokens remain in `os/database/os.db`.
 # Runtime DB Safety
 
-Test Database Isolation: **CODE + REGRESSION VERIFIED**. Production runtime DB is never used as a test database; smoke tests use temporary isolated databases only, and destructive test operations are hard-guarded.
+Test Database Isolation: **MAINLINE + CI VERIFIED**. Production runtime DB is never used as a test database; smoke tests use temporary isolated databases only, and destructive test operations are hard-guarded.

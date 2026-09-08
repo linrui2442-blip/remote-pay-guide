@@ -98,4 +98,8 @@ Blocking account sync 期间由 per-run daemon heartbeat 通过 owner-aware SQLi
 
 该 heartbeat 已通过 network-free real two-process E2E：30 秒 TTL、5 秒 heartbeat、45 秒 executor 跨过原始 expiry，competitor 始终未执行；crash regression 证明 TTL 后仍能恢复。Runtime timing 持久化 started、finished 与 duration；health 分类覆盖 healthy、running、retrying、degraded、stuck_suspected、disabled。Stuck detection 只影响可观测性，不自动抢占 lease。
 
-当前开发位置为 **Operational Runtime History / Health Event Persistence**。ProductionRuntimePoller 与 BackgroundAccountSyncScheduler 继续作为不同 runtime worker。
+Operational Runtime History / Health Event Persistence 已完成。`runtime_operation_history` 以 `run_id` 记录 scheduler run；claim 与 history 创建保持原子性，heartbeat 只更新当前 run，终态写入使用 owner-aware compare-and-set。lease reclaim 将旧 run 标记为 `lease_expired`，并通过 `recovery_of_run_id` 保留 crash/recovery lineage。
+
+`runtime_health_events` 只持久化实际 health transition，并对稳定状态去重。History/events 由既有 accounts read-only API 暴露，frontend 仅在 Scheduler Health 中增加 Recent Runs / Recent Health Events，不形成第二套日志中心。Retention 对 terminal history 与 health events 设置有界清理；running history 不因 retention 被删除。
+
+上述行为已通过 network-free real-process 与 two-process E2E：competition、crash recovery、heartbeat、restart persistence 均验证。所有验证使用 `OS_TESTING=1` 与 repo 外 `OS_DATABASE_PATH`；Test Database Isolation 为 **MAINLINE + CI VERIFIED**。ProductionRuntimePoller 与 BackgroundAccountSyncScheduler 继续作为不同 runtime worker。

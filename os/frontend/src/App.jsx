@@ -14,6 +14,8 @@ import {
   getProductionTasks,
   getPublishTasks,
   getSchedulerStatus,
+  getSchedulerHistory,
+  getSchedulerEvents,
   runProductionTask,
   refreshProductionTask,
   saveAIGatewaySettings,
@@ -106,6 +108,15 @@ const LEASE_HEALTH_LABELS = {
   inactive: "Idle",
   renewing: "Renewing",
   at_risk: "At Risk",
+};
+
+const RUN_STATUS_LABELS = {
+  success: "Success",
+  partial: "Partial",
+  failed: "Failed",
+  running: "Running",
+  lease_expired: "Expired",
+  lease_lost: "Lease Lost",
 };
 
 function JsonDetails({ title = "查看原始数据", data }) {
@@ -222,6 +233,8 @@ function App() {
   const [savingAIGateway, setSavingAIGateway] = useState(false);
   const [schedulerHealth, setSchedulerHealth] = useState(null);
   const [schedulerHealthError, setSchedulerHealthError] = useState("");
+  const [schedulerRuns, setSchedulerRuns] = useState([]);
+  const [schedulerEvents, setSchedulerEvents] = useState([]);
 
   const refreshProduction = () => {
     getProductionStatus().then(setProductionStatus).catch(() => {});
@@ -278,9 +291,11 @@ function App() {
   };
 
   const refreshSchedulerHealth = () => {
-    getSchedulerStatus()
-      .then((status) => {
+    Promise.all([getSchedulerStatus(), getSchedulerHistory(8), getSchedulerEvents(8)])
+      .then(([status, history, events]) => {
         setSchedulerHealth(status);
+        setSchedulerRuns(history.items || []);
+        setSchedulerEvents(events.items || []);
         setSchedulerHealthError("");
       })
       .catch((error) => setSchedulerHealthError(error.message));
@@ -773,6 +788,33 @@ function App() {
             <div><span>Active Lease</span><strong>{schedulerHealth?.persistent?.active_leases ?? "—"}</strong></div>
           </div>
         )}
+      </section>
+
+      <section className="panel settings-panel">
+        <div className="panel-header"><div><span className="section-kicker">RUNTIME HISTORY</span><h2>Recent Runs</h2></div></div>
+        {schedulerRuns.length ? (
+          <div className="table-shell"><table><thead><tr><th>Time</th><th>Account / Platform</th><th>Reporting Day</th><th>Status</th><th>Duration</th></tr></thead><tbody>
+            {schedulerRuns.map((run) => <tr key={run.run_id}>
+              <td>{formatRuntimeTime(run.started_at)}</td>
+              <td>{run.account_id != null ? `#${run.account_id}` : "—"} / {platformLabel(run.platform)}</td>
+              <td>{run.reporting_date || "—"}</td>
+              <td><Badge tone={run.status === "success" ? "success" : ["failed", "lease_expired", "lease_lost"].includes(run.status) ? "danger" : "neutral"}>{RUN_STATUS_LABELS[run.status] || run.status}</Badge></td>
+              <td>{formatRuntimeDuration(run.duration_seconds)}</td>
+            </tr>)}
+          </tbody></table></div>
+        ) : <EmptyState title="No scheduler runs yet" description="Completed and active scheduler runs will persist here." />}
+      </section>
+
+      <section className="panel settings-panel">
+        <div className="panel-header"><div><span className="section-kicker">HEALTH TRANSITIONS</span><h2>Recent Health Events</h2></div></div>
+        {schedulerEvents.length ? (
+          <div className="runtime-event-list">{schedulerEvents.map((event) => (
+            <div className="runtime-event" key={event.id}>
+              <div><strong>{String(event.event_type || "event").replaceAll("_", " ")}</strong><span>{event.previous_health_state ? `${event.previous_health_state} → ` : ""}{event.health_state}</span></div>
+              <time>{formatRuntimeTime(event.observed_at)}</time>
+            </div>
+          ))}</div>
+        ) : <EmptyState title="No health transitions yet" description="Meaningful scheduler state changes will persist here without heartbeat polling noise." />}
       </section>
 
       <section className="panel settings-panel">

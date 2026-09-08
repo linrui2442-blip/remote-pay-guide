@@ -116,6 +116,12 @@ export function collectAccountAnalytics(accountId, platform, data = {}) {
 
 export function getAccounts() { return apiGet('/accounts'); }
 export function getSchedulerStatus() { return apiGet('/accounts/scheduler/status'); }
+export function getSchedulerHistory(limit = 8) {
+  return apiGet(`/accounts/scheduler/history?limit=${encodeURIComponent(limit)}`);
+}
+export function getSchedulerEvents(limit = 8) {
+  return apiGet(`/accounts/scheduler/events?limit=${encodeURIComponent(limit)}`);
+}
 export function createAccount(data) { return apiPost('/accounts', data); }
 export function getAccountSyncPlan(accountId) {
   return apiGet(`/accounts/${encodeURIComponent(accountId)}/sync-plan`);
