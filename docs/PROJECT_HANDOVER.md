@@ -1362,6 +1362,7 @@ OAuth 状态：stored OAuth token working，token refresh real PASS，Analytics 
 | Query V2 Backend | ✅ VERIFIED |
 | Query V2 Frontend | ✅ VERIFIED |
 | Scheduled Daily Analytics Sync | ✅ REAL UNATTENDED E2E VERIFIED |
+| Scheduler Cross-process Claim / Lease | ✅ CODE + TEST VERIFIED |
 | Historical Daily Backfill | ✅ REAL E2E VERIFIED |
 | Backfill Operation Runtime | ✅ REAL E2E VERIFIED |
 | Backfill Control Plane UI | ✅ VERIFIED |
@@ -1407,7 +1408,9 @@ Query V2 对 `2026-09-06` 返回 `has_snapshot=false`、`snapshot_count=0`、met
 
 **Scheduler Runtime Hardening / Production Observability**。
 
-下一阶段聚焦 multi-process / cross-process scheduler safety、runtime observability、duplicate-worker protection / locking，以及 scheduler operational health visibility。本次只记录该方向，不实现这些能力。
+已实现的基础保护为 SQLite atomic scheduler claim / lease：同一 `account_id + platform + target_daily_date` 同时只能由一个 scheduler instance 获得执行权。lease 使用随机 instance owner、可配置 TTL 与过期回收；success、failure 与 partial 都使用 owner-aware compare-and-set 释放 lease，stale owner 不得覆盖新 owner 的状态。`GET /accounts/scheduler/status` 与系统设置 Scheduler Health 区域提供只读 runtime/persistent health（due accounts、active/expired leases、retry、最近 success/failure），不提供手工 run API。
+
+该能力目前为 **CODE + TEST VERIFIED**，不是 Real Two-Process Scheduler Coordination E2E VERIFIED。下一阶段继续聚焦真实双进程验证、runtime observability、duplicate-worker protection / locking，以及 scheduler operational health visibility。
 
 ## Google OAuth Client Runtime Configuration
 

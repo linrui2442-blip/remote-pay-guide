@@ -13,6 +13,7 @@ import {
   getProductionStatus,
   getProductionTasks,
   getPublishTasks,
+  getSchedulerStatus,
   runProductionTask,
   refreshProductionTask,
   saveAIGatewaySettings,
@@ -78,6 +79,12 @@ function StatCard({ label, value, hint }) {
       {hint && <span className="stat-hint">{hint}</span>}
     </div>
   );
+}
+
+function formatRuntimeTime(value) {
+  if (!value) return "尚无记录";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
 }
 
 function JsonDetails({ title = "查看原始数据", data }) {
@@ -192,6 +199,8 @@ function App() {
   const [aiGatewayUrl, setAIGatewayUrl] = useState("");
   const [aiGatewayMessage, setAIGatewayMessage] = useState("");
   const [savingAIGateway, setSavingAIGateway] = useState(false);
+  const [schedulerHealth, setSchedulerHealth] = useState(null);
+  const [schedulerHealthError, setSchedulerHealthError] = useState("");
 
   const refreshProduction = () => {
     getProductionStatus().then(setProductionStatus).catch(() => {});
@@ -247,6 +256,15 @@ function App() {
       .catch((error) => setAIGatewayMessage(error.message));
   };
 
+  const refreshSchedulerHealth = () => {
+    getSchedulerStatus()
+      .then((status) => {
+        setSchedulerHealth(status);
+        setSchedulerHealthError("");
+      })
+      .catch((error) => setSchedulerHealthError(error.message));
+  };
+
   useEffect(() => {
     apiGet("/").then(setSystem).catch(() => setSystem({ status: "offline" }));
     apiGet("/assets").then(setAssets).catch(() => {});
@@ -257,7 +275,12 @@ function App() {
     refreshProduction();
     refreshProxy();
     refreshAIGateway();
+    refreshSchedulerHealth();
   }, []);
+
+  useEffect(() => {
+    if (activeView === "settings") refreshSchedulerHealth();
+  }, [activeView]);
 
   const createTask = () => {
     const taskType = provider === "ai_gateway" ? "video_generation" : "video_batch";
@@ -706,6 +729,27 @@ function App() {
       <div className="page-heading compact">
         <div><span className="eyebrow">SETTINGS</span><h1>系统设置</h1><p>配置网络代理与 AI Remote Production 的远程网关。敏感 API Key 不在这里保存。</p></div>
       </div>
+
+      <section className="panel settings-panel">
+        <div className="panel-header">
+          <div><span className="section-kicker">BACKGROUND SYNC</span><h2>Scheduler Health</h2></div>
+          <Badge tone={schedulerHealthError ? "danger" : schedulerHealth?.enabled && schedulerHealth?.running ? "success" : "neutral"}>
+            {schedulerHealthError ? "Error" : !schedulerHealth?.enabled ? "Disabled" : schedulerHealth?.running ? "Running" : "Stopped"}
+          </Badge>
+        </div>
+
+        {schedulerHealthError ? (
+          <div className="notice">Scheduler health unavailable: {schedulerHealthError}</div>
+        ) : (
+          <div className="settings-status scheduler-health-grid">
+            <div><span>Last Check</span><strong>{formatRuntimeTime(schedulerHealth?.last_check_at)}</strong></div>
+            <div><span>Last Successful Daily Sync</span><strong>{formatRuntimeTime(schedulerHealth?.persistent?.last_success_at)}</strong></div>
+            <div><span>Accounts Due</span><strong>{schedulerHealth?.persistent?.due_accounts_count ?? "—"}</strong></div>
+            <div><span>Accounts Retrying</span><strong>{schedulerHealth?.persistent?.accounts_in_retry ?? "—"}</strong></div>
+            <div><span>Active Lease</span><strong>{schedulerHealth?.persistent?.active_leases ?? "—"}</strong></div>
+          </div>
+        )}
+      </section>
 
       <section className="panel settings-panel">
         <div className="panel-header">

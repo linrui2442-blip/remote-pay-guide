@@ -59,4 +59,6 @@ Scheduled Daily Analytics Sync：**REAL UNATTENDED E2E VERIFIED ✅**（验证�
 
 CURRENT NEXT STEP：**Scheduler Runtime Hardening / Production Observability**。下一阶段聚焦 multi-process / cross-process scheduler safety、runtime observability、duplicate-worker protection / locking 与 scheduler operational health visibility；本轮未实现这些能力。
 
+Scheduler Cross-process Claim / Lease：**CODE + TEST VERIFIED**。`platform_sync_state` 以 SQLite 条件 UPDATE 原子 claim 同一 account/platform/reporting day；lease owner、TTL expiry/reclaim 和 owner-aware success/failure/partial release 防止两个 backend process 重复执行或 stale owner 覆盖。只读 `/accounts/scheduler/status` 与系统设置 Scheduler Health 展示运行状态、due/retry/lease 和最近成功/失败摘要。尚未进行真实双 backend process E2E。
+
 OAuth Client runtime configuration is provided by the Windows CurrentUser secure store. The fixed bootstrap/recovery file is `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json`; normal backend startup does not depend on reading that JSON. OAuth tokens remain in `os/database/os.db`.

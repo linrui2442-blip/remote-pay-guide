@@ -115,6 +115,7 @@ export function collectAccountAnalytics(accountId, platform, data = {}) {
 }
 
 export function getAccounts() { return apiGet('/accounts'); }
+export function getSchedulerStatus() { return apiGet('/accounts/scheduler/status'); }
 export function createAccount(data) { return apiPost('/accounts', data); }
 export function getAccountSyncPlan(accountId) {
   return apiGet(`/accounts/${encodeURIComponent(accountId)}/sync-plan`);

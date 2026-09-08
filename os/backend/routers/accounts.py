@@ -8,7 +8,7 @@ from accounts.models import Account
 from data.sync_state import get_sync_state
 from integrations.sync_planner import build_account_sync_plan
 from integrations.sync_registry import run_content_sync
-from integrations.sync_scheduler import execute_account_sync
+from integrations.sync_scheduler import account_sync_scheduler, execute_account_sync
 
 
 router = APIRouter()
@@ -28,6 +28,12 @@ class AccountFullSyncRequest(AccountSyncRequest):
 @router.get('/accounts')
 def accounts():
     return get_accounts()
+
+
+@router.get('/accounts/scheduler/status')
+def scheduler_status():
+    """Read-only process and persistent health for background account sync."""
+    return account_sync_scheduler.status()
 
 
 @router.get('/accounts/{account_id}')

@@ -1,5 +1,6 @@
 import os
 import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -8,12 +9,13 @@ from analytics.collector import AnalyticsCollector
 from analytics.publish_bridge import collect_account_publish_metrics
 from analytics.registry import get_analytics_adapter_registration
 from data.sync_state import (
+    get_scheduler_persistent_summary,
     get_sync_state,
-    mark_scheduler_attempt,
     mark_scheduler_failure,
     mark_scheduler_success,
     mark_sync_failure,
     mark_sync_partial,
+    try_claim_scheduler_run,
 )
 from integrations.sync_planner import build_account_sync_plan
 from integrations.sync_registry import run_content_sync
@@ -221,6 +223,10 @@ def due_accounts(*, now=None, accounts=None):
         next_retry = state.get('scheduler_next_retry_at')
         if next_retry and _utc_datetime(next_retry) > current:
             continue
+        lease_owner = state.get('scheduler_lease_owner')
+        lease_expires = state.get('scheduler_lease_expires_at')
+        if lease_owner and lease_expires and _utc_datetime(lease_expires) > current:
+            continue
         due.append({
             'account': account,
             'sync_state': state,
@@ -240,6 +246,8 @@ class BackgroundAccountSyncScheduler:
         sync_executor=None,
         clock=None,
         backoff_seconds=(300, 900, 3600),
+        lease_seconds=None,
+        owner_id=None,
     ):
         configured = (
             interval_seconds
@@ -251,6 +259,14 @@ class BackgroundAccountSyncScheduler:
         self.sync_executor = sync_executor or execute_account_sync
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.backoff_seconds = tuple(backoff_seconds)
+        configured_lease = (
+            lease_seconds
+            or os.getenv('ACCOUNT_SYNC_LEASE_SECONDS')
+            or 1800
+        )
+        self.lease_seconds = max(30, int(configured_lease))
+        self.owner_id = str(owner_id or uuid.uuid4())
+        self.instance_id = self.owner_id.replace('-', '')[:12]
         self._stop_event = threading.Event()
         self._thread = None
         self.last_check_at = None
@@ -266,7 +282,23 @@ class BackgroundAccountSyncScheduler:
             platform = str(account.get('platform') or '').strip().lower()
             daily_date = candidate['daily_date']
             attempted_at = now.isoformat()
-            mark_scheduler_attempt(account['id'], platform, attempted_at=attempted_at)
+            claim = try_claim_scheduler_run(
+                account['id'],
+                platform,
+                daily_date,
+                self.owner_id,
+                now=now,
+                lease_seconds=self.lease_seconds,
+            )
+            if not claim['claimed']:
+                outcomes.append({
+                    'account_id': account['id'],
+                    'platform': platform,
+                    'status': 'not_claimed',
+                    'lease_status': claim['reason'],
+                    'sync_state': claim['sync_state'],
+                })
+                continue
             try:
                 result = self.sync_executor(
                     account['id'],
@@ -282,48 +314,59 @@ class BackgroundAccountSyncScheduler:
                         if errors
                         else f"account sync returned {result_status}"
                     )
-                    state = mark_scheduler_failure(
+                    transition = mark_scheduler_failure(
                         account['id'], platform, error, failed_at=attempted_at,
                         backoff_seconds=self.backoff_seconds, status=result_status,
+                        owner_id=self.owner_id,
                     )
+                    state = transition['sync_state']
+                    outcome_status = result_status if transition['applied'] else 'lease_lost'
                     outcomes.append({
                         'account_id': account['id'],
                         'platform': platform,
-                        'status': result_status,
+                        'status': outcome_status,
+                        'lease_status': transition['reason'],
                         'error': error,
                         'result': result,
                         'sync_state': state,
                     })
                     continue
-                state = mark_scheduler_success(
-                    account['id'], platform, daily_date, succeeded_at=attempted_at
+                transition = mark_scheduler_success(
+                    account['id'], platform, daily_date,
+                    owner_id=self.owner_id, succeeded_at=attempted_at
                 )
+                state = transition['sync_state']
                 outcomes.append({
                     'account_id': account['id'],
                     'platform': platform,
-                    'status': 'success',
+                    'status': 'success' if transition['applied'] else 'lease_lost',
+                    'lease_status': transition['reason'],
                     'result': result,
                     'sync_state': state,
                 })
             except Exception as exc:
-                state = mark_scheduler_failure(
+                transition = mark_scheduler_failure(
                     account['id'],
                     platform,
                     exc,
                     failed_at=attempted_at,
                     backoff_seconds=self.backoff_seconds,
+                    owner_id=self.owner_id,
                 )
+                state = transition['sync_state']
                 outcomes.append({
                     'account_id': account['id'],
                     'platform': platform,
-                    'status': 'failed',
+                    'status': 'failed' if transition['applied'] else 'lease_lost',
+                    'lease_status': transition['reason'],
                     'error': str(exc),
                     'sync_state': state,
                 })
         self.last_check_at = now.isoformat()
         self.check_count += 1
         self.last_error = next(
-            (item.get('error') for item in outcomes if item['status'] == 'failed'),
+            (item.get('error') or item.get('lease_status')
+             for item in outcomes if item['status'] in {'failed', 'lease_lost'}),
             None,
         )
         return {'checked': len(candidates), 'outcomes': outcomes, 'checked_at': self.last_check_at}
@@ -357,12 +400,26 @@ class BackgroundAccountSyncScheduler:
         return self.status()
 
     def status(self):
+        disabled = str(os.getenv('OS_DISABLE_BACKGROUND_ACCOUNT_SYNC') or '').lower() in {'1', 'true', 'yes'}
+        now = _utc_datetime(self.clock())
+        persistent = get_scheduler_persistent_summary(now=now)
+        try:
+            due_count = len(due_accounts(now=now, accounts=self.account_source()))
+        except Exception:
+            due_count = None
         return {
+            'enabled': not disabled,
             'running': bool(self._thread and self._thread.is_alive()),
+            'instance_id': self.instance_id,
             'interval_seconds': self.interval_seconds,
+            'lease_seconds': self.lease_seconds,
             'last_check_at': self.last_check_at,
             'last_error': self.last_error,
             'check_count': self.check_count,
+            'persistent': {
+                'due_accounts_count': due_count,
+                **persistent,
+            },
         }
 
 
