@@ -53,8 +53,10 @@ Do not recreate completed systems from old phase documents.
 
 ## Verified Runtime Milestone
 
-YouTube Analytics Real 7D E2E：**FULL E2E VERIFIED**（YouTube account 1，2026-08-31 → 2026-09-06，America/Los_Angeles）。结果为 50 个真实每日 snapshots 与 20 个 no-data observations；Query V2 与 Data Center gap semantics 已真实验证。Scheduled Daily Analytics Sync 仍为 code/test complete，真实无人值守 E2E 尚未完成。
+YouTube Analytics Real 7D Historical Backfill E2E：**FULL E2E VERIFIED**（YouTube account 1，2026-08-31 → 2026-09-06，America/Los_Angeles）。结果为 50 个真实每日 snapshots 与 20 个 no-data observations；Query V2 与 Data Center gap semantics 已真实验证。
 
-CURRENT NEXT STEP：Scheduled Daily Analytics Sync — Real Unattended E2E Validation。该阶段尚未执行。
+Scheduled Daily Analytics Sync：**REAL UNATTENDED E2E VERIFIED ✅**（验证日期 2026-09-08）。FastAPI lifespan 自动启动 background scheduler，自动选择 due account，并通过 Windows DPAPI CurrentUser OAuth client config 与现有 refresh token 完成真实 token refresh、content sync、daily/default aggregate Analytics sync、no-data persistence、persistent scheduler state advancement，以及 Query V2 / Data Center 验证。target daily date `2026-09-06` 的 10 个 eligible videos 产生 10 个 no-data observations、0 个 daily snapshots、0 failures 与 0 fake zeros；same-day idempotency 已真实验证。
+
+CURRENT NEXT STEP：**Scheduler Runtime Hardening / Production Observability**。下一阶段聚焦 multi-process / cross-process scheduler safety、runtime observability、duplicate-worker protection / locking 与 scheduler operational health visibility；本轮未实现这些能力。
 
 OAuth Client runtime configuration is provided by the Windows CurrentUser secure store. The fixed bootstrap/recovery file is `%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json`; normal backend startup does not depend on reading that JSON. OAuth tokens remain in `os/database/os.db`.

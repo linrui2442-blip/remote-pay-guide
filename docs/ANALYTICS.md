@@ -146,4 +146,14 @@ Identify which content generates users with real stablecoin payment intent and r
 
 ## Current Real Validation
 
-YouTube Analytics 7D historical backfill 已完成 FULL E2E VERIFIED：50 个真实每日 snapshots + 20 个 no-data observations（2026-08-31 至 2026-09-06，America/Los_Angeles）。Query V2 与 Data Center 已验证真实 gap（无 fake zero、无 aggregate-to-daily splitting）。Scheduled Daily Analytics Sync 目前仍仅 code/test complete，尚待独立的 unattended E2E validation。
+两条独立的真实 Analytics runtime 链均已完成验证：
+
+### A. Historical Backfill Runtime
+
+YouTube Analytics 7D Historical Backfill：**FULL E2E VERIFIED**。窗口为 2026-08-31 至 2026-09-06（America/Los_Angeles），结果为 50 个真实每日 snapshots + 20 个 no-data observations。Query V2 与 Data Center 已验证真实 gap（无 fake zero、无 aggregate-to-daily splitting）。
+
+### B. Scheduled Daily Background Sync Runtime
+
+Scheduled Daily Analytics Sync：**REAL UNATTENDED E2E VERIFIED**（2026-09-08）。FastAPI lifespan 是唯一执行触发；background scheduler 自动识别 account 1 为 due，并针对 target daily date 2026-09-06 完成真实 OAuth token refresh 和 YouTube Analytics read。10 个 eligible videos 返回 0 个 daily snapshots、10 个 `AnalyticsNoData` observations、0 failures 与 0 fake zeros，随后正确推进 persistent scheduler state。
+
+同一轮 default aggregate window（2026-08-11 至 2026-09-07）独立写入 10 个 video aggregate rows 与 1 个 account aggregate row；这些 aggregate rows 未被当作 daily snapshots，也未拆成 daily trend points。第二次 due check 未重复运行同一 target day，same-reporting-day idempotency 已真实验证。

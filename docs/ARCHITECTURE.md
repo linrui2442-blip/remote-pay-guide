@@ -76,4 +76,16 @@ Runtime state must remain stable.
 
 ## Current Verified Analytics Boundary
 
-真实验证链已闭合：Google OAuth → token refresh → YouTube Analytics API → Historical Backfill Runtime → analytics_metrics / no-data coverage → Query V2 → Data Center。7 日窗口包含 5 个真实 snapshot dates 与 2 个 gap dates；gap 不得伪造为零流量。Scheduled Daily Analytics Sync 尚未完成真实无人值守 E2E，下一阶段仅做该验证。
+Historical Analytics 链已闭合：Google OAuth → token refresh → YouTube Analytics API → Historical Backfill Runtime → analytics_metrics / no-data coverage → Query V2 → Data Center。已验证的 historical 7 日窗口包含 5 个真实 snapshot dates 与 2 个 gap dates；gap 不得伪造为零流量。
+
+Scheduled Daily Analytics Sync 也已完成 **REAL UNATTENDED E2E VERIFIED**。FastAPI lifespan 的正常 runtime 组成包括：
+
+```text
+Production runtime poller
++ Background Account Sync Scheduler
++ Analytics Backfill Worker
+```
+
+2026-09-08 的 unattended validation 只以 FastAPI lifespan 启动 Background Account Sync Scheduler，并显式禁用 Analytics Backfill Worker 以隔离 scheduler 测试；该隔离设置不是正常生产默认配置。验证链通过 Windows DPAPI CurrentUser secure store 与 `os/database/os.db` refresh token 自动刷新 OAuth，执行 YouTube metadata/Analytics reads，并推进 no-data persistence、`platform_sync_state`、Query V2 与 Data Center。Production runtime poller 启动前确认没有 running RuntimeJob，scheduler 未创建 ProductionTask。
+
+Scheduled daily window 与 default aggregate window 保持不同语义。Daily no-data 会保留为 unavailable gap；aggregate rows 不得拆分成 daily points。当前开发位置是 **Scheduler Runtime Hardening / Production Observability**，重点包括 multi-process / cross-process scheduler safety、duplicate-worker protection / locking、runtime observability 与 scheduler operational health visibility。

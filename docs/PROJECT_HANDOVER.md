@@ -1361,33 +1361,53 @@ OAuth 状态：stored OAuth token working，token refresh real PASS，Analytics 
 |---|---|
 | Query V2 Backend | ✅ VERIFIED |
 | Query V2 Frontend | ✅ VERIFIED |
-| Scheduled Daily Analytics Sync | ✅ CODE COMPLETE |
+| Scheduled Daily Analytics Sync | ✅ REAL UNATTENDED E2E VERIFIED |
 | Historical Daily Backfill | ✅ REAL E2E VERIFIED |
 | Backfill Operation Runtime | ✅ REAL E2E VERIFIED |
 | Backfill Control Plane UI | ✅ VERIFIED |
-| OAuth Runtime Readiness | ✅ VERIFIED |
+| OAuth Runtime Persistence | ✅ REAL VERIFIED |
 | No-Data Observation Semantics | ✅ REAL E2E VERIFIED |
 | Analytics Gap Semantics | ✅ REAL E2E VERIFIED |
 | Data Center Real Trend | ✅ REAL E2E VERIFIED |
 | GitHub CI | ✅ 6/6 SUCCESS |
 
-## CURRENT NEXT STEP
+## Scheduled Daily Analytics Sync — Real Unattended E2E
 
-**Scheduled Daily Analytics Sync — Real Unattended E2E Validation**。
-
-下一阶段目标是让已有 background scheduler 在不手工创建 backfill operation 的情况下，针对 latest complete provider reporting day 自动执行：
+验证日期 `2026-09-08`：**REAL UNATTENDED E2E VERIFIED**。
 
 ```text
-Account Scheduler
-→ YouTube OAuth
-→ YouTube Analytics
-→ daily snapshot OR AnalyticsNoData
-→ persistent sync state
-→ Query V2
-→ Data Center
+FastAPI lifespan
+→ Background Account Sync Scheduler
+→ due account detection
+→ Windows DPAPI CurrentUser OAuth client config
+→ existing refresh token
+→ Google token refresh
+→ YouTube metadata sync
+→ YouTube Analytics daily/default aggregate reads
+→ analytics/no-data persistence
+→ platform_sync_state advancement
+→ Query V2 / Data Center
 ```
 
-本次 closeout 未执行该流程；Scheduled Daily Analytics 目前仅为 code/test complete，尚未标记为 Scheduled Daily Analytics Real E2E VERIFIED。
+验收对象为 `account_id=1`、`platform=youtube`。provider timezone 为 `America/Los_Angeles`，provider reporting date 为 `2026-09-07`，latest complete target daily date 为 `2026-09-06`。启动前 account 确认为 due；唯一执行触发是 FastAPI lifespan，background scheduler 启用且没有手工调用 scheduler。Historical Analytics Backfill Worker 仅在本次隔离验证中显式禁用，这不是正常生产默认配置。
+
+OAuth 环境变量未设置，backend 未读取 recovery JSON；OAuth client config 来自 Windows DPAPI CurrentUser secure store，并与 `os/database/os.db` 中的 existing refresh token 完成真实 token refresh（PASS）。`content_sync`、`analytics_sync` 与 `intelligence_feedback` 均为 SUCCESS。
+
+Daily window 覆盖 10 个 eligible videos。target day 的结果为 0 个真实 daily snapshots、10 个 `AnalyticsNoData` observations、0 failures、0 fake-zero snapshots。成功后持久化状态为 `scheduler_last_daily_date=2026-09-06`、`scheduler_retry_count=0`、`scheduler_next_retry_at=null`、`scheduler_last_error=null`。
+
+默认 aggregate window 为 `2026-08-11 → 2026-09-07`，本轮写入 10 个 video aggregate rows 与 1 个 account aggregate row。这些行继续保持 aggregate semantics：它们不是 daily snapshots，也未被拆分成 daily points。
+
+Query V2 对 `2026-09-06` 返回 `has_snapshot=false`、`snapshot_count=0`、metric values 为 `null`、fake zero 为 NO。本次 rolling 7D 为 7 个 calendar slots、4 个 real points、3 个 gap points，进一步验证 `AnalyticsNoData` 不等于 fake 0 metric。
+
+同一 reporting day 的第二次 due check 已真实观察：same target rerun 为 NO、duplicate daily snapshots 为 NO；额外 scheduler cycle 后 attempt timestamp 未变化，Analytics rows 保持 60，target-day snapshots 保持 0。因此 same-reporting-day scheduler idempotency 为 **REAL VERIFIED**。
+
+安全边界保持不变：ProductionTask `1 → 1`，scheduler 未自动创建 ProductionTask；未创建 backfill operation，existing backfill operation 1 保持 success 且未改变；YouTube upload、remote content modification、video download、comment-body sync 与 Postiz 均为 NO。
+
+## CURRENT NEXT STEP
+
+**Scheduler Runtime Hardening / Production Observability**。
+
+下一阶段聚焦 multi-process / cross-process scheduler safety、runtime observability、duplicate-worker protection / locking，以及 scheduler operational health visibility。本次只记录该方向，不实现这些能力。
 
 ## Google OAuth Client Runtime Configuration
 
