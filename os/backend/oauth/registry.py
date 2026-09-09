@@ -143,6 +143,7 @@ def complete_account_connection(
         state,
         provider=registration.state_provider,
         expected_scope_profile=(['facebook_publish', 'meta_full'] if normalized == 'facebook' else (['instagram_publish', 'meta_full'] if normalized == 'instagram' else None)),
+        expected_connector_platform=normalized,
     )
     if not state_record:
         raise ValueError('invalid or expired OAuth state')
@@ -220,6 +221,7 @@ def _youtube_authorize(account_id: int, scope_profile: str):
         account_id,
         result['state'],
         provider='youtube',
+        connector_platform='youtube',
         scope_profile=provider.scope_profile,
         code_verifier=result.get('code_verifier'),
     )

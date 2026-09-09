@@ -41,6 +41,7 @@ def _connect():
             state TEXT PRIMARY KEY,
             account_id INTEGER,
             provider TEXT,
+            connector_platform TEXT,
             scope_profile TEXT,
             code_verifier TEXT,
             expires_at TEXT,
@@ -58,6 +59,10 @@ def _connect():
         conn.execute("ALTER TABLE oauth_states ADD COLUMN code_verifier TEXT")
 
     conn.commit()
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(oauth_states)").fetchall()}
+    if "connector_platform" not in columns:
+        conn.execute("ALTER TABLE oauth_states ADD COLUMN connector_platform TEXT")
+        conn.commit()
     return conn
 
 
@@ -184,6 +189,7 @@ def create_oauth_state(
     ttl_minutes=10,
     scope_profile="publish",
     code_verifier=None,
+    connector_platform=None,
 ):
     if not state:
         raise ValueError("OAuth state is required")
@@ -198,13 +204,14 @@ def create_oauth_state(
     conn.execute(
         """
         INSERT OR REPLACE INTO oauth_states
-        (state, account_id, provider, scope_profile, code_verifier, expires_at, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (state, account_id, provider, connector_platform, scope_profile, code_verifier, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             state,
             account_id,
             provider,
+            connector_platform,
             scope_profile,
             code_verifier,
             expires_at.isoformat(),
@@ -257,7 +264,7 @@ def consume_oauth_state(
     return bool(record)
 
 
-def consume_oauth_state_by_state(state, provider="youtube", expected_scope_profile=None):
+def consume_oauth_state_by_state(state, provider="youtube", expected_scope_profile=None, expected_connector_platform=None):
     """Resolve account/scope/PKCE metadata from the opaque one-time state."""
     if not state:
         return None
@@ -266,7 +273,7 @@ def consume_oauth_state_by_state(state, provider="youtube", expected_scope_profi
     conn = _connect()
     row = conn.execute(
         """
-        SELECT state, account_id, provider, scope_profile, code_verifier, expires_at
+        SELECT state, account_id, provider, connector_platform, scope_profile, code_verifier, expires_at
         FROM oauth_states
         WHERE state=? AND provider=?
         """,
@@ -280,6 +287,9 @@ def consume_oauth_state_by_state(state, provider="youtube", expected_scope_profi
         if actual not in expected:
             conn.close()
             return None
+    if record and expected_connector_platform is not None and record.get("connector_platform") != expected_connector_platform:
+        conn.close()
+        return None
     if row:
         conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
         conn.commit()

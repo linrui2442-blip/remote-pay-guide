@@ -34,7 +34,7 @@ class MetaOAuthProvider:
 
     def authorization_url(self, account_id):
         self._require_config(); state = secrets.token_urlsafe(32)
-        create_oauth_state(account_id, state, provider="meta", scope_profile=self.scope_profile)
+        create_oauth_state(account_id, state, provider="meta", connector_platform=self.platform, scope_profile=self.scope_profile)
         query = {"client_id": self.config["app_id"], "redirect_uri": self.config["redirect_uri"], "state": state, "scope": ",".join(self.scopes), "response_type": "code"}
         return {"authorization_url": "https://www.facebook.com/" + self.config["graph_api_version"] + "/dialog/oauth?" + urlencode(query), "state": state, "scope_profile": self.scope_profile, "scopes": self.scopes}
 
