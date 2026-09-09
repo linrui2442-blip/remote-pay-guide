@@ -1,28 +1,25 @@
 # Remote Pay Guide OS — Current Project Handover
 
-> Current-state handover refreshed: 2026-09-09
+> Refreshed: 2026-09-09
 >
 > Repository: `linrui2442-blip/remote-pay-guide`
 >
 > Default branch: `main`
->
-> This document intentionally describes the **current operating architecture and next development break-point**. Commit-level historical details remain available in Git history, `RUN_HISTORY.md`, and historical docs.
+
+This is the canonical current handover. Historical commit-level detail remains in Git history and historical docs.
 
 ---
 
 # 0. Takeover Rules
 
-A new ChatGPT / Codex window must not redesign the project from memory or from an old phase document.
-
 Read in this order:
 
 ```text
-1. Current main branch code
+1. current main code
 2. docs/PROJECT_STATUS.md
 3. docs/PROJECT_HANDOVER.md
 4. docs/OS_LOOP_GAP_AUDIT.md
 5. docs/REMOTE_PAY_GUIDE_OS_BLUEPRINT.md
-6. Other historical docs only when needed
 ```
 
 Fact priority:
@@ -31,617 +28,289 @@ Fact priority:
 current main code
 > docs/PROJECT_STATUS.md
 > docs/PROJECT_HANDOVER.md
-> docs/OS_LOOP_GAP_AUDIT.md
+> Gap Audit
 > Blueprint
 > historical docs / old chats
 ```
 
-If an older section or document says the next step is Query V2, Scheduler Hardening, or mandatory Public Intent Collector deployment, treat that as historical unless current code and `docs/PROJECT_STATUS.md` confirm it.
+Do not restart old phases such as Query V2, Scheduler Hardening, or mandatory Public Intent Collector deployment unless current code and current status prove a new gap.
 
-User workflow preference:
-
-- execute rather than repeatedly ask for permission;
-- inspect code, fix, test, commit, and check CI directly when safe;
-- stop only for real third-party authorization, paid external generation, real public publishing, destructive operations, or credentials that truly require the user;
-- do not claim external E2E from synthetic tests.
+Do not claim real E2E from synthetic/local tests.
 
 ---
 
 # 1. Project Positioning
 
-Remote Pay Guide OS is **not** a single video generator and **not** a YouTube client.
-
-It is an AI-driven content production and growth operations control system:
+Remote Pay Guide OS is an AI-driven content production and growth operations control system:
 
 ```text
 Data Feedback
-↓
-AI Intelligence
-↓
-Production Task
-↓
-Production Execution
-↓
-Video Asset
-↓
-Publish
-↓
-Traffic / Intent / Referral / Conversion
-↓
-Data Feedback
+→ AI Intelligence
+→ Production Task
+→ Production Execution
+→ Video Asset
+→ Publish
+→ Traffic / Intent / Referral
+→ Data Feedback
 ```
 
-Current practical business loop is:
+Current measured business signal:
 
 ```text
-Content
-↓
-YouTube traffic / engagement
-↓
-Landing page
-↓
-User intent
-↓
-Binance referral-link click
-↓
-AI Intelligence
-↓
-Next production strategy
+which content generated a Binance referral-link click?
 ```
 
-A later optional business loop may add verified Binance registration/conversion attribution when a real provider/API/callback or equivalent trusted source is available and worth integrating.
-
-Do not make Binance registration attribution a blocker for measuring referral-link clicks now.
+Binance registration/conversion attribution is deferred until real operating data justifies it.
 
 ---
 
-# 2. Architecture Boundaries That Must Not Drift
+# 2. Architecture Boundaries
 
-## 2.1 Dual Production Architecture
+Preserve existing systems. Do not create replacements for:
 
-### GitHub Production Line
+- ProductionTask / Runtime
+- VideoAsset
+- PublishTask / Publish Center
+- Publish Registry / Adapter architecture
+- Accounts / OAuth
+- Analytics storage
+- Data Center / Query Engine
+- AI Intelligence
+- Scheduler
 
-Existing legacy production remains compatible:
+Formal OS publishing must use real provider/platform adapters and official/provider APIs. Postiz is legacy compatibility only.
 
-```text
-Production Task
-↓
-GitHub Provider
-↓
-GitHub Actions
-↓
-Existing Render Pipeline
-↓
-Production Result
-↓
-Video Asset
-```
+AI Gateway remains remote-service architecture. Do not replace it with local GPU inference.
 
-Historical `short01-short10` assets/workflows must remain compatible.
-
-### AI Remote / AI Gateway Production Line
-
-Correct architecture:
-
-```text
-Production Task
-↓
-AI Gateway Provider
-↓
-AI API Relay / Gateway
-↓
-External AI Video Service
-↓
-Production Result
-```
-
-Forbidden reinterpretation:
-
-```text
-PC
-↓
-local GPU
-↓
-local AI model
-↓
-generate video
-```
-
-The user's PC is the OS control center, not a local AI inference server.
-
-Use the terms:
-
-- `AI Remote Production Line`
-- `AI Gateway Production Line`
+Comment-body synchronization remains forbidden. Numeric aggregate comment counts are allowed.
 
 ---
 
-# 3. Source Code and Runtime Data Are Separate
+# 3. Runtime Database Safety
 
-Source code:
-
-```text
-Git repository
-```
-
-Runtime state:
+Runtime database:
 
 ```text
 os/database/os.db
 ```
 
-The runtime database is not disposable build output.
+Source code and runtime state have separate lifecycles.
 
-Rules:
+Absolute rules:
 
-- Git updates source code.
-- A fresh checkout does not restore runtime state.
-- Never replace the real runtime DB with an empty test DB.
-- Never use the real runtime DB as a smoke-test database.
-- Do not run destructive migrations/tests against the production path.
+- never use the real runtime DB as a test DB;
+- never reset/recreate it during smoke tests;
+- never run destructive tests against repo `os/database`;
+- tests use isolated repo-external databases;
+- do not put runtime DB into Git.
 
-Test Database Isolation is **MAINLINE + CI VERIFIED**:
-
-```text
-OS_TESTING=1
-+ explicit repo-external OS_DATABASE_PATH
-```
-
-Production paths and paths under repository `os/database` are rejected in test mode before destructive access.
-
-See `docs/RUNTIME_DATA_POLICY.md`.
+Test Database Isolation is MAINLINE + CI VERIFIED.
 
 ---
 
-# 4. Backend / Frontend Runtime
+# 4. Completed / Verified Foundation
 
-Backend entry:
+Current verified foundation includes:
 
-```text
-os/backend/main.py
-```
+- Legacy GitHub Production compatibility
+- AI Gateway architecture
+- Production Runtime
+- Video Asset Center
+- Platform Registry
+- Accounts / OAuth
+- YouTube OAuth REAL VERIFIED
+- YouTube metadata/content sync REAL VERIFIED
+- YouTube Analytics historical FULL E2E VERIFIED
+- Scheduled Daily Analytics REAL UNATTENDED E2E VERIFIED
+- Query V2 / Data Center VERIFIED
+- active tracking latest-10 + pinned policy
+- typed no-data / gap semantics
+- Scheduler cross-process claim / lease / crash recovery / heartbeat
+- Operational Runtime History
+- Crash / Recovery Lineage
+- Health Event Persistence
+- Test Database Isolation
+- Guarded Publish Center
+- YouTube official publish adapter/readiness architecture
+- GitHub Pages landing page
+- GA4 integration
+- signed HMAC attribution ingestion local contract
 
-Normal local backend:
-
-```powershell
-python -m uvicorn main:app --app-dir os/backend --host 127.0.0.1 --port 8000
-```
-
-Frontend:
-
-```powershell
-cd os/frontend
-npm.cmd run dev
-```
-
-Default frontend:
-
-```text
-http://localhost:5173
-```
-
-Default backend:
-
-```text
-http://127.0.0.1:8000
-```
-
-Backend code changes normally require backend restart. Vite frontend changes generally require refresh.
+Scheduler Operational Hardening is CLOSED.
 
 ---
 
-# 5. Network / Proxy
+# 5. GA4 Referral Attribution — REAL E2E CLOSED
 
-The OS already has explicit network/proxy configuration:
-
-- `os/backend/config/network.py`
-- `os/backend/integrations/google_transport.py`
-- Settings API/UI
-
-Modes include manual/system/disabled.
-
-Do not hard-code a specific local proxy port. Google/YouTube calls should reuse the existing transport layer.
-
----
-
-# 6. Platform Status
-
-Publish Registry:
-
-```text
-os/backend/publish/registry.py
-```
-
-Adapters are discovered dynamically.
-
-Current real state:
-
-- YouTube: real OAuth/content/analytics path verified; official publish adapter exists.
-- Facebook: placeholder/simulated in current OS publish architecture unless later real provider work proves otherwise.
-- Instagram: placeholder/simulated unless later proven live.
-- TikTok: placeholder/simulated unless later proven live.
-
-Do not equate "adapter registered" with "real platform integration complete".
-
-Current development strategy is **YouTube-first**. Close the real single-platform business loop before expanding platform breadth.
-
----
-
-# 7. OAuth / YouTube Account
-
-Existing OAuth stack must be extended, not replaced:
-
-- `os/backend/oauth/`
-- `os/backend/accounts/`
-
-YouTube OAuth capabilities already cover:
-
-- PKCE
-- one-time state consumption
-- redirect `code_verifier`
-- scope handling
-- token refresh
-- read / analytics / upload scopes
-- provider-neutral callback architecture
-
-OAuth client configuration and OAuth tokens are separate:
-
-```text
-OAuth client config
-→ Windows CurrentUser secure store
-
-OAuth tokens
-→ os/database/os.db
-```
-
-Recovery JSON logical path:
-
-```text
-%LOCALAPPDATA%\RemotePayGuide\secrets\youtube-oauth-client.json
-```
-
-The recovery JSON is bootstrap/recovery only. Normal backend operation should use the secure store.
-
-Never write OAuth secrets into Git, docs, frontend, logs, or public APIs.
-
----
-
-# 8. YouTube Content Sync
-
-YouTube existing-content sync is already implemented and real-verified.
-
-Rules:
-
-- use YouTube Data API metadata/reference;
-- do not download YouTube videos to the PC;
-- dedupe by platform video identity;
-- preserve latest-10 + pinned active tracking policy;
-- preserve older historical content/outcomes;
-- synced-from-YouTube remote assets must not be treated as local source assets for republishing.
-
-Do not rebuild content sync.
-
----
-
-# 9. Comment Boundary
-
-Comment-body synchronization was explicitly removed and must not return.
-
-Do not add:
-
-- commentThreads body sync
-- comment text storage
-- comment samples
-- audience-comment NLP pipeline
-
-Numeric YouTube Analytics `comments` counts are allowed because they are aggregate metrics, not comment-body synchronization.
-
----
-
-# 10. Analytics / Data Center
-
-There is one canonical OS Data Center and one Query Engine.
-
-Primary runtime domain:
-
-```text
-os/backend/data/
-os/backend/analytics/
-os/database/os.db
-```
-
-Do not create a second analytics database, second Data Center, or platform-specific core metric schema.
-
-Verified YouTube Analytics capabilities include:
-
-- real historical daily backfill
-- typed no-data observations
-- aggregate-window semantics
-- Query V2 date ranges
-- daily trend gaps without fake zeros
-- previous-period comparison
-- scheduled daily sync
-- account-level aggregate collection
-
-Historical 7-day real E2E and scheduled unattended real E2E are complete.
-
-Important semantics:
-
-- no provider data ≠ zero traffic;
-- aggregate rows must not be split into fake daily rows;
-- overlapping aggregate windows must not be summed as independent daily values.
-
----
-
-# 11. Scheduler / Runtime Hardening
-
-Scheduler Operational Hardening is **CLOSED**.
-
-Completed capabilities include:
-
-- SQLite atomic cross-process claim
-- owner lease
-- TTL expiry / reclaim
-- stale-owner CAS protection
-- lease heartbeat
-- long-running execution protection
-- crash recovery lineage
-- exact started/finished/duration persistence
-- health states / stuck detection
-- runtime run history
-- health-event persistence
-- retention
-- restart persistence
-- real two-process synthetic E2E
-- CI verification
-
-Do not continue expanding scheduler infrastructure unless a new real production failure exposes a concrete scheduler gap.
-
----
-
-# 12. Production / VideoAsset / Publish
-
-Existing domains:
-
-```text
-os/backend/production/
-os/backend/assets/
-os/backend/publish/
-```
-
-ProductionTask, RuntimeJob, ProductionResult, VideoAsset and PublishTask already exist.
-
-Formal OS publishing must use platform adapters / official APIs. Postiz is legacy compatibility only.
-
-Important Publish safety boundary:
-
-```text
-create PublishTask
-≠ upload
-```
-
-External upload requires explicit run.
-
-The YouTube official adapter, OAuth upload-scope preflight, asset resolution and result persistence exist, but canonical project status still does **not** claim that a new real YouTube private upload has been fully closed out as production E2E.
-
-A real external upload must wait for explicit user authorization.
-
----
-
-# 13. AI Intelligence
-
-Existing Intelligence domain:
-
-```text
-os/backend/intelligence/
-```
-
-Capabilities include:
-
-- feedback bridge
-- insight generation
-- strategy recommendation
-- task generator
-- explicit ProductionTask materialization
-
-Current safety contract:
-
-```text
-recommendation
-≠ automatic ProductionTask execution
-≠ automatic external publish
-```
-
-Real business feedback should be strengthened before increasing autonomy.
-
----
-
-# 14. Landing Page and GA4 — Current Reality
-
-The public landing page is already hosted on GitHub Pages.
-
-The site already loads GA4 through:
-
-```text
-analytics-config.js
-analytics.js
-app.js
-```
-
-Implemented browser events include:
-
-```text
-page_view
-payment_type_select
-payer_type_select
-exchange_status_select
-new_to_exchange_identified
-binance_referral_click
-```
-
-`app.js` reads URL attribution fields:
+The landing page already emits `binance_referral_click` and includes:
 
 ```text
 src
 content_id
 ```
 
-and includes them in emitted event payloads.
-
-The Binance CTA already emits:
-
-```text
-binance_referral_click
-```
-
-Therefore **do not add a second Binance-click tracking implementation**.
-
----
-
-# 15. Attribution Link Standard
-
-Historical posting links often use:
-
-```text
-?src=short04
-```
-
-New canonical links should use explicit source and content identity, for example:
+New canonical link example:
 
 ```text
 ?src=yt_short04&content_id=short04
 ```
 
-Compatibility rules:
-
-- new links should include explicit `content_id`;
-- existing historical links must keep working;
-- do not require old videos to be republished;
-- a legacy `src` may recover content identity only when mapping is unambiguous;
-- ambiguous attribution remains unknown instead of guessed.
-
-This is a compatibility/validation task, not a new tracking-system build.
-
----
-
-# 16. Signed HMAC Attribution Boundary
-
-Commit `b4022832dfc47721ff6ed8710ba052f940d00974` added a provider-neutral trusted attribution ingestion boundary.
-
-Existing local contract includes:
+Historical links such as:
 
 ```text
-/attribution/intent
-/attribution/conversion/{provider}
-signed redirect/link
-HMAC verification
-dedupe
-identifier validation
-privacy limits
-provider-neutral conversion adapter boundary
+?src=short04
 ```
 
-Local r32 contract is verified.
+remain compatible when the identity is unambiguous.
 
-This capability must be preserved, but **public relay deployment is not the current blocker**.
-
-A Vercel/Cloudflare/public collector is optional future infrastructure if the project later needs:
-
-- first-party server-side raw events independent of GA4;
-- trusted session-level attribution;
-- a provider callback that requires a public receiver;
-- data not available through GA4 reporting.
-
-Do not deploy infrastructure merely to duplicate an existing GA4 `binance_referral_click` signal.
-
----
-
-# 17. Binance Click vs Binance Registration Conversion
-
-Keep these separate:
+Real evidence on 2026-09-09:
 
 ```text
-A. Which content produced a Binance referral-link click?
-B. Did that user later register / convert on Binance?
+public GitHub Pages session
+→ src=yt_short04
+→ content_id=short04
+→ real Binance CTA click
+→ GA4 Realtime binance_referral_click = 1
+→ GA4 content_id = short04
+→ GA4 src = yt_short04
 ```
 
-Current scope:
-
-- A = current priority.
-- B = intentionally deferred until the project has accumulated enough real traffic to justify provider integration.
-
-Current truth:
-
-```text
-Binance referral click browser event:
-IMPLEMENTED
-
-Content → Binance click real GA4 attribution:
-NOT YET REAL E2E VERIFIED
-
-Binance registration conversion provider:
-DEFERRED / NOT CURRENT BLOCKER
-```
-
-Never claim Binance registration E2E without a real external conversion source.
-
----
-
-# 18. Current Development Breakpoint
-
-The old Query V1/Query V2 and Scheduler Hardening breakpoints are historical and completed.
-
-The current engineering breakpoint is:
-
-```text
-GitHub Pages + GA4 click tracking already exist
-↓
-need real per-content attribution proof
-↓
-then import GA4 business signals into the OS Data Center
-```
-
-Immediate unresolved proof:
-
-```text
-known content
-→ attributed public landing URL
-→ real public session
-→ Binance CTA click
-→ GA4 binance_referral_click
-→ same source/content identity confirmed
-```
-
-This is **not** yet REAL E2E until observed in real GA4 data.
-
----
-
-# 19. Current Development Order
-
-## P0 — GA4 Content → Binance Referral Click Attribution Closeout
-
-Do not reimplement the event.
-
-Work:
-
-1. Standardize future links to explicit `src + content_id`.
-2. Preserve historical `?src=shortXX` compatibility.
-3. Add regression coverage for attribution fields and `binance_referral_click` payload identity.
-4. Use one known content item for a real public GitHub Pages session.
-5. Click the actual Binance CTA.
-6. Verify the GA4 event and content/source identity.
-7. Only then mark:
+Status:
 
 ```text
 Content → Landing → Binance Referral Click
 REAL GA4 E2E VERIFIED
 ```
 
-## P0 — GA4 → OS Data Center Ingestion
+Do not add another Binance-click tracker.
+Do not deploy Vercel/Cloudflare merely to duplicate this signal.
 
-After real attribution is proven, connect GA4 reporting into the existing OS Data Center.
+GA4 → OS Data Center ingestion is still not implemented and remains a later development unit.
 
-Required target signals:
+---
+
+# 6. Current Platform Reality
+
+The user's actual launch requirement is three-platform publishing:
+
+```text
+YouTube Shorts
+Instagram Reels
+Facebook Reels
+```
+
+Therefore YouTube-only publishing is not sufficient for Production Trial Ready.
+
+Current real OS state:
+
+- YouTube: real OAuth/content/analytics verified; official publish adapter/readiness exists; one real new-video publish E2E still needs closeout.
+- Instagram: current OS publish adapter is placeholder/simulated until real Meta integration is completed.
+- Facebook: current OS publish adapter is placeholder/simulated until real Meta integration is completed.
+- TikTok: not a current launch requirement.
+
+Do not equate adapter registration with live provider readiness.
+
+---
+
+# 7. Current Development Breakpoint
+
+The current launch blocker is:
+
+```text
+Multi-Platform Live Publish
+```
+
+not GA4 attribution, Query V2, Scheduler, or Binance registration conversion.
+
+Production Trial Ready requires real publish evidence for all three target platforms.
+
+---
+
+# 8. Current Development Order
+
+## P0.1 — YouTube Official Publish Real E2E Closeout
+
+Only after explicit user authorization, perform one safe real upload, preferably private:
+
+```text
+Ready VideoAsset
+→ pending PublishTask
+→ explicit run
+→ YouTube official API
+→ platform_video_id
+→ published_url
+→ status=published
+```
+
+Acceptance must use truthful provider-returned identifiers/status.
+
+Do not fall back to Postiz and do not redesign Publish Center.
+
+## P0.2 — Meta Account / OAuth Foundation
+
+Extend the existing provider-neutral account/OAuth architecture for Meta.
+
+Do not create:
+
+- second account table/system;
+- second OAuth framework;
+- separate Publish Center;
+- hard-coded platform logic in Data Center core.
+
+## P0.3 — Instagram Reels Official Live Publish
+
+Implement real Instagram Reels publishing through the existing:
+
+```text
+PublishTask
+→ Publish Registry
+→ Adapter readiness
+→ platform adapter
+→ provider API
+→ persisted result
+```
+
+## P0.4 — Facebook Reels Official Live Publish
+
+Implement real Facebook Reels publishing through the same boundaries.
+
+## P0.5 — Unified Three-Platform Publish Center
+
+A ready VideoAsset must be publishable through the existing Publish Center to:
+
+```text
+YouTube
+Instagram
+Facebook
+```
+
+without duplicating PublishTask/Runtime/Registry/Data Center.
+
+## P0.6 — Real Provider E2E for all three
+
+Production Trial Ready requires:
+
+```text
+YouTube   → real published state
+Instagram → real published state
+Facebook  → real published state
+```
+
+Each path must persist truthful provider identifiers, URL/status, and error details where applicable.
+
+---
+
+# 9. After Three-Platform Live Publish
+
+## P1 — Instagram/Facebook Content Sync + Analytics
+
+Add/close real sync and analytics only through existing platform capability boundaries.
+
+Do not add platform-specific duplicate core metric schemas.
+
+## P1 — GA4 → OS Data Center Ingestion
+
+Import:
 
 ```text
 content_id
@@ -652,80 +321,35 @@ click-through rate
 time window
 ```
 
-Implementation rules:
+Reuse existing Data Center / Growth / Query / Intelligence. No second analytics store or query engine.
 
-- reuse existing Data Center / growth / Query / Intelligence domains;
-- no second Analytics store;
-- no second Query Engine;
-- preserve unavailable/no-data semantics;
-- no fake zero values;
-- provider-neutral design where practical.
+## P2 — Real Data → Intelligence → Controlled Next ProductionTask
 
-## P1 — Operate and Accumulate Real Data
+After enough real business data accumulates, verify Intelligence uses referral-click/click-rate signals together with platform performance.
 
-Let scheduled YouTube Analytics and GA4 attribution accumulate real data.
+Keep external production/publish under controlled gates until operational evidence is strong.
 
-Prefer real operational evidence over speculative infrastructure.
+---
 
-## P1 — Real YouTube Publish Closeout
+# 10. Deferred / Optional
 
-Only after explicit user authorization:
-
-```text
-ready local VideoAsset
-→ pending PublishTask
-→ explicit run
-→ real YouTube private upload
-→ platform_video_id
-→ published_url
-→ persisted published state
-→ later Analytics observation
-```
-
-## P1 — Real Feedback → Controlled Next ProductionTask
-
-After enough real click data is imported into the OS, verify that Intelligence uses referral clicks/click rate alongside YouTube traffic/watch quality and produces a sensible next strategy.
-
-Keep ProductionTask materialization/execution under a controlled safety gate.
-
-## Later / Optional
-
-- Binance registration conversion attribution
-- public HMAC relay/collector if justified
+- Binance registration/conversion attribution
+- public HMAC relay/collector only if a real requirement appears
 - real external AI video provider E2E
-- Facebook / Instagram / TikTok real provider parity
-- higher automation only after real business-data evidence
+- TikTok live provider parity
+- higher autonomy / automatic external publish
 
 ---
 
-# 20. What Not to Build Now
-
-Do not build:
-
-- another `binance_referral_click` tracker;
-- a mandatory Vercel/Cloudflare collector;
-- Binance registration conversion before it is needed;
-- another Scheduler;
-- another Data Center;
-- another Analytics storage layer;
-- another Query Engine;
-- another OAuth system;
-- comment-body synchronization;
-- local GPU AI fallback;
-- Postiz as the formal OS publish dependency;
-- automatic external publishing before real feedback is stable.
-
----
-
-# 21. External Operation Boundary
+# 11. External Operation Boundary
 
 Do not perform without explicit user authorization:
 
-- new OAuth authorization
+- new third-party OAuth authorization
 - real YouTube upload
-- real Facebook/Instagram/TikTok publish
+- real Instagram/Facebook publish
 - paid external AI generation
-- deletion/modification of remote content
+- remote content deletion/modification
 - destructive runtime DB operation
 
 Safe work that normally does not require repeated confirmation:
@@ -735,12 +359,11 @@ Safe work that normally does not require repeated confirmation:
 - isolated tests
 - CI fixes
 - docs corrections
-- Git commits/pushes when already authorized by the workflow context
-- read-only runtime verification
+- normal Git commits/pushes when already authorized in the current workflow context
 
 ---
 
-# 22. New-Window Execution Instruction
+# 12. New-Window Execution Instruction
 
 ```text
 You are continuing Remote Pay Guide OS development.
@@ -748,7 +371,7 @@ You are continuing Remote Pay Guide OS development.
 Repository: linrui2442-blip/remote-pay-guide
 Branch: main
 
-Read current main first, then:
+Read current main, then:
 1. docs/PROJECT_STATUS.md
 2. docs/PROJECT_HANDOVER.md
 3. docs/OS_LOOP_GAP_AUDIT.md
@@ -758,68 +381,46 @@ Do not rebuild existing Production, Runtime, Asset, Publish, OAuth, Analytics, D
 Do not reintroduce comment-body sync.
 Do not turn AI Gateway into local GPU inference.
 Do not make Postiz the formal OS publish dependency.
-Do not treat a public Vercel/Cloudflare collector as mandatory for the current click-attribution goal.
-Do not re-add binance_referral_click; it already exists in the landing page.
+Do not re-add binance_referral_click; GA4 referral attribution is already REAL E2E VERIFIED.
+Do not treat Binance registration conversion as a current blocker.
 
-Current next stage:
-GA4 Content → Binance Referral Click Attribution Closeout.
+Current primary launch track:
+MULTI-PLATFORM LIVE PUBLISH — YOUTUBE + INSTAGRAM + FACEBOOK.
 
-First normalize attribution-link compatibility, add regression coverage, and prove one real GitHub Pages → GA4 binance_referral_click event can be attributed to one known content item.
+First close YouTube official real publish E2E with explicit user authorization, then implement Meta account/OAuth through the existing provider-neutral architecture, then real Instagram Reels and Facebook Reels adapters, then prove real provider E2E for all three.
 
-After that, implement GA4 → existing OS Data Center ingestion for landing visits, referral clicks and click-through rate.
-
-Binance registration conversion attribution is deferred and is not a current blocker.
-
-Preserve production runtime DB safety absolutely. Tests must use isolated repo-external databases only.
-
-Enter execution mode. Ask the user only for truly external authorization or information that cannot be resolved from code/runtime state.
+Preserve runtime DB safety absolutely. Tests use isolated repo-external databases only.
 ```
 
 ---
 
-# 23. Current Closeout Summary
+# 13. Current Closeout Summary
 
-Completed foundation:
+Closed:
 
 ```text
-Legacy GitHub Production compatibility
-Production Runtime
-AI Gateway architecture
-Video Asset Center
-Platform Registry
-Accounts / OAuth
-YouTube Content Sync
-YouTube Analytics real E2E
+YouTube Analytics real runtime
 Query V2 / Data Center
-Scheduled Daily Analytics
-Scheduler cross-process hardening
-Operational Runtime History
-Crash / Recovery Lineage
-Health Event Persistence
-Test Database Isolation
-Guarded Publish Center
-YouTube Official Publish Adapter
-GA4 landing-page tracking
-Signed local attribution ingestion contract
+Scheduler hardening
+Operational runtime history
+Test DB isolation
+GA4 Content → Binance Referral Click REAL E2E
 ```
 
-Current focus:
+Current launch blocker:
 
 ```text
-REAL per-content GA4 Binance referral-click attribution
-↓
-GA4 business-signal ingestion into existing OS Data Center
-↓
-real-data-driven Intelligence
+Three-platform live publishing:
+YouTube + Instagram + Facebook
 ```
 
 Deferred:
 
 ```text
-Binance registration conversion attribution
-mandatory public collector infrastructure
-multi-platform expansion
+Binance registration conversion
+mandatory public collector
+TikTok
 higher autonomy
 ```
 
-The project is no longer in foundational architecture design. It is entering the stage where existing systems must consume **real business signals** and prove the operating loop with real data.
+The project is no longer in foundational architecture design. It is now in production-integration closeout for the user's real three-platform operating requirement.
