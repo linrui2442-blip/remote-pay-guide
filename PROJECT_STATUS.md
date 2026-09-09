@@ -1,18 +1,16 @@
 # Remote Pay Guide Project Status
 
-> This root status file is a concise project index. For the current OS development state and next-step plan, use `docs/PROJECT_STATUS.md` as the canonical status document.
+> Concise index only. `docs/PROJECT_STATUS.md` is the canonical current status document.
 
 ## Legacy Pipeline
 
 - short01-short10 production pipeline: completed and preserved.
-- Legacy GitHub production / Postiz compatibility assets remain in the repository for historical compatibility.
+- Legacy GitHub production / Postiz compatibility remains for historical compatibility.
 - Formal Remote Pay Guide OS publishing must not be redesigned around Postiz.
 
 ## Remote Pay Guide OS
 
 Remote Pay Guide OS is an AI-driven content production and growth operations control system.
-
-Core loop:
 
 ```text
 Data Feedback
@@ -21,11 +19,9 @@ Data Feedback
 → Production Execution
 → Video Asset
 → Publish
-→ Traffic / Intent / Conversion
+→ Traffic / Intent / Referral
 → Data Feedback
 ```
-
-Current real-platform focus is YouTube-first.
 
 ## Completed / Verified Foundation
 
@@ -35,10 +31,9 @@ Current real-platform focus is YouTube-first.
 - Publish Center architecture implemented
 - YouTube OAuth real verified
 - YouTube metadata/content sync real verified
-- YouTube Analytics real historical E2E verified
+- YouTube Analytics historical real E2E verified
 - Scheduled Daily Analytics real unattended E2E verified
 - Query V2 / Data Center verified
-- Active tracking policy and historical retention implemented
 - Scheduler cross-process claim / lease / crash recovery / heartbeat verified
 - Operational runtime history and health-event persistence implemented
 - Test Database Isolation mainline + CI verified
@@ -46,79 +41,69 @@ Current real-platform focus is YouTube-first.
 - Provider-neutral signed HMAC attribution ingestion contract locally verified
 - GitHub Pages landing page live
 - GA4 browser integration implemented
-- `binance_referral_click` browser event already implemented
+- `binance_referral_click` implemented
+- Content → Binance referral click: **REAL GA4 E2E VERIFIED (2026-09-09)**
 
-## Current Attribution Reality
-
-The current landing page already tracks:
-
-```text
-src
-content_id
-page_view
-payment_type_select
-payer_type_select
-exchange_status_select
-new_to_exchange_identified
-binance_referral_click
-```
-
-Therefore the current project does **not** need to add another Binance-click tracking implementation before continuing.
-
-The real next proof is:
+Real GA4 evidence verified:
 
 ```text
-known content
-→ attributed public GitHub Pages URL
-→ real public session
-→ Binance CTA click
-→ GA4 binance_referral_click
-→ same content identity confirmed
+content_id = short04
+src = yt_short04
+binance_referral_click = 1
 ```
 
-Historical campaign links such as:
+Binance registration/conversion attribution is deferred and is not a current blocker.
+
+## Current Launch Requirement
+
+The operational publishing product must support:
 
 ```text
-?src=short04
+YouTube Shorts
+Instagram Reels
+Facebook Reels
 ```
 
-must remain compatible. New canonical links should include explicit content identity, for example:
+YouTube-only publishing is not sufficient for Production Trial Ready.
 
-```text
-?src=yt_short04&content_id=short04
-```
+Current state:
+
+- YouTube official publish architecture exists; real new-video publish E2E still needs closeout
+- Instagram OS live publish is not yet real-verified
+- Facebook OS live publish is not yet real-verified
 
 ## Current Next Development Stage
 
-### 1. GA4 Content → Binance Referral Click Attribution Closeout
+### P0 — Multi-Platform Live Publish
 
-- preserve legacy link compatibility;
-- standardize new `src + content_id` links;
-- add attribution regression tests;
-- perform real GitHub Pages → GA4 click validation;
-- do not claim REAL E2E until GA4 evidence is observed.
+1. Close one real YouTube official private-publish E2E after explicit authorization.
+2. Extend existing provider-neutral Account/OAuth architecture for Meta.
+3. Implement Instagram Reels official live publish adapter.
+4. Implement Facebook Reels official live publish adapter.
+5. Use the existing Publish Center / Registry / PublishTask system for all three.
+6. Produce real publish evidence for YouTube + Instagram + Facebook.
 
-### 2. GA4 → OS Data Center Ingestion
+Only after all three real paths are closed should the project be called Production Trial Ready for the user's daily publishing requirement.
 
-After the real click attribution is verified, connect GA4 reporting into the existing Data Center so the OS can compare content using landing visits, Binance referral clicks and click-through rate alongside YouTube Analytics.
+### P1 — Multi-Platform Analytics + GA4 → OS
 
-Do not create a second Analytics store or Query Engine.
+After live publishing is stable:
 
-### 3. Run the system and accumulate real data
+- close Instagram/Facebook content-sync and analytics where supported;
+- import GA4 landing/referral-click signals into the existing Data Center;
+- feed those business signals into Intelligence.
 
-Prefer real operational evidence before adding more infrastructure or platforms.
+Do not create a second Analytics store, Query Engine, Data Center, Publish system, or OAuth system.
 
 ## Deferred / Later
 
 - Binance registration/conversion attribution
-- public Vercel/Cloudflare/HMAC relay unless a real requirement justifies it
+- public Vercel/Cloudflare/HMAC relay unless justified by a real requirement
 - real external AI video provider E2E
-- full Facebook / Instagram / TikTok live provider parity
-- fully automatic ProductionTask / Publish loop
+- TikTok live provider parity
+- fully automatic external publishing
 
 ## Runtime Data Safety
-
-Source code and runtime state are separate lifecycle objects.
 
 ```text
 Source code:
@@ -134,6 +119,7 @@ See:
 
 ```text
 docs/PROJECT_STATUS.md
+docs/PROJECT_HANDOVER.md
 docs/RUNTIME_DATA_POLICY.md
 docs/OS_LOOP_GAP_AUDIT.md
 docs/REMOTE_PAY_GUIDE_OS_BLUEPRINT.md
