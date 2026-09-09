@@ -205,7 +205,7 @@ Current real OS state:
 
 - YouTube: real OAuth/content/analytics verified; official AuthorizedSession/requests publish adapter; REAL PRIVATE E2E VERIFIED (task 12, private read-back confirmed).
 - Evidence: 2026-09-09, account_id=1, asset_id=youtube_private_e2e_short04, task_id=12, provider video id=uEQR9PSAfUA, privacy=private; task 11 failed history remains unchanged.
-- Meta Account/OAuth Foundation: CODE + ISOLATED TEST VERIFIED. Real Meta OAuth is not yet verified; Facebook and Instagram live adapters remain simulated and publish_ready=false.
+- Meta Account/OAuth Foundation: CODE + ISOLATED TEST VERIFIED; Meta Real OAuth Contract READY FOR RUNTIME CONFIG + USER AUTHORIZATION. Real Meta OAuth is not yet verified; Facebook and Instagram live adapters remain simulated and publish_ready=false.
 - Instagram: current OS publish adapter is placeholder/simulated until real Meta integration is completed.
 - Facebook: current OS publish adapter is placeholder/simulated until real Meta integration is completed.
 - TikTok: not a current launch requirement.

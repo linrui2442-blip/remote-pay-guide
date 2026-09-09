@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from oauth.meta_bindings import get_binding, save_binding
 from oauth.providers.meta import MetaOAuthProvider
 from oauth.manager import get_token
+from accounts.manager import update_account_status
 
 from oauth.registry import (
     AccountConnectorConfigurationError,
@@ -118,4 +119,6 @@ def bind_meta_resource(account_id: int, request: MetaBindingRequest, platform: s
     match = next((item for item in resources if item.get('page_id') == request.page_id and (platform != 'instagram' or item.get('instagram_user_id') == request.instagram_user_id)), None)
     if not match:
         raise HTTPException(status_code=400, detail='Meta resource binding could not be verified')
-    return save_binding(account_id, platform, request.page_id, match.get('instagram_user_id'), match.get('page_name'))
+    binding = save_binding(account_id, platform, request.page_id, match.get('instagram_user_id'), match.get('page_name'))
+    update_account_status(account_id, 'connected')
+    return binding

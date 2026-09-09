@@ -127,7 +127,7 @@ Current real OS publish state:
 
 - YouTube: official AuthorizedSession/requests adapter; REAL PRIVATE E2E VERIFIED (task 12, private read-back confirmed)
 - Verified 2026-09-09: account_id=1, asset_id=youtube_private_e2e_short04, task_id=12, provider video id=uEQR9PSAfUA, privacy=private; first failed task 11 remains preserved.
-- Meta Account/OAuth Foundation: CODE + ISOLATED TEST VERIFIED; real Meta OAuth is not yet verified. Facebook and Instagram live adapters remain unimplemented/simulated.
+- Meta Account/OAuth Foundation: CODE + ISOLATED TEST VERIFIED; Meta Real OAuth Contract READY FOR RUNTIME CONFIG + USER AUTHORIZATION. Real Meta OAuth is not yet verified. Facebook and Instagram live adapters remain unimplemented/simulated.
 - Instagram: current OS adapter is placeholder/simulated; real Meta publish integration not yet closed
 - Facebook: current OS adapter is placeholder/simulated; real Meta publish integration not yet closed
 - Postiz: legacy compatibility only; must not become the formal OS publish dependency

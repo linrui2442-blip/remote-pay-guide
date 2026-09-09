@@ -111,6 +111,8 @@ def begin_account_connection(
             f'account {account_id} belongs to {account_platform or "unknown"}, not {normalized}'
         )
 
+    if scope_profile == 'full' and normalized in {'facebook', 'instagram'}:
+        scope_profile = 'facebook_publish' if normalized == 'facebook' else 'instagram_publish'
     result = dict(registration.authorize_factory(account_id, scope_profile) or {})
     return {
         'platform': normalized,
@@ -140,6 +142,7 @@ def complete_account_connection(
     state_record = consume_oauth_state_by_state(
         state,
         provider=registration.state_provider,
+        expected_scope_profile=(['facebook_publish', 'meta_full'] if normalized == 'facebook' else (['instagram_publish', 'meta_full'] if normalized == 'instagram' else None)),
     )
     if not state_record:
         raise ValueError('invalid or expired OAuth state')
@@ -172,12 +175,13 @@ def complete_account_connection(
             **token,
         }
     )
-    update_account_status(resolved_account_id, 'authorized' if normalized in {'facebook', 'instagram'} else 'connected')
+    connection_status = 'authorized' if normalized in {'facebook', 'instagram'} else 'connected'
+    update_account_status(resolved_account_id, connection_status)
     return {
         'platform': normalized,
         'connector_id': registration.connector_id,
         'account_id': resolved_account_id,
-        'status': 'connected',
+        'status': connection_status,
         'scope_profile': state_record.get('scope_profile'),
         'scopes': stored.get('scopes') if stored else [],
         'expires_at': stored.get('expires_at') if stored else None,

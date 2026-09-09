@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 import requests
 from config.network import configure_outbound_proxy
@@ -59,7 +60,12 @@ class MetaOAuthProvider:
         short = self._token_exchange({"client_id": self.config["app_id"], "client_secret": self.config["app_secret"], "redirect_uri": self.config["redirect_uri"], "code": authorization_code})
         long = self._token_exchange({"grant_type": "fb_exchange_token", "client_id": self.config["app_id"], "client_secret": self.config["app_secret"], "fb_exchange_token": short.get("access_token")})
         if not long.get("access_token"): raise RuntimeError("Meta token exchange returned no access token")
-        return {"access_token": long["access_token"], "refresh_token": None, "expires_at": None, "scopes": self.scopes}
+        permission_data = self._get("me/permissions", long["access_token"]).get("data", [])
+        granted = sorted({item.get("permission") for item in permission_data if item.get("status") == "granted" and item.get("permission")})
+        expires_at = None
+        if long.get("expires_in") is not None:
+            expires_at = (datetime.now(timezone.utc) + timedelta(seconds=int(long["expires_in"]))).isoformat()
+        return {"access_token": long["access_token"], "refresh_token": None, "expires_at": expires_at, "scopes": granted}
 
     def discover_resources(self, access_token):
         data = self._get("me/accounts", access_token, fields="id,name,tasks,instagram_business_account").get("data", [])

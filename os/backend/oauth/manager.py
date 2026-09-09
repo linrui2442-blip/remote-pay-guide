@@ -257,7 +257,7 @@ def consume_oauth_state(
     return bool(record)
 
 
-def consume_oauth_state_by_state(state, provider="youtube"):
+def consume_oauth_state_by_state(state, provider="youtube", expected_scope_profile=None):
     """Resolve account/scope/PKCE metadata from the opaque one-time state."""
     if not state:
         return None
@@ -274,6 +274,12 @@ def consume_oauth_state_by_state(state, provider="youtube"):
     ).fetchone()
 
     record = _state_record_if_valid(row, now)
+    if record and expected_scope_profile:
+        expected = {str(item).strip().lower() for item in (expected_scope_profile if isinstance(expected_scope_profile, (list, tuple, set)) else [expected_scope_profile])}
+        actual = str(record.get("scope_profile") or "").strip().lower()
+        if actual not in expected:
+            conn.close()
+            return None
     if row:
         conn.execute("DELETE FROM oauth_states WHERE state=?", (state,))
         conn.commit()
