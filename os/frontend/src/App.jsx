@@ -13,6 +13,9 @@ import {
   getProductionStatus,
   getProductionTasks,
   getPublishTasks,
+  getMetaResources,
+  getMetaBinding,
+  bindMetaResource,
   getSchedulerStatus,
   getSchedulerHistory,
   getSchedulerEvents,
@@ -235,6 +238,8 @@ function App() {
   const [schedulerHealthError, setSchedulerHealthError] = useState("");
   const [schedulerRuns, setSchedulerRuns] = useState([]);
   const [schedulerEvents, setSchedulerEvents] = useState([]);
+  const [metaPanels, setMetaPanels] = useState({});
+  const [metaBindings, setMetaBindings] = useState({});
 
   const refreshProduction = () => {
     getProductionStatus().then(setProductionStatus).catch(() => {});
@@ -269,6 +274,35 @@ function App() {
         setAccountReadiness(Object.fromEntries(statuses));
       })
       .catch((error) => setOAuthMessage(error.message));
+  };
+  useEffect(() => {
+    accounts.filter((account) => ['facebook', 'instagram'].includes(String(account.platform || '').toLowerCase()) && String(account.status || '').toLowerCase() === 'connected').forEach(loadMetaBinding);
+  }, [accounts]);
+
+  const loadMetaResources = async (account) => {
+    const platform = String(account.platform || '').toLowerCase();
+    setMetaPanels((current) => ({ ...current, [account.id]: { loading: true, resources: [], error: '' } }));
+    try {
+      const result = await getMetaResources(account.id, platform);
+      setMetaPanels((current) => ({ ...current, [account.id]: { loading: false, resources: result.resources || [], error: '' } }));
+    } catch (error) {
+      setMetaPanels((current) => ({ ...current, [account.id]: { loading: false, resources: [], error: `Meta 资源读取失败：${error.message || '请求失败'}` } }));
+    }
+  };
+  const loadMetaBinding = async (account) => {
+    try { const binding = await getMetaBinding(account.id); setMetaBindings((current) => ({ ...current, [account.id]: binding })); } catch (_) { /* non-sensitive optional detail */ }
+  };
+  const bindMeta = async (account, resource) => {
+    const platform = String(account.platform || '').toLowerCase();
+    setMetaPanels((current) => ({ ...current, [account.id]: { ...current[account.id], binding: resource.page_id } }));
+    try {
+      await bindMetaResource(account.id, platform, platform === 'instagram' ? { page_id: resource.page_id, instagram_user_id: resource.instagram_user_id } : { page_id: resource.page_id });
+      setMetaPanels((current) => { const next = { ...current }; delete next[account.id]; return next; });
+      refreshAccounts();
+      await loadMetaBinding(account);
+    } catch (error) {
+      setMetaPanels((current) => ({ ...current, [account.id]: { ...current[account.id], binding: '', error: error.message || '绑定失败' } }));
+    }
   };
 
   const refreshProxy = () => {
@@ -625,6 +659,9 @@ function App() {
           const connectable = Boolean(runtime.account_connector_registered);
           const connectorConfigured = connector?.configured !== false;
           const connected = String(account.status || "").toLowerCase() === "connected" || readiness?.ready === true;
+          const meta = platform === 'facebook' || platform === 'instagram';
+          const authorized = String(account.status || '').toLowerCase() === 'authorized';
+          const panel = metaPanels[account.id];
           const syncable = Boolean(runtime.content_sync_registered || (runtime.analytics_supported && runtime.analytics_sync_registered));
           const syncing = syncingAccountId === account.id;
           return (
@@ -637,6 +674,10 @@ function App() {
                 </div>
                 <span className="muted">{account.account_name} · Account #{account.id}</span>
                 {readiness?.reason && runtime.analytics_supported && !readiness.ready && <span className="small-warning">{readiness.reason}</span>}
+                {meta && authorized && <div className="small-warning">授权成功 · 待绑定资源</div>}
+                {meta && connected && metaBindings[account.id] && <div className="small-warning">已绑定资源：{metaBindings[account.id].external_display_name || metaBindings[account.id].page_id}</div>}
+                {meta && authorized && <button className="secondary-button" onClick={() => loadMetaResources(account)} disabled={panel?.loading}>{panel?.loading ? '读取中…' : '选择 Meta 资源'}</button>}
+                {meta && panel && <div className="meta-resource-panel">{panel.error && <div className="small-warning">{panel.error}</div>}{!panel.loading && !panel.error && panel.resources.length === 0 && <div className="muted">{platform === 'instagram' ? '未找到与 Facebook Page 关联的 Instagram Professional Account。' : '未找到可管理的 Facebook Page。'}</div>}{panel.resources.map((resource) => <div className="meta-resource-row" key={`${resource.page_id}-${resource.instagram_user_id || ''}`}><span>{resource.page_name || resource.page_id}{platform === 'instagram' ? ` · ${resource.instagram_user_id}` : ` · ${resource.page_id}`}</span><button className="secondary-button" disabled={panel.binding === resource.page_id} onClick={() => bindMeta(account, resource)}>{panel.binding === resource.page_id ? '正在绑定…' : platform === 'instagram' ? '绑定此 Instagram 账号' : '绑定此 Page'}</button></div>)}</div>}
               </div>
               <div className="account-actions">
                 {connected && syncable && (
