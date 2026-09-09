@@ -117,6 +117,11 @@ class YouTubeAPIClient:
                             probe = self.session.put(session_url, data=b"", headers={"Content-Length": "0", "Content-Range": f"bytes */{total}"}, timeout=30)
                             if probe.status_code in EXPIRED_SESSION_STATUS_CODES:
                                 return {"platform": "youtube", "status": "failed", "error": f"YouTube resumable upload failed: stage=resume_probe; category=upload_session_expired; retries={retries}; status={probe.status_code}"}
+                            if probe.status_code in {200, 201}:
+                                probe_id = (probe.json() or {}).get("id")
+                                if not probe_id:
+                                    return {"platform": "youtube", "status": "failed", "error": "YouTube upload completed without a video id"}
+                                return {"platform": "youtube", "status": "published", "video_id": probe_id, "url": f"https://www.youtube.com/watch?v={probe_id}"}
                             if probe.status_code == 308:
                                 offset = self._next_offset(probe, offset)
                             else:

@@ -56,6 +56,18 @@ def main():
         with patch("publish.adapters.youtube_api.time.sleep"):
             assert client(s).upload_video(str(path), "t", "d")["status"] == "published"
         assert s.posts == 1 and s.calls[1][1]["headers"]["Content-Range"].startswith("bytes */")
+        for completion_status in (200, 201):
+            s = Session([timeout, Response(completion_status, payload={"id": "probe_completed_video"})])
+            with patch("publish.adapters.youtube_api.time.sleep"):
+                probe_result = client(s).upload_video(str(path), "t", "d")
+            assert probe_result["status"] == "published" and probe_result["video_id"] == "probe_completed_video"
+            assert s.posts == 1 and len(s.calls) == 2
+            assert s.calls[1][1]["headers"]["Content-Range"] == f"bytes */{path.stat().st_size}"
+        s = Session([timeout, Response(200, payload={})])
+        with patch("publish.adapters.youtube_api.time.sleep"):
+            probe_missing_id = client(s).upload_video(str(path), "t", "d")
+        assert probe_missing_id["error"] == "YouTube upload completed without a video id"
+        assert s.posts == 1 and len(s.calls) == 2
         for status in (400, 401, 403, 404, 410):
             s = Session([Response(status)])
             error = client(s).upload_video(str(path), "t", "d")["error"]
