@@ -1,5 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from oauth.meta_bindings import get_binding, save_binding
+from oauth.providers.meta import MetaOAuthProvider
+from oauth.manager import get_token
 
 from oauth.registry import (
     AccountConnectorConfigurationError,
@@ -16,6 +19,10 @@ class OAuthExchangeRequest(BaseModel):
     authorization_code: str
     state: str
     account_id: int | None = None
+
+class MetaBindingRequest(BaseModel):
+    page_id: str
+    instagram_user_id: str | None = None
 
 
 YouTubeOAuthExchangeRequest = OAuthExchangeRequest
@@ -87,3 +94,28 @@ def youtube_exchange(request: YouTubeOAuthExchangeRequest):
     # Compatibility endpoint retained for already-configured Google redirect
     # flows. The actual code exchange now goes through the connector registry.
     return exchange_account_connection('youtube', request)
+
+@router.get('/oauth/meta/resources/{account_id}')
+def meta_resources(account_id: int, platform: str = 'facebook'):
+    token = get_token(account_id)
+    if not token or not token.get('access_token'):
+        raise HTTPException(status_code=409, detail='Meta account is not authorized')
+    try:
+        return {'account_id': account_id, 'platform': platform, 'resources': MetaOAuthProvider(platform).discover_resources(token['access_token'])}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail='Meta resource discovery failed') from exc
+
+@router.get('/oauth/meta/binding/{account_id}')
+def meta_binding(account_id: int):
+    return get_binding(account_id)
+
+@router.post('/oauth/meta/bind/{account_id}')
+def bind_meta_resource(account_id: int, request: MetaBindingRequest, platform: str = 'facebook'):
+    token = get_token(account_id)
+    if not token or not token.get('access_token'):
+        raise HTTPException(status_code=409, detail='Meta account is not authorized')
+    resources = MetaOAuthProvider(platform).discover_resources(token['access_token'])
+    match = next((item for item in resources if item.get('page_id') == request.page_id and (platform != 'instagram' or item.get('instagram_user_id') == request.instagram_user_id)), None)
+    if not match:
+        raise HTTPException(status_code=400, detail='Meta resource binding could not be verified')
+    return save_binding(account_id, platform, request.page_id, match.get('instagram_user_id'), match.get('page_name'))

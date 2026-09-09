@@ -11,6 +11,8 @@ from oauth.providers.youtube import (
     YouTubeOAuthConfigurationError,
     YouTubeOAuthProvider,
 )
+from oauth.meta_runtime_config import meta_config_status
+from oauth.providers.meta import MetaOAuthConfigurationError, MetaOAuthProvider
 
 
 class AccountConnectorConfigurationError(RuntimeError):
@@ -170,7 +172,7 @@ def complete_account_connection(
             **token,
         }
     )
-    update_account_status(resolved_account_id, 'connected')
+    update_account_status(resolved_account_id, 'authorized' if normalized in {'facebook', 'instagram'} else 'connected')
     return {
         'platform': normalized,
         'connector_id': registration.connector_id,
@@ -249,6 +251,22 @@ register_account_connector(
     authorize_factory=_youtube_authorize,
     exchange_factory=_youtube_exchange,
 )
+
+def _meta_status(platform):
+    status = meta_config_status()
+    status.update({"scope_profile": "facebook_publish" if platform == "facebook" else "instagram_publish", "scopes": MetaOAuthProvider(platform).scopes})
+    return status
+
+def _meta_authorize(platform, account_id, scope_profile):
+    try: return MetaOAuthProvider(platform, scope_profile=scope_profile).authorization_url(account_id)
+    except MetaOAuthConfigurationError as exc: raise AccountConnectorConfigurationError(str(exc)) from exc
+
+def _meta_exchange(platform, state, code, state_value):
+    try: return MetaOAuthProvider(platform, scope_profile=state.get('scope_profile')).exchange_code(code)
+    except MetaOAuthConfigurationError as exc: raise AccountConnectorConfigurationError(str(exc)) from exc
+
+register_account_connector("facebook", connector_id="meta_oauth", state_provider="meta", status_factory=lambda: _meta_status("facebook"), authorize_factory=lambda account_id, profile: _meta_authorize("facebook", account_id, profile), exchange_factory=lambda state, code, state_value: _meta_exchange("facebook", state, code, state_value))
+register_account_connector("instagram", connector_id="meta_oauth", state_provider="meta", status_factory=lambda: _meta_status("instagram"), authorize_factory=lambda account_id, profile: _meta_authorize("instagram", account_id, profile), exchange_factory=lambda state, code, state_value: _meta_exchange("instagram", state, code, state_value))
 
 
 __all__ = [
