@@ -14,6 +14,7 @@ on:
       - 'os/backend/tests/r3_youtube_readiness_smoke.py'
       - 'os/backend/tests/r20_publish_center_execution_contract_smoke.py'
       - 'os/backend/tests/publish_asset_preflight_smoke.py'
+      - 'os/backend/tests/r33_youtube_upload_transport_smoke.py'
       - '.github/workflows/os-youtube-publish-readiness.yml'
 
 jobs:
@@ -55,6 +56,11 @@ jobs:
         env:
           PYTHONPATH: os/backend
         run: python os/backend/tests/publish_asset_preflight_smoke.py
+
+      - name: Run YouTube upload transport smoke tests
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r33_youtube_upload_transport_smoke.py
 
       - name: Report external OAuth client configuration
         shell: bash

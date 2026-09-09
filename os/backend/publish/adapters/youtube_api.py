@@ -7,9 +7,34 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 import httplib2
 
+from integrations.google_transport import build_authorized_httplib2
+
 
 RETRIABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_UPLOAD_RETRIES = 5
+
+
+def _safe_upload_error(error, status=None):
+    """Return a non-sensitive upload diagnostic suitable for persistence."""
+    if status is None:
+        status = getattr(getattr(error, "resp", None), "status", None)
+    errno = getattr(error, "winerror", None) or getattr(error, "errno", None)
+    if isinstance(error, HttpError):
+        category = "http_error"
+    elif isinstance(error, (TimeoutError,)):
+        category = "timeout"
+    elif isinstance(error, OSError):
+        category = "os_error"
+    elif isinstance(error, httplib2.HttpLib2Error):
+        category = "httplib2_error"
+    else:
+        category = "transport_error"
+    parts = [f"network_error={category}"]
+    if status is not None:
+        parts.append(f"status={status}")
+    if errno is not None:
+        parts.append(f"errno={errno}")
+    return "; ".join(parts)
 
 
 class YouTubeAPIClient:
@@ -25,10 +50,12 @@ class YouTubeAPIClient:
             self.status = "not_configured"
             return {"platform": "youtube", "status": self.status}
 
+        http = build_authorized_httplib2(self.credentials)
         self.service = build(
             "youtube",
             "v3",
             credentials=self.credentials,
+            http=http,
             cache_discovery=False,
         )
         self.status = "ready"
@@ -83,25 +110,30 @@ class YouTubeAPIClient:
 
             response = None
             retry_count = 0
+            last_diagnostic = None
             while response is None:
                 try:
                     _, response = request.next_chunk()
                     retry_count = 0
                 except HttpError as error:
                     status_code = getattr(error.resp, "status", None)
+                    last_diagnostic = _safe_upload_error(error, status_code)
                     if status_code not in RETRIABLE_STATUS_CODES:
                         raise
                     retry_count += 1
                     if retry_count > MAX_UPLOAD_RETRIES:
                         raise RuntimeError(
-                            f"YouTube resumable upload exceeded retry limit after HTTP {status_code}"
+                            "YouTube resumable upload exceeded retry limit: "
+                            f"{last_diagnostic}"
                         ) from error
                     time.sleep(self._backoff_seconds(retry_count))
                 except (httplib2.HttpLib2Error, OSError) as error:
+                    last_diagnostic = _safe_upload_error(error)
                     retry_count += 1
                     if retry_count > MAX_UPLOAD_RETRIES:
                         raise RuntimeError(
-                            "YouTube resumable upload exceeded retry limit"
+                            "YouTube resumable upload exceeded retry limit: "
+                            f"{last_diagnostic}"
                         ) from error
                     time.sleep(self._backoff_seconds(retry_count))
 
@@ -119,7 +151,11 @@ class YouTubeAPIClient:
             return {
                 "platform": "youtube",
                 "status": "failed",
-                "error": str(error),
+                "error": (
+                    f"YouTube upload failed: {_safe_upload_error(error)}"
+                    if isinstance(error, (HttpError, OSError, httplib2.HttpLib2Error, TimeoutError))
+                    else "YouTube upload failed: transport_error"
+                ),
             }
 
     def get_video_status(self, video_id):
