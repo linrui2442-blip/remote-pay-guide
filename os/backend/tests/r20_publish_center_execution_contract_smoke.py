@@ -26,12 +26,6 @@ from publish.orchestrator import (
 from publish.registry import platform_registry, register_adapter
 
 
-def reset_test_db():
-    db = TEST_DATABASE_PATH
-    if db.exists():
-        db.unlink()
-
-
 class R20LiveAdapter:
     platform_name = "r20-test"
 
@@ -73,7 +67,7 @@ def expect_contract_error(callback, text):
 
 
 def main():
-    reset_test_db()
+    assert_safe_test_database_path(TEST_DATABASE_PATH)
 
     # Built-in registry truthfulness: only YouTube is a live OS publish adapter.
     youtube = get_publish_execution_readiness("youtube")

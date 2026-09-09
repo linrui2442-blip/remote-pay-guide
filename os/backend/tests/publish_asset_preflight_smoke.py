@@ -35,12 +35,6 @@ class PreflightAdapter:
         }
 
 
-def reset_test_db():
-    db = TEST_DATABASE_PATH
-    if db.exists():
-        db.unlink()
-
-
 def expect_contract_error(callback, text):
     try:
         callback()
@@ -62,7 +56,7 @@ def prepare(asset_id, account_id):
 
 
 def main():
-    reset_test_db()
+    assert_safe_test_database_path(TEST_DATABASE_PATH)
     register_adapter("asset-preflight-test", PreflightAdapter(), replace=True)
     account = create_account(
         Account(platform="asset-preflight-test", account_name="Asset Preflight")

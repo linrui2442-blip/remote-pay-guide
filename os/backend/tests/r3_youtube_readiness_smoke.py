@@ -39,12 +39,6 @@ R2_SAFE_ASSET_URL = (
 )
 
 
-def reset_test_db():
-    db = TEST_DATABASE_PATH
-    if db.exists():
-        db.unlink()
-
-
 def test_publish_task_schema():
     task = PublishTask(
         asset_id="asset_schema_test",
@@ -297,7 +291,7 @@ def test_no_postiz_import_in_os_publish_path():
 
 
 def main():
-    reset_test_db()
+    assert_safe_test_database_path(TEST_DATABASE_PATH)
     test_publish_task_schema()
     test_r2_online_asset_to_temp_and_cleanup()
     test_invalid_asset_id_failure()

@@ -21,10 +21,12 @@ class Response:
     def json(self): return self.payload
 
 class Session:
-    def __init__(self, puts): self.puts, self.posts, self.calls = list(puts), 0, []
+    def __init__(self, puts, init_headers=None):
+        self.puts, self.posts, self.calls = list(puts), 0, []
+        self.init_headers = {"Location": "https://upload.invalid/?upload_id=SECRET_UPLOAD"} if init_headers is None else init_headers
     def post(self, url, **kwargs):
         self.posts += 1; self.init = (url, kwargs)
-        return Response(headers={"Location": "https://upload.invalid/?upload_id=SECRET_UPLOAD"})
+        return Response(headers=self.init_headers)
     def put(self, url, **kwargs):
         self.calls.append((url, kwargs)); item = self.puts.pop(0)
         if isinstance(item, Exception): raise item
@@ -58,6 +60,20 @@ def main():
             s = Session([Response(status)])
             error = client(s).upload_video(str(path), "t", "d")["error"]
             assert s.posts == 1 and len(s.calls) == 1 and "SECRET_UPLOAD" not in error
+        for status in (429, 500, 502, 503, 504):
+            s = Session([Response(status), Response(payload={"id": "test_video_id"})])
+            with patch("publish.adapters.youtube_api.time.sleep"):
+                assert client(s).upload_video(str(path), "t", "d")["status"] == "published"
+            assert s.posts == 1 and len(s.calls) == 2
+            assert all(call[0] == s.calls[0][0] for call in s.calls)
+        s = Session([], init_headers={})
+        missing_location = client(s).upload_video(str(path), "t", "d")
+        assert missing_location["status"] == "failed" and "stage=initialize" in missing_location["error"]
+        assert s.posts == 1 and not s.calls
+        s = Session([Response(payload={})])
+        missing_id = client(s).upload_video(str(path), "t", "d")
+        assert missing_id["error"] == "YouTube upload completed without a video id"
+        assert s.posts == 1 and len(s.calls) == 1
         safe = _safe_upload_error(timeout, stage="resume_probe", retries=5)
         assert "stage=resume_probe" in safe and "retries=5" in safe
         for secret in ("SECRET_TOKEN", "SECRET_ACCESS", "SECRET_UPLOAD", "upload_id", "https://"):
