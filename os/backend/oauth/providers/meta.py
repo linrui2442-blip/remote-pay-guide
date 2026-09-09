@@ -22,6 +22,10 @@ class MetaOAuthProvider:
         self.scope_profile = self.scope_profile or ("facebook_publish" if self.platform == "facebook" else "instagram_publish")
         self.scopes = self._scopes()
 
+    @property
+    def redirect_uri(self):
+        return self.config.get(f"{self.platform}_redirect_uri") or self.config.get("redirect_uri")
+
     def _scopes(self):
         if self.scope_profile == "facebook_publish": return list(FACEBOOK_PUBLISH_SCOPES)
         if self.scope_profile == "instagram_publish": return list(INSTAGRAM_PUBLISH_SCOPES)
@@ -29,13 +33,14 @@ class MetaOAuthProvider:
         raise ValueError("unsupported Meta scope profile")
 
     def _require_config(self):
-        missing = [key for key in ("app_id", "app_secret", "redirect_uri", "graph_api_version") if not self.config.get(key)]
+        missing = [key for key in ("app_id", "app_secret", "graph_api_version") if not self.config.get(key)]
+        if not self.redirect_uri: missing.append(f"{self.platform}_redirect_uri")
         if missing: raise MetaOAuthConfigurationError("missing Meta OAuth configuration: " + ", ".join(missing))
 
     def authorization_url(self, account_id):
         self._require_config(); state = secrets.token_urlsafe(32)
         create_oauth_state(account_id, state, provider="meta", connector_platform=self.platform, scope_profile=self.scope_profile)
-        query = {"client_id": self.config["app_id"], "redirect_uri": self.config["redirect_uri"], "state": state, "scope": ",".join(self.scopes), "response_type": "code"}
+        query = {"client_id": self.config["app_id"], "redirect_uri": self.redirect_uri, "state": state, "scope": ",".join(self.scopes), "response_type": "code"}
         return {"authorization_url": "https://www.facebook.com/" + self.config["graph_api_version"] + "/dialog/oauth?" + urlencode(query), "state": state, "scope_profile": self.scope_profile, "scopes": self.scopes}
 
     def _get(self, resource, access_token, **params):
@@ -57,7 +62,7 @@ class MetaOAuthProvider:
 
     def exchange_code(self, authorization_code):
         if not authorization_code: raise ValueError("authorization_code is required")
-        short = self._token_exchange({"client_id": self.config["app_id"], "client_secret": self.config["app_secret"], "redirect_uri": self.config["redirect_uri"], "code": authorization_code})
+        short = self._token_exchange({"client_id": self.config["app_id"], "client_secret": self.config["app_secret"], "redirect_uri": self.redirect_uri, "code": authorization_code})
         long = self._token_exchange({"grant_type": "fb_exchange_token", "client_id": self.config["app_id"], "client_secret": self.config["app_secret"], "fb_exchange_token": short.get("access_token")})
         if not long.get("access_token"): raise RuntimeError("Meta token exchange returned no access token")
         permission_data = self._get("me/permissions", long["access_token"]).get("data", [])

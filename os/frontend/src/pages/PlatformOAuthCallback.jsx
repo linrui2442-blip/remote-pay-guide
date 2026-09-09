@@ -25,6 +25,7 @@ export default function PlatformOAuthCallback({ platform: platformProp }) {
   const label = platformLabel(platform);
   const [status, setStatus] = useState(`正在连接 ${label}…`);
   const [connected, setConnected] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
     if (!platform) {
@@ -53,6 +54,9 @@ export default function PlatformOAuthCallback({ platform: platformProp }) {
         if (result?.status === "connected") {
           setStatus(`${label} 已连接，授权凭证已经写入本地 OS。`);
           setConnected(true);
+        } else if (result?.status === "authorized") {
+          setStatus(`${label} 授权成功，下一步请选择要绑定的 Meta 资源。`);
+          setAuthorized(true);
         } else {
           setStatus(result?.detail || `${label} 连接失败`);
         }
@@ -75,7 +79,7 @@ export default function PlatformOAuthCallback({ platform: platformProp }) {
           {connected ? "✓" : mark}
         </div>
         <span className="eyebrow">PLATFORM OAUTH</span>
-        <h1>{connected ? "授权完成" : "正在完成授权"}</h1>
+        <h1>{connected ? "授权完成" : authorized ? "授权成功 / 待绑定" : "正在完成授权"}</h1>
         <p>{status}</p>
         <button className="primary-button" onClick={returnToOS}>
           返回平台账号

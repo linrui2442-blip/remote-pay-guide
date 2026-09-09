@@ -157,6 +157,15 @@ export function beginYouTubeOAuth(accountId, scopeProfile = 'full') {
 export function exchangeYouTubeOAuth(data) {
   return exchangePlatformOAuth('youtube', data);
 }
+export function getMetaResources(accountId, platform) {
+  return apiGet(`/oauth/meta/resources/${encodeURIComponent(accountId)}?platform=${encodeURIComponent(platform)}`);
+}
+export function getMetaBinding(accountId) {
+  return apiGet(`/oauth/meta/binding/${encodeURIComponent(accountId)}`);
+}
+export function bindMetaResource(accountId, platform, resource) {
+  return apiPost(`/oauth/meta/bind/${encodeURIComponent(accountId)}?platform=${encodeURIComponent(platform)}`, resource);
+}
 
 export function getNetworkProxySettings() {
   return apiGet('/settings/network/proxy');

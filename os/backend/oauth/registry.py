@@ -260,7 +260,8 @@ register_account_connector(
 
 def _meta_status(platform):
     status = meta_config_status()
-    status.update({"scope_profile": "facebook_publish" if platform == "facebook" else "instagram_publish", "scopes": MetaOAuthProvider(platform).scopes})
+    provider = MetaOAuthProvider(platform)
+    status.update({"configured": bool(status.get(f"{platform}_redirect_uri") and status.get("app_id_configured") and status.get("graph_api_version") and "app_secret" not in status.get("missing_configuration", [])), "redirect_uri": provider.redirect_uri, "scope_profile": "facebook_publish" if platform == "facebook" else "instagram_publish", "scopes": provider.scopes})
     return status
 
 def _meta_authorize(platform, account_id, scope_profile):

@@ -12,9 +12,11 @@ def _value(explicit, env_name, secret_name=None):
     return None
 
 def meta_runtime_config(app_id=None, app_secret=None, redirect_uri=None, graph_api_version=None):
-    return {"app_id": _value(app_id, "META_OAUTH_APP_ID", "meta_oauth_app_id"), "app_secret": _value(app_secret, "META_OAUTH_APP_SECRET", "meta_oauth_app_secret"), "redirect_uri": _value(redirect_uri, "META_OAUTH_REDIRECT_URI"), "graph_api_version": _value(graph_api_version, "META_GRAPH_API_VERSION")}
+    return {"app_id": _value(app_id, "META_OAUTH_APP_ID", "meta_oauth_app_id"), "app_secret": _value(app_secret, "META_OAUTH_APP_SECRET", "meta_oauth_app_secret"), "redirect_uri": _value(redirect_uri, "META_OAUTH_REDIRECT_URI"), "facebook_redirect_uri": _value(None, "META_FACEBOOK_OAUTH_REDIRECT_URI"), "instagram_redirect_uri": _value(None, "META_INSTAGRAM_OAUTH_REDIRECT_URI"), "graph_api_version": _value(graph_api_version, "META_GRAPH_API_VERSION")}
 
 def meta_config_status():
     config = meta_runtime_config()
-    missing = [key for key in ("app_id", "app_secret", "redirect_uri", "graph_api_version") if not config.get(key)]
-    return {"configured": not missing, "missing_configuration": missing, "redirect_uri": config["redirect_uri"], "graph_api_version": config["graph_api_version"]}
+    missing = [key for key in ("app_id", "app_secret", "graph_api_version") if not config.get(key)]
+    if not config.get("facebook_redirect_uri") and not config.get("redirect_uri"): missing.append("facebook_redirect_uri")
+    if not config.get("instagram_redirect_uri") and not config.get("redirect_uri"): missing.append("instagram_redirect_uri")
+    return {"configured": not missing, "app_id_configured": bool(config["app_id"]), "missing_configuration": missing, "redirect_uri": config["redirect_uri"], "facebook_redirect_uri": config["facebook_redirect_uri"] or config["redirect_uri"], "instagram_redirect_uri": config["instagram_redirect_uri"] or config["redirect_uri"], "graph_api_version": config["graph_api_version"]}
