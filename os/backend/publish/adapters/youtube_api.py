@@ -54,7 +54,6 @@ class YouTubeAPIClient:
         self.service = build(
             "youtube",
             "v3",
-            credentials=self.credentials,
             http=http,
             cache_discovery=False,
         )
