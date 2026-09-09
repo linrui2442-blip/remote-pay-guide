@@ -41,6 +41,9 @@ LIVE
 Content attribution parameters:
 IMPLEMENTED
 
+Legacy attribution compatibility:
+CODE + TEST VERIFIED
+
 Binance referral click event:
 IMPLEMENTED
 

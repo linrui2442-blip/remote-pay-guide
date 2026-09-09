@@ -1,11 +1,16 @@
 (() => {
   const params = new URLSearchParams(window.location.search);
+  const rawSrc = params.get('src');
+  const explicitContentId = params.get('content_id');
+  const legacyContentMatch = !explicitContentId && rawSrc && /^short\d+$/.test(rawSrc)
+    ? rawSrc
+    : null;
   const state = {
     payment_type: null,
     payer_type: null,
     exchange_status: null,
-    src: params.get('src') || 'direct',
-    content_id: params.get('content_id') || 'unknown'
+    src: rawSrc || 'direct',
+    content_id: explicitContentId || legacyContentMatch || 'unknown'
   };
 
   const steps = [...document.querySelectorAll('.step')];

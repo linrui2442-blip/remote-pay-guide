@@ -113,6 +113,8 @@ This must be validated with real GA4 evidence before being marked REAL E2E VERIF
 
 ## Attribution Link Compatibility
 
+GA4 attribution compatibility: **CODE + TEST VERIFIED**. New links use explicit `src` + `content_id`; historical `?src=shortXX` links recover the unambiguous content ID without changing unknown sources.
+
 Historical posting links commonly use:
 
 ```text
