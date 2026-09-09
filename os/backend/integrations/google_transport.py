@@ -1,7 +1,4 @@
 from google.auth.transport.requests import AuthorizedSession
-from google_auth_httplib2 import AuthorizedHttp
-import httplib2
-from urllib.parse import urlparse
 
 from config.network import configure_outbound_proxy
 
@@ -39,27 +36,3 @@ def build_authorized_session(credentials, session_factory=AuthorizedSession):
     if proxies:
         session.proxies.update(proxies)
     return session
-
-
-def build_authorized_httplib2(credentials):
-    """Create an authorized httplib2 transport using the OS proxy choice."""
-    proxies = get_active_proxy_map()
-    proxy_url = proxies.get("https") or proxies.get("http")
-    if proxy_url:
-        parsed = urlparse(proxy_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise ValueError("OS proxy must be an HTTP(S) proxy for Google uploads")
-        # httplib2 exposes the socks constants only when optional SOCKS
-        # support is installed; HTTP proxy support itself does not require it.
-        proxy_type_http = getattr(getattr(httplib2, "socks", None), "PROXY_TYPE_HTTP", 3)
-        proxy_info = httplib2.ProxyInfo(
-            proxy_type_http,
-            parsed.hostname,
-            parsed.port or (443 if parsed.scheme == "https" else 80),
-            proxy_user=parsed.username,
-            proxy_pass=parsed.password,
-        )
-        http = httplib2.Http(proxy_info=proxy_info)
-    else:
-        http = httplib2.Http()
-    return AuthorizedHttp(credentials, http=http)
