@@ -4,50 +4,77 @@
 
 Analytics measures the complete acquisition path:
 
-```
-social traffic
+```text
+social/content traffic
     ↓
 landing page
     ↓
 user intent
     ↓
-referral click
+Binance referral click
     ↓
-conversion feedback
+conversion feedback when available
 ```
+
+The current business question is:
+
+```text
+Which content generated Binance referral-link clicks?
+```
+
+Binance registration/conversion attribution is a separate later question and is intentionally deferred for now.
+
+---
 
 ## Current Status
 
-```
+```text
 GA4 integration:
 DONE
 
-Event tracking:
+Browser event tracking:
 IMPLEMENTED
 
-Published content validation:
-DONE (short01-short04)
+Public GitHub Pages landing page:
+LIVE
 
-Real traffic attribution validation:
-IN PROGRESS
+Content attribution parameters:
+IMPLEMENTED
 
-Revenue validation:
-PENDING
+Binance referral click event:
+IMPLEMENTED
+
+Real content → Binance click attribution validation:
+PENDING REAL GA4 E2E
+
+GA4 → Remote Pay Guide OS Data Center import:
+NOT IMPLEMENTED
+
+Binance registration conversion provider:
+DEFERRED / NOT CURRENT BLOCKER
 ```
+
+---
 
 ## GA4 Integration
 
-GA4 loading is implemented through analytics.js.
+GA4 loading is implemented through `analytics.js`.
 
-The measurement ID is configured in analytics-config.js.
+The measurement ID is configured in `analytics-config.js`.
 
 Events are forwarded through the browser event layer.
 
+The browser tracking layer does not require a Vercel/Cloudflare collector to send the existing events to GA4.
+
+A separate signed server-side collector remains optional future infrastructure for requirements that GA4 reporting cannot satisfy.
+
+---
+
 ## Events
 
-Implemented events:
+Implemented events include:
 
-```
+```text
 page_view
 payment_type_select
 payer_type_select
@@ -56,42 +83,79 @@ new_to_exchange_identified
 binance_referral_click
 ```
 
-## Event Flow
+The landing page reads attribution parameters from its URL and includes them in event payloads:
 
+```text
+src
+content_id
 ```
-User enters Landing Page
+
+---
+
+## Referral Click Flow
+
+Current implemented browser flow:
+
+```text
+User opens attributed landing URL
     ↓
 page_view
     ↓
-payment_type_select
+optional guide interactions
     ↓
-payer_type_select
-    ↓
-exchange_status_select
+user clicks Binance CTA
     ↓
 binance_referral_click
+    ↓
+GA4
 ```
 
-## Current Publishing Attribution
+Do not add a second `binance_referral_click` implementation; it already exists.
 
-Active publishing platforms:
+---
 
+## Attribution Link Standard
+
+Historical published links commonly use:
+
+```text
+?src=short04
 ```
-YouTube Shorts
-Instagram Reels
-Facebook Reels
+
+New canonical links should include both source and explicit content identity, for example:
+
+```text
+?src=yt_short04&content_id=short04
 ```
 
-TikTok is not currently part of the publishing workflow.
+Compatibility rules:
 
-The attribution goal is:
+- New campaign links should include explicit `content_id`.
+- Existing historical links must continue to work.
+- Do not require republishing old videos.
+- Legacy `src` may be used to recover a content ID only when the mapping is unambiguous.
+- Ambiguous attribution must remain unknown rather than being guessed.
 
+---
+
+## Current Publishing Attribution Goal
+
+Current primary platform focus:
+
+```text
+YouTube
 ```
+
+The system architecture can support more platforms later, but current real attribution validation should first close the YouTube-first path.
+
+Target:
+
+```text
 content_id
     ↓
-platform
+platform/source
     ↓
-traffic source
+GitHub Pages landing page
     ↓
 GA4
     ↓
@@ -100,60 +164,119 @@ binance_referral_click
 
 Example:
 
-```
+```text
 short04
     ↓
-youtube_short04
+?src=yt_short04&content_id=short04
+    ↓
+GitHub Pages
     ↓
 GA4
     ↓
 binance_referral_click
 ```
 
-## Validation Status
+---
 
-The system has verified:
+## Real Validation State
 
-```
-Content Factory
-    ↓
-Video Production
-    ↓
-Postiz Publishing
-    ↓
-Landing Page
-    ↓
-GA4 Events
-```
+### A. YouTube Historical Analytics
 
-Remaining validation:
+YouTube Analytics 7D Historical Backfill: **FULL E2E VERIFIED**.
 
-```
-Real external user
-    ↓
-Social platform
-    ↓
-Landing Page
-    ↓
-Intent event
-    ↓
-Referral conversion
+Verified path:
+
+```text
+Google OAuth
+→ token refresh
+→ YouTube Analytics API
+→ Historical Backfill Runtime
+→ analytics_metrics / no-data coverage
+→ Query V2
+→ Data Center
 ```
 
-## Goal
+The validated window contained real daily snapshots and typed no-data observations. Query V2 preserved gaps as unavailable rather than fabricating zero traffic.
 
-Identify which content generates users with real stablecoin payment intent and referral conversion.
+### B. Scheduled Daily YouTube Analytics
 
-## Current Real Validation
+Scheduled Daily Analytics Sync: **REAL UNATTENDED E2E VERIFIED**.
 
-两条独立的真实 Analytics runtime 链均已完成验证：
+Verified path:
 
-### A. Historical Backfill Runtime
+```text
+FastAPI lifespan
+→ Background Account Sync Scheduler
+→ YouTube content sync
+→ YouTube Analytics reads
+→ analytics/no-data persistence
+→ scheduler state advancement
+→ Query V2 / Data Center
+```
 
-YouTube Analytics 7D Historical Backfill：**FULL E2E VERIFIED**。窗口为 2026-08-31 至 2026-09-06（America/Los_Angeles），结果为 50 个真实每日 snapshots + 20 个 no-data observations。Query V2 与 Data Center 已验证真实 gap（无 fake zero、无 aggregate-to-daily splitting）。
+Same-reporting-day idempotency was verified, and aggregate windows remain distinct from daily snapshots.
 
-### B. Scheduled Daily Background Sync Runtime
+### C. Landing Page / Binance Referral Click
 
-Scheduled Daily Analytics Sync：**REAL UNATTENDED E2E VERIFIED**（2026-09-08）。FastAPI lifespan 是唯一执行触发；background scheduler 自动识别 account 1 为 due，并针对 target daily date 2026-09-06 完成真实 OAuth token refresh 和 YouTube Analytics read。10 个 eligible videos 返回 0 个 daily snapshots、10 个 `AnalyticsNoData` observations、0 failures 与 0 fake zeros，随后正确推进 persistent scheduler state。
+Current code state:
 
-同一轮 default aggregate window（2026-08-11 至 2026-09-07）独立写入 10 个 video aggregate rows 与 1 个 account aggregate row；这些 aggregate rows 未被当作 daily snapshots，也未拆成 daily trend points。第二次 due check 未重复运行同一 target day，same-reporting-day idempotency 已真实验证。
+```text
+GitHub Pages: LIVE
+GA4: ACTIVE
+binance_referral_click event: IMPLEMENTED
+src/content_id payload support: IMPLEMENTED
+```
+
+What is still missing is a recorded real E2E proof that one known content item can be traced through a real public session to a GA4 `binance_referral_click` event with the expected attribution identity.
+
+Therefore current status is:
+
+```text
+Content → Landing → Binance Referral Click
+IMPLEMENTED
+REAL GA4 E2E NOT YET VERIFIED
+```
+
+---
+
+## Current Next Step
+
+### Stage 1 — Real GA4 Attribution Validation
+
+Use one known content item and a canonical attributed URL.
+
+Acceptance target:
+
+```text
+known content
+→ real public GitHub Pages session
+→ Binance CTA click
+→ GA4 event observed
+→ source/content identity confirmed
+```
+
+No fake fixtures can be used to claim REAL E2E.
+
+### Stage 2 — GA4 → OS Data Center Ingestion
+
+After Stage 1 is proven, connect GA4 reporting into the existing OS Data Center.
+
+Target metrics include:
+
+```text
+landing visits
+Binance referral clicks
+click-through rate
+content/source identity
+time window
+```
+
+The implementation must reuse existing Data Center / growth / Query / Intelligence boundaries and must not create a second Analytics storage system.
+
+---
+
+## Deferred
+
+Binance registration/conversion attribution is intentionally deferred until the project has accumulated enough real traffic to justify connecting a real provider callback/API or equivalent trusted source.
+
+Do not treat this deferred item as a blocker for measuring content → Binance referral clicks.
