@@ -4,25 +4,13 @@
 
 Remote Pay Guide OS is in active development and real-runtime validation.
 
-Current repository source baseline:
-
-```text
-main
-```
-
 Runtime state is separate from Git and must be preserved:
 
 ```text
 os/database/os.db
 ```
 
-Do not replace, recreate, reset, migrate destructively, or use the production runtime database as a test database.
-
-See:
-
-```text
-docs/RUNTIME_DATA_POLICY.md
-```
+Never replace, recreate, reset, destructively migrate, or use the production runtime database as a test database. See `docs/RUNTIME_DATA_POLICY.md`.
 
 ---
 
@@ -30,27 +18,18 @@ docs/RUNTIME_DATA_POLICY.md
 
 Remote Pay Guide OS is an AI-driven content production and growth operations control system.
 
-Core loop:
-
 ```text
 Data Feedback
-↓
-AI Intelligence
-↓
-Production Task
-↓
-Production Execution
-↓
-Video Asset
-↓
-Publish
-↓
-Traffic / Intent / Conversion
-↓
-Data Feedback
+→ AI Intelligence
+→ Production Task
+→ Production Execution
+→ Video Asset
+→ Publish
+→ Traffic / Intent / Referral
+→ Data Feedback
 ```
 
-Current business focus is YouTube-first. Other platform adapters may exist, but they must not be treated as fully live unless their real provider integration is verified.
+Binance registration/conversion attribution is intentionally deferred. The current business signal is the Binance referral-link click.
 
 ---
 
@@ -64,164 +43,158 @@ Current business focus is YouTube-first. Other platform adapters may exist, but 
 - Scheduler cross-process coordination: REAL TWO-PROCESS E2E VERIFIED
 - Scheduler crash / lease recovery: REAL TWO-PROCESS E2E VERIFIED
 - Scheduler lease heartbeat: REAL TWO-PROCESS E2E VERIFIED
-- Scheduler runtime timing / health / stuck detection: VERIFIED
 - Operational Runtime Run History: MAINLINE + CI VERIFIED
 - Crash / Recovery Lineage: MAINLINE VERIFIED
 - Health Event Persistence: MAINLINE VERIFIED
 - History Retention: MAINLINE VERIFIED
 - Test Database Isolation: MAINLINE + CI VERIFIED
-- Real Intent + Referral Attribution ingestion contract: LOCAL CONTRACT VERIFIED
+- Signed HMAC attribution ingestion contract: LOCAL CONTRACT VERIFIED
+- GA4 landing-page integration: REAL ACTIVE
+- Content → Binance referral click attribution: **REAL GA4 E2E VERIFIED (2026-09-09)**
 
-Scheduler Operational Hardening is CLOSED. Do not continue adding scheduler infrastructure unless a new real production failure demonstrates a concrete gap.
-
----
-
-## Landing Page / GA4 Attribution Reality
-
-The public GitHub Pages landing page is already live and already uses GA4.
-
-Current browser-side attribution capabilities already implemented:
-
-```text
-src
-content_id
-page_view
-payment_type_select
-payer_type_select
-exchange_status_select
-new_to_exchange_identified
-binance_referral_click
-```
-
-The landing page reads `src` and `content_id` from the URL and includes them in emitted events. Clicking the Binance CTA already emits `binance_referral_click`.
-
-Therefore, the current problem is NOT "add Binance click tracking" and NOT "deploy a public collector before any attribution can work".
-
-The current missing proof is:
-
-```text
-Specific content
-→ public GitHub Pages landing URL
-→ real user/session
-→ GA4 binance_referral_click
-→ attribution back to that content
-```
-
-This must be validated with real GA4 evidence before being marked REAL E2E VERIFIED.
+Scheduler Operational Hardening is CLOSED. Do not add more scheduler infrastructure unless a real production failure exposes a concrete gap.
 
 ---
 
-## Attribution Link Compatibility
+## GA4 Referral Attribution — CLOSED
 
-GA4 attribution compatibility: **CODE + TEST VERIFIED**. New links use explicit `src` + `content_id`; historical `?src=shortXX` links recover the unambiguous content ID without changing unknown sources.
+The deployed GitHub Pages landing page already emits `binance_referral_click` and carries `src` + `content_id`.
 
-Historical posting links commonly use:
-
-```text
-?src=short04
-```
-
-New canonical links should use an explicit source plus content identifier, for example:
+Canonical future link:
 
 ```text
 ?src=yt_short04&content_id=short04
 ```
 
-Compatibility requirement:
-
-- New links should include explicit `content_id`.
-- Existing historical links must continue to work.
-- If a legacy `src` unambiguously identifies a known content item, the frontend may safely recover the content identity instead of recording `content_id=unknown`.
-- Do not break previously published links.
-
----
-
-## HMAC Attribution Boundary
-
-The provider-neutral signed HMAC attribution ingestion boundary remains valid and must be preserved:
+Historical links such as:
 
 ```text
-/attribution/intent
-/attribution/conversion/{provider}
-signed redirect/link
+?src=short04
 ```
 
-Its local contract is verified for signature validation, dedupe, identifier validation, privacy limits, and canonical intent/conversion writes.
+remain compatible when the content identity is unambiguous.
 
-However, it is NOT the current development blocker.
-
-A separate Vercel/Cloudflare/public relay is optional future infrastructure if Remote Pay Guide later needs raw server-side attribution, richer session-level events, or a provider callback path that cannot be satisfied by GA4 reporting.
-
-Do not deploy a new public collector merely to duplicate the GA4 click signal that already exists.
-
----
-
-## Binance Conversion Scope
-
-The current business signal being tracked is:
+Real production evidence observed on 2026-09-09:
 
 ```text
-Which content generated a Binance referral-link click?
+public GitHub Pages session
+→ src=yt_short04
+→ content_id=short04
+→ Binance CTA clicked once
+→ GA4 realtime received binance_referral_click
+→ GA4 event parameter content_id = short04
+→ GA4 event parameter src = yt_short04
 ```
 
-The later conversion question is:
-
-```text
-Did that user actually register / convert on Binance?
-```
-
-Binance registration/conversion attribution is intentionally deferred until the project has run with real traffic long enough to justify adding it.
-
-Current status:
-
-- Binance referral click event: IMPLEMENTED
-- Content → Binance click real GA4 attribution: PENDING REAL E2E VALIDATION
-- Binance registration conversion provider/callback: DEFERRED / NOT CURRENT BLOCKER
-- Do not claim Binance registration E2E
-
----
-
-## Publish State
-
-YouTube official publish architecture exists, including live adapter/readiness, OAuth upload scope checks, asset preflight, explicit task/run boundaries, and result persistence.
-
-However, the canonical project record still does not treat a new real YouTube private upload as fully verified production evidence.
-
-Real external upload remains an explicit user-authorized operation.
-
----
-
-# CURRENT NEXT STEP
-
-## Stage 1 — GA4 Content → Binance Referral Click Attribution Closeout
-
-This is the immediate development/validation stage.
-
-Do NOT re-add `binance_referral_click`; it already exists.
-
-Required work:
-
-1. Normalize attribution-link generation going forward to explicit `src + content_id`.
-2. Preserve compatibility with historical `?src=shortXX` links.
-3. Add regression tests for attribution parameters and `binance_referral_click` payload identity.
-4. Perform a real public GitHub Pages → GA4 validation using one known content item.
-5. Confirm the GA4 event can be attributed to that content without fabricating data.
-6. Update docs only after real evidence exists.
-
-Acceptance target:
+Status:
 
 ```text
 Content → Landing → Binance Referral Click
 REAL GA4 E2E VERIFIED
 ```
 
+Do not reimplement this event and do not deploy Vercel/Cloudflare merely to duplicate it.
+
+GA4 custom-dimension registration for long-range reporting may still be checked/configured later if needed; it is not a blocker for the verified realtime delivery chain.
+
 ---
 
-## Stage 2 — GA4 → Remote Pay Guide OS Data Center Ingestion
+## Binance Conversion Scope
 
-After Stage 1 is proven, connect GA4 reporting into the existing OS Data Center instead of building another tracking system.
+Current scope:
 
-Target outcome:
+- Binance referral click: REAL GA4 E2E VERIFIED
+- Binance registration/conversion provider: DEFERRED / NOT CURRENT BLOCKER
+- Do not claim Binance registration E2E
+
+The project should run with real traffic before deciding whether registration-level attribution is worth adding.
+
+---
+
+## Production Launch Requirement
+
+The user requires the operational publishing product to support all three target platforms:
+
+```text
+YouTube Shorts
+Instagram Reels
+Facebook Reels
+```
+
+Therefore YouTube-only publishing is **not** sufficient for Production Trial Ready.
+
+Current real OS publish state:
+
+- YouTube: official adapter/readiness exists; real new-video publish E2E still needs final closeout
+- Instagram: current OS adapter is placeholder/simulated; real Meta publish integration not yet closed
+- Facebook: current OS adapter is placeholder/simulated; real Meta publish integration not yet closed
+- Postiz: legacy compatibility only; must not become the formal OS publish dependency
+
+---
+
+# CURRENT NEXT STEP
+
+## P0 — Multi-Platform Live Publish
+
+This is now the primary launch-blocking development track.
+
+### 1. YouTube Official Publish Closeout
+
+After explicit user authorization, verify one safe real upload, preferably private:
+
+```text
+Ready VideoAsset
+→ pending PublishTask
+→ explicit run
+→ YouTube official API
+→ platform_video_id
+→ published_url
+→ status=published
+```
+
+Do not redesign Publish Center and do not fall back to Postiz.
+
+### 2. Meta Account / OAuth Foundation
+
+Extend the existing provider-neutral account/OAuth architecture for Meta. Do not create a second account system or second OAuth stack.
+
+### 3. Instagram Reels Official Publish Adapter
+
+Implement real live publishing through the existing Publish Registry / Adapter / Readiness boundaries.
+
+### 4. Facebook Reels Official Publish Adapter
+
+Implement real live publishing through the same existing boundaries.
+
+### 5. Unified Publish Center
+
+One ready VideoAsset should be publishable through the existing Publish Center to the three target platforms without duplicating PublishTask, Data Center, Registry, or Runtime systems.
+
+### 6. Real Publish E2E for all three platforms
+
+Production Trial Ready requires real evidence for:
+
+```text
+YouTube   → published
+Instagram → published
+Facebook  → published
+```
+
+Each real provider path must persist truthful platform identifiers/status/errors.
+
+---
+
+## P1 — Multi-Platform Content Sync / Analytics
+
+After three-platform live publishing is stable, add or close real Instagram/Facebook content-sync and analytics capabilities through existing platform capability boundaries.
+
+Do not modify the core Data Center schema to add platform-specific copies of the same metrics.
+
+---
+
+## P1 — GA4 → OS Data Center Ingestion
+
+Import GA4 business signals into the existing Data Center:
 
 ```text
 content_id
@@ -229,32 +202,30 @@ platform/source
 landing visits
 Binance referral clicks
 click-through rate
-↓
-Data Center
-↓
-AI Intelligence
+time window
 ```
 
-GA4 report ingestion must reuse the existing Data Center / growth / intelligence boundaries. Do not create a second analytics database or second query engine.
+This is important for Intelligence, but it no longer blocks the immediate three-platform publishing launch requirement.
+
+No second Analytics storage and no second Query Engine.
 
 ---
 
-## Stage 3 — Operate and Accumulate Real Data
+## P2 — Operate and Accumulate Real Data
 
-Let the system run long enough to accumulate real YouTube Analytics + GA4 click data before adding more infrastructure.
+Run the system with real content and traffic, then verify Intelligence uses referral clicks/click rate together with platform traffic/watch quality to recommend the next production strategy.
 
-The project should prefer evidence from real operation over speculative platform expansion.
+Keep task materialization and external publishing controlled until enough operational evidence exists.
 
 ---
 
 ## Later / Optional
 
 - Binance registration/conversion attribution
-- Public HMAC relay/collector, only if real requirements justify it
-- Real external AI video provider E2E
-- Real YouTube private upload E2E with explicit user authorization
-- Facebook / Instagram / TikTok full live provider parity
-- Controlled Intelligence → ProductionTask automation after real business feedback is available
+- public HMAC relay/collector only if a real requirement justifies it
+- real external AI video provider E2E
+- TikTok live provider parity
+- higher automation after real business-data evidence
 
 ---
 
@@ -262,8 +233,8 @@ The project should prefer evidence from real operation over speculative platform
 
 ```text
 Do not duplicate completed systems.
-Do not treat optional external infrastructure as the current blocker.
+Three-platform live publish is the current launch blocker.
 Do not claim external E2E without real evidence.
 Preserve runtime DB safety.
-Use real traffic data to drive the next development stage.
+Keep formal OS publish on official/provider adapters, not Postiz.
 ```
