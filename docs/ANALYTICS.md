@@ -2,27 +2,23 @@
 
 ## Purpose
 
-Analytics measures the complete acquisition path:
+Analytics measures the acquisition path:
 
 ```text
-social/content traffic
-    ↓
-landing page
-    ↓
-user intent
-    ↓
-Binance referral click
-    ↓
-conversion feedback when available
+content traffic
+→ landing page
+→ user intent
+→ Binance referral click
+→ later conversion feedback when available
 ```
 
-The current business question is:
+Current business question:
 
 ```text
 Which content generated Binance referral-link clicks?
 ```
 
-Binance registration/conversion attribution is a separate later question and is intentionally deferred for now.
+Binance registration/conversion attribution is a separate later question and is intentionally deferred.
 
 ---
 
@@ -47,8 +43,8 @@ CODE + TEST VERIFIED
 Binance referral click event:
 IMPLEMENTED
 
-Real content → Binance click attribution validation:
-PENDING REAL GA4 E2E
+Content → Binance referral click attribution:
+REAL GA4 E2E VERIFIED (2026-09-09)
 
 GA4 → Remote Pay Guide OS Data Center import:
 NOT IMPLEMENTED
@@ -56,6 +52,50 @@ NOT IMPLEMENTED
 Binance registration conversion provider:
 DEFERRED / NOT CURRENT BLOCKER
 ```
+
+---
+
+## Real GA4 Referral Attribution Evidence
+
+A real public session was executed against the deployed GitHub Pages site using the canonical attributed URL pattern.
+
+Observed browser attribution:
+
+```text
+src = yt_short04
+content_id = short04
+```
+
+The Binance CTA was clicked once.
+
+GA4 Realtime then showed:
+
+```text
+binance_referral_click = 1
+content_id = short04
+src = yt_short04
+```
+
+Therefore the verified chain is:
+
+```text
+short04
+→ public GitHub Pages landing page
+→ real guide interaction
+→ real Binance CTA click
+→ GA4 binance_referral_click
+→ content_id=short04
+→ src=yt_short04
+```
+
+Status:
+
+```text
+Content → Landing → Binance Referral Click
+REAL GA4 E2E VERIFIED
+```
+
+This evidence proves realtime event delivery and content/source attribution. GA4 custom-dimension registration for long-range reporting/Explore may still be configured or audited separately if needed; it is not required to claim the realtime E2E above.
 
 ---
 
@@ -67,9 +107,9 @@ The measurement ID is configured in `analytics-config.js`.
 
 Events are forwarded through the browser event layer.
 
-The browser tracking layer does not require a Vercel/Cloudflare collector to send the existing events to GA4.
+The browser tracking layer does not require a Vercel/Cloudflare collector for the existing GA4 signal.
 
-A separate signed server-side collector remains optional future infrastructure for requirements that GA4 reporting cannot satisfy.
+Do not add a second `binance_referral_click` implementation.
 
 ---
 
@@ -86,7 +126,7 @@ new_to_exchange_identified
 binance_referral_click
 ```
 
-The landing page reads attribution parameters from its URL and includes them in event payloads:
+The landing page includes these attribution parameters in event payloads:
 
 ```text
 src
@@ -95,191 +135,83 @@ content_id
 
 ---
 
-## Referral Click Flow
-
-Current implemented browser flow:
-
-```text
-User opens attributed landing URL
-    ↓
-page_view
-    ↓
-optional guide interactions
-    ↓
-user clicks Binance CTA
-    ↓
-binance_referral_click
-    ↓
-GA4
-```
-
-Do not add a second `binance_referral_click` implementation; it already exists.
-
----
-
 ## Attribution Link Standard
 
-Historical published links commonly use:
+Historical links such as:
 
 ```text
 ?src=short04
 ```
 
-New canonical links should include both source and explicit content identity, for example:
+remain compatible when the mapping is unambiguous.
+
+New canonical links should use explicit source and content identity:
 
 ```text
 ?src=yt_short04&content_id=short04
 ```
 
-Compatibility rules:
+Rules:
 
-- New campaign links should include explicit `content_id`.
-- Existing historical links must continue to work.
-- Do not require republishing old videos.
-- Legacy `src` may be used to recover a content ID only when the mapping is unambiguous.
-- Ambiguous attribution must remain unknown rather than being guessed.
-
----
-
-## Current Publishing Attribution Goal
-
-Current primary platform focus:
-
-```text
-YouTube
-```
-
-The system architecture can support more platforms later, but current real attribution validation should first close the YouTube-first path.
-
-Target:
-
-```text
-content_id
-    ↓
-platform/source
-    ↓
-GitHub Pages landing page
-    ↓
-GA4
-    ↓
-binance_referral_click
-```
-
-Example:
-
-```text
-short04
-    ↓
-?src=yt_short04&content_id=short04
-    ↓
-GitHub Pages
-    ↓
-GA4
-    ↓
-binance_referral_click
-```
+- new campaign links include explicit `content_id`;
+- old links continue working;
+- old videos do not need republishing merely for compatibility;
+- ambiguous attribution remains unknown rather than guessed.
 
 ---
 
-## Real Validation State
+## YouTube Analytics Runtime
 
-### A. YouTube Historical Analytics
+### Historical Analytics
 
 YouTube Analytics 7D Historical Backfill: **FULL E2E VERIFIED**.
-
-Verified path:
 
 ```text
 Google OAuth
 → token refresh
 → YouTube Analytics API
 → Historical Backfill Runtime
-→ analytics_metrics / no-data coverage
+→ analytics/no-data persistence
 → Query V2
 → Data Center
 ```
 
-The validated window contained real daily snapshots and typed no-data observations. Query V2 preserved gaps as unavailable rather than fabricating zero traffic.
-
-### B. Scheduled Daily YouTube Analytics
+### Scheduled Daily Analytics
 
 Scheduled Daily Analytics Sync: **REAL UNATTENDED E2E VERIFIED**.
-
-Verified path:
 
 ```text
 FastAPI lifespan
 → Background Account Sync Scheduler
 → YouTube content sync
 → YouTube Analytics reads
-→ analytics/no-data persistence
-→ scheduler state advancement
+→ persistence
 → Query V2 / Data Center
 ```
 
-Same-reporting-day idempotency was verified, and aggregate windows remain distinct from daily snapshots.
-
-### C. Landing Page / Binance Referral Click
-
-Current code state:
-
-```text
-GitHub Pages: LIVE
-GA4: ACTIVE
-binance_referral_click event: IMPLEMENTED
-src/content_id payload support: IMPLEMENTED
-```
-
-What is still missing is a recorded real E2E proof that one known content item can be traced through a real public session to a GA4 `binance_referral_click` event with the expected attribution identity.
-
-Therefore current status is:
-
-```text
-Content → Landing → Binance Referral Click
-IMPLEMENTED
-REAL GA4 E2E NOT YET VERIFIED
-```
+No-data and aggregate-window semantics remain distinct from real zero values.
 
 ---
 
-## Current Next Step
+## Next Analytics Development
 
-### Stage 1 — Real GA4 Attribution Validation
+GA4 → OS Data Center ingestion remains important, but it is no longer the immediate launch blocker because the user requires three-platform live publishing first.
 
-Use one known content item and a canonical attributed URL.
-
-Acceptance target:
+Target GA4 signals for later Data Center import:
 
 ```text
-known content
-→ real public GitHub Pages session
-→ Binance CTA click
-→ GA4 event observed
-→ source/content identity confirmed
-```
-
-No fake fixtures can be used to claim REAL E2E.
-
-### Stage 2 — GA4 → OS Data Center Ingestion
-
-After Stage 1 is proven, connect GA4 reporting into the existing OS Data Center.
-
-Target metrics include:
-
-```text
+content_id
+platform/source
 landing visits
 Binance referral clicks
 click-through rate
-content/source identity
 time window
 ```
 
-The implementation must reuse existing Data Center / growth / Query / Intelligence boundaries and must not create a second Analytics storage system.
+Implementation must reuse the existing Data Center / Growth / Query / Intelligence boundaries and must not create a second Analytics storage system.
 
 ---
 
 ## Deferred
 
-Binance registration/conversion attribution is intentionally deferred until the project has accumulated enough real traffic to justify connecting a real provider callback/API or equivalent trusted source.
-
-Do not treat this deferred item as a blocker for measuring content → Binance referral clicks.
+Binance registration/conversion attribution is deferred until real traffic volume and business need justify connecting a trusted provider callback/API or equivalent source.
