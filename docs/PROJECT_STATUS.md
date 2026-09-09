@@ -125,7 +125,8 @@ Therefore YouTube-only publishing is **not** sufficient for Production Trial Rea
 
 Current real OS publish state:
 
-- YouTube: official adapter/readiness exists; real new-video publish E2E still needs final closeout
+- YouTube: official AuthorizedSession/requests adapter; REAL PRIVATE E2E VERIFIED (task 12, private read-back confirmed)
+- Verified 2026-09-09: account_id=1, asset_id=youtube_private_e2e_short04, task_id=12, provider video id=uEQR9PSAfUA, privacy=private; first failed task 11 remains preserved.
 - Instagram: current OS adapter is placeholder/simulated; real Meta publish integration not yet closed
 - Facebook: current OS adapter is placeholder/simulated; real Meta publish integration not yet closed
 - Postiz: legacy compatibility only; must not become the formal OS publish dependency
