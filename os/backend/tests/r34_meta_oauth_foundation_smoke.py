@@ -13,12 +13,12 @@ def main():
     for key in ("META_OAUTH_APP_ID","META_OAUTH_APP_SECRET","META_OAUTH_REDIRECT_URI","META_GRAPH_API_VERSION"): os.environ.pop(key, None)
     assert meta_config_status()["configured"] is False
     assert {item["platform"] for item in list_account_connectors()} >= {"youtube","facebook","instagram"}
-    fb=MetaOAuthProvider("facebook", app_id="app", app_secret="secret", redirect_uri="http://localhost/callback", graph_api_version="v-test")
-    ig=MetaOAuthProvider("instagram", app_id="app", app_secret="secret", redirect_uri="http://localhost/callback", graph_api_version="v-test")
+    fb=MetaOAuthProvider("facebook", app_id="app", app_secret="secret", redirect_uri="http://localhost/callback", graph_api_version="v-test", facebook_login_config_id="config")
+    ig=MetaOAuthProvider("instagram", app_id="app", app_secret="secret", redirect_uri="http://localhost/callback", graph_api_version="v-test", facebook_login_config_id="config")
     assert set(fb.scopes)=={"pages_show_list","pages_read_engagement","pages_manage_posts"}; assert "instagram_content_publish" in ig.scopes
     from unittest.mock import patch
     with patch("oauth.providers.meta.create_oauth_state") as state:
-        auth=fb.authorization_url(1); assert auth["state"] and auth["state"] != fb.authorization_url(1)["state"] and state.call_count==2
+        auth=fb.authorization_url(1); assert auth["state"] and auth["state"] != fb.authorization_url(1)["state"] and state.call_count==2 and "config_id=config" in auth["authorization_url"]
     try: MetaOAuthProvider("facebook").authorization_url(1)
     except MetaOAuthConfigurationError: pass
     else: raise AssertionError("missing config must fail closed")

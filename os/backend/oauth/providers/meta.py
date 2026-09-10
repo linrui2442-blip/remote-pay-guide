@@ -13,6 +13,15 @@ META_FULL_SCOPES = sorted(set(FACEBOOK_PUBLISH_SCOPES + INSTAGRAM_PUBLISH_SCOPES
 class MetaOAuthConfigurationError(RuntimeError):
     pass
 
+class MetaOAuthRequestError(RuntimeError):
+    def __init__(self, status, error_type=None, code=None, subcode=None, message=None, fbtrace_id=None):
+        safe_message = str(message or "Meta OAuth request failed").replace("access_token", "credential").replace("client_secret", "credential").replace("authorization_code", "credential")
+        fields = [f"HTTP {status}", f"type={error_type or 'unknown'}", f"code={code if code is not None else 'unknown'}"]
+        if subcode is not None: fields.append(f"subcode={subcode}")
+        fields.append(f"message={safe_message}")
+        if fbtrace_id: fields.append(f"fbtrace_id={fbtrace_id}")
+        super().__init__("; ".join(fields))
+
 class MetaOAuthProvider:
     def __init__(self, platform="facebook", **config):
         self.platform = platform.strip().lower()
@@ -35,12 +44,13 @@ class MetaOAuthProvider:
     def _require_config(self):
         missing = [key for key in ("app_id", "app_secret", "graph_api_version") if not self.config.get(key)]
         if not self.redirect_uri: missing.append(f"{self.platform}_redirect_uri")
+        if not self.config.get("facebook_login_config_id"): missing.append("META_FACEBOOK_LOGIN_CONFIG_ID")
         if missing: raise MetaOAuthConfigurationError("missing Meta OAuth configuration: " + ", ".join(missing))
 
     def authorization_url(self, account_id):
         self._require_config(); state = secrets.token_urlsafe(32)
         create_oauth_state(account_id, state, provider="meta", connector_platform=self.platform, scope_profile=self.scope_profile)
-        query = {"client_id": self.config["app_id"], "redirect_uri": self.redirect_uri, "state": state, "scope": ",".join(self.scopes), "response_type": "code"}
+        query = {"client_id": self.config["app_id"], "redirect_uri": self.redirect_uri, "state": state, "scope": ",".join(self.scopes), "response_type": "code", "config_id": self.config["facebook_login_config_id"], "override_default_response_type": "true"}
         return {"authorization_url": "https://www.facebook.com/" + self.config["graph_api_version"] + "/dialog/oauth?" + urlencode(query), "state": state, "scope_profile": self.scope_profile, "scopes": self.scopes}
 
     def _get(self, resource, access_token, **params):
@@ -52,12 +62,15 @@ class MetaOAuthProvider:
     def _token_exchange(self, payload):
         self._require_config()
         configure_outbound_proxy()
-        response = requests.post(
+        response = requests.get(
             f"https://graph.facebook.com/{self.config['graph_api_version']}/oauth/access_token",
-            data=payload,
+            params=payload,
             timeout=30,
         )
-        response.raise_for_status()
+        if not response.ok:
+            try: error = (response.json() or {}).get("error") or {}
+            except Exception: error = {}
+            raise MetaOAuthRequestError(response.status_code, error.get("type"), error.get("code"), error.get("error_subcode"), error.get("message"), error.get("fbtrace_id"))
         return response.json()
 
     def exchange_code(self, authorization_code):
