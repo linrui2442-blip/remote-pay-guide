@@ -1,9 +1,12 @@
 from urllib.parse import urlparse
+from datetime import datetime, timezone
+import json
 import requests
 from accounts.manager import get_account
 from oauth.manager import get_token
 from oauth.meta_bindings import get_binding
 from oauth.meta_runtime_config import meta_runtime_config
+from oauth.providers.meta import INSTAGRAM_PUBLISH_SCOPES
 
 class InstagramAdapter:
     platform_name = "instagram"
@@ -38,10 +41,34 @@ class InstagramAdapter:
         account = get_account(account_id) if account_id is not None else None
         binding = get_binding(account_id) if account_id is not None else None
         token = get_token(account_id) if account_id is not None else None
-        ok = bool(account and str(account.get("platform")).lower() == "instagram" and binding and binding.get("instagram_user_id") and token and (token.get("access_token") or token.get("refresh_token")))
-        return {"ready": ok, "account_found": bool(account), "binding_found": bool(binding), "token_found": bool(token), "reason": None if ok else "Instagram account, binding, or OAuth token is not ready"}
+        missing = []
+        if not account or str(account.get("platform")).lower() != "instagram":
+            missing.append("instagram_account")
+        if not binding or str(binding.get("platform")).lower() != "instagram" or not binding.get("instagram_user_id"):
+            missing.append("instagram_binding")
+        if not token or token.get("provider") != "meta" or not token.get("access_token"):
+            missing.append("meta_access_token")
+        scopes = token.get("scopes") if token else []
+        if isinstance(scopes, str):
+            try:
+                scopes = json.loads(scopes)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                scopes = scopes.split()
+        missing_scopes = sorted(set(INSTAGRAM_PUBLISH_SCOPES) - set(scopes or []))
+        if missing_scopes:
+            missing.append("scopes")
+        if token and token.get("expires_at"):
+            try:
+                expires_at = datetime.fromisoformat(str(token["expires_at"]).replace("Z", "+00:00"))
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if expires_at <= datetime.now(timezone.utc):
+                    missing.append("expired_token")
+            except (TypeError, ValueError):
+                missing.append("invalid_token_expiry")
+        return {"ready": not missing, "account_found": bool(account), "binding_found": bool(binding), "token_found": bool(token), "publish_scope_granted": not missing_scopes, "missing_scopes": missing_scopes, "reason": None if not missing else "Instagram publish readiness failed closed: " + ", ".join(missing)}
 
-    def publish_reel_via_graph(self, video_asset, account_id, caption="", transport=None):
+    def publish_reel_via_graph(self, video_asset, account_id, caption="", transport=None, *, sleep_fn=None, max_attempts=5, poll_interval_seconds=2):
         """Documented two-step Reels flow; transport is injectable for tests."""
         readiness = self.get_account_readiness(account_id)
         if not readiness["ready"]:
@@ -57,9 +84,28 @@ class InstagramAdapter:
         creation_id = container.json().get("id")
         if not creation_id:
             raise RuntimeError("Instagram Reels container response did not include an id")
+        sleep_fn = sleep_fn or __import__("time").sleep
+        state = None
+        for attempt in range(max(1, int(max_attempts))):
+            state_response = http.get(f"https://graph.facebook.com/{self.api_version}/{creation_id}", params={"fields": "status_code,status"}, headers=headers, timeout=30)
+            state_payload = state_response.json()
+            state = state_payload.get("status_code") or state_payload.get("status")
+            if state == "FINISHED":
+                break
+            if state in {"ERROR", "EXPIRED", "PUBLISHED"}:
+                raise RuntimeError(f"Instagram media container is {state.lower()}")
+            if state != "IN_PROGRESS":
+                raise RuntimeError("Instagram media container returned an unknown state")
+            if attempt + 1 < max_attempts:
+                sleep_fn(poll_interval_seconds)
+        if state != "FINISHED":
+            raise RuntimeError("Instagram media container polling timed out")
         published = http.post(f"{base}/media_publish", params={"creation_id": creation_id}, headers=headers, timeout=30)
         published.raise_for_status()
-        return {"platform": "instagram", "status": "published", "video_id": published.json().get("id"), "url": None}
+        media_id = published.json().get("id")
+        if not media_id:
+            raise RuntimeError("Instagram publish response did not include a media id")
+        return {"platform": "instagram", "status": "published", "video_id": media_id, "url": None}
 
     def get_status(self):
         return {
