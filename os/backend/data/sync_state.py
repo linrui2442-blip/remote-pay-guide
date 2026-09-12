@@ -1,5 +1,8 @@
 import json
+import os
+import re
 import sqlite3
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -7,6 +10,9 @@ from pathlib import Path
 DB_PATH = Path("os/database/os.db")
 SYNC_KINDS = {"content", "analytics"}
 SYNC_STATUSES = {"idle", "running", "success", "partial", "failed"}
+RUNTIME_COMPONENT = "account_sync_scheduler"
+RUNTIME_OPERATION = "scheduled_account_sync"
+TERMINAL_RUN_STATUSES = {"success", "partial", "failed", "lease_expired", "lease_lost"}
 
 
 def _connect():
@@ -68,6 +74,7 @@ def _ensure_table():
             "scheduler_lease_acquired_at": "TEXT",
             "scheduler_lease_expires_at": "TEXT",
             "scheduler_lease_last_renewed_at": "TEXT",
+            "scheduler_lease_run_id": "TEXT",
             "scheduler_last_started_at": "TEXT",
             "scheduler_last_finished_at": "TEXT",
             "scheduler_last_duration_seconds": "REAL",
@@ -84,7 +91,7 @@ def _ensure_table():
         }
         for name, field_type in scheduler_columns.items():
             if name not in columns:
-                conn.execute(
+                expired_cursor = conn.execute(
                     f"ALTER TABLE platform_sync_state ADD COLUMN {name} {field_type}"
                 )
         conn.execute(
@@ -94,6 +101,62 @@ def _ensure_table():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_platform_sync_state_scheduler_lease "
             "ON platform_sync_state(scheduler_lease_expires_at)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_operation_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL UNIQUE,
+                component TEXT NOT NULL,
+                operation_type TEXT NOT NULL,
+                account_id INTEGER,
+                platform TEXT,
+                reporting_date TEXT,
+                instance_id TEXT,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                duration_seconds REAL,
+                last_heartbeat_at TEXT,
+                retry_count INTEGER,
+                recovery_of_run_id TEXT,
+                reason_code TEXT,
+                sanitized_error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_runtime_history_scope_time "
+            "ON runtime_operation_history(component, account_id, platform, started_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_runtime_history_status "
+            "ON runtime_operation_history(status, finished_at DESC)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_health_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                component TEXT NOT NULL,
+                account_id INTEGER,
+                platform TEXT,
+                event_type TEXT NOT NULL,
+                health_state TEXT NOT NULL,
+                previous_health_state TEXT,
+                severity TEXT NOT NULL,
+                run_id TEXT,
+                instance_id TEXT,
+                reason_code TEXT,
+                sanitized_message TEXT,
+                observed_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_runtime_health_scope_time "
+            "ON runtime_health_events(component, account_id, platform, observed_at DESC)"
         )
         conn.commit()
 
@@ -167,6 +230,85 @@ def record_backfill_no_data(
         )
         conn.commit()
     return coverage
+
+
+def sanitize_operational_error(value, *, max_length=500):
+    """Bound and redact operational text before durable persistence or API exposure."""
+    if value is None:
+        return None
+    text = str(value).replace("\r", " ").replace("\n", " ")
+    text = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s,;]+", r"\1[REDACTED]", text)
+    text = re.sub(
+        r"(?i)(access[_-]?token|refresh[_-]?token|client[_-]?secret|id[_-]?token)"
+        r"(\s*[=:]\s*|%3[dD])([^\s&,;]+)",
+        r"\1\2[REDACTED]",
+        text,
+    )
+    text = re.sub(
+        r"(?i)([?&](?:key|api_key|token|access_token|refresh_token|client_secret)=)[^&#\s]+",
+        r"\1[REDACTED]",
+        text,
+    )
+    return text[:max(32, int(max_length))]
+
+
+def _runtime_limits():
+    return (
+        max(1, int(os.getenv("RUNTIME_HISTORY_RETENTION_DAYS") or 90)),
+        max(100, int(os.getenv("RUNTIME_HISTORY_MAX_ROWS") or 5000)),
+        max(100, int(os.getenv("RUNTIME_HEALTH_EVENTS_MAX_ROWS") or 3000)),
+    )
+
+
+def _prune_runtime_history(conn, now_iso):
+    retention_days, history_cap, event_cap = _runtime_limits()
+    conn.execute(
+        "DELETE FROM runtime_operation_history WHERE status != 'running' "
+        "AND datetime(COALESCE(finished_at, updated_at)) < datetime(?, ?)",
+        (now_iso, f"-{retention_days} days"),
+    )
+    conn.execute(
+        "DELETE FROM runtime_operation_history WHERE status != 'running' AND id NOT IN "
+        "(SELECT id FROM runtime_operation_history WHERE status != 'running' "
+        "ORDER BY COALESCE(finished_at, updated_at) DESC, id DESC LIMIT ?)",
+        (history_cap,),
+    )
+    conn.execute(
+        "DELETE FROM runtime_health_events WHERE id NOT IN "
+        "(SELECT id FROM runtime_health_events ORDER BY observed_at DESC, id DESC LIMIT ?)",
+        (event_cap,),
+    )
+
+
+def _record_health_transition(
+    conn, *, event_type, health_state, observed_at, account_id=None, platform=None,
+    severity="info", run_id=None, instance_id=None, reason_code=None, message=None,
+):
+    """Insert only a changed persistent health state while caller holds a write transaction."""
+    row = conn.execute(
+        """
+        SELECT health_state FROM runtime_health_events
+        WHERE component=? AND account_id IS ? AND platform IS ?
+        ORDER BY observed_at DESC, id DESC LIMIT 1
+        """,
+        (RUNTIME_COMPONENT, account_id, platform),
+    ).fetchone()
+    previous = row["health_state"] if row else None
+    if previous == health_state:
+        return False
+    conn.execute(
+        """
+        INSERT INTO runtime_health_events
+        (component, account_id, platform, event_type, health_state,
+         previous_health_state, severity, run_id, instance_id, reason_code,
+         sanitized_message, observed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (RUNTIME_COMPONENT, account_id, platform, event_type, health_state,
+         previous, severity, run_id, instance_id, reason_code,
+         sanitize_operational_error(message), observed_at),
+    )
+    return True
 
 
 def list_sync_states(account_id=None, platform=None):
@@ -337,7 +479,22 @@ def try_claim_scheduler_run(
     claimed_at = claimed_at.astimezone(timezone.utc)
     claimed_iso = claimed_at.isoformat()
     expires_iso = (claimed_at + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
+    run_id = str(uuid.uuid4())
+    instance_id = str(owner_id).replace("-", "")[:12]
     with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        previous = conn.execute(
+            "SELECT scheduler_lease_run_id, scheduler_lease_owner, scheduler_lease_expires_at "
+            "FROM platform_sync_state WHERE account_id=? AND platform=?",
+            (account_id, normalized),
+        ).fetchone()
+        recovery_of = None
+        if (
+            previous and previous["scheduler_lease_run_id"]
+            and previous["scheduler_lease_owner"] and previous["scheduler_lease_expires_at"]
+            and datetime.fromisoformat(previous["scheduler_lease_expires_at"]) <= claimed_at
+        ):
+            recovery_of = previous["scheduler_lease_run_id"]
         cursor = conn.execute(
             """
             UPDATE platform_sync_state
@@ -345,7 +502,7 @@ def try_claim_scheduler_run(
                 scheduler_last_started_at=?,
                 scheduler_lease_owner=?, scheduler_lease_daily_date=?,
                 scheduler_lease_acquired_at=?, scheduler_lease_expires_at=?,
-                scheduler_lease_last_renewed_at=?,
+                scheduler_lease_last_renewed_at=?, scheduler_lease_run_id=?,
                 updated_at=?
             WHERE account_id=? AND platform=?
               AND (scheduler_last_daily_date IS NULL OR scheduler_last_daily_date != ?)
@@ -363,6 +520,7 @@ def try_claim_scheduler_run(
                 claimed_iso,
                 expires_iso,
                 claimed_iso,
+                run_id,
                 claimed_iso,
                 account_id,
                 normalized,
@@ -371,11 +529,70 @@ def try_claim_scheduler_run(
                 claimed_iso,
             ),
         )
-        conn.commit()
         claimed = cursor.rowcount == 1
+        if claimed:
+            prior_health = conn.execute(
+                "SELECT 1 FROM runtime_health_events WHERE component=? "
+                "AND account_id IS ? AND platform IS ? LIMIT 1",
+                (RUNTIME_COMPONENT, account_id, normalized),
+            ).fetchone()
+            if prior_health is None:
+                _record_health_transition(
+                    conn, event_type="scheduler_ready", health_state="healthy",
+                    observed_at=claimed_iso, account_id=account_id,
+                    platform=normalized, instance_id=instance_id,
+                    reason_code="initial_observation",
+                )
+            if recovery_of:
+                expired_cursor = conn.execute(
+                    """
+                    UPDATE runtime_operation_history
+                    SET status='lease_expired', finished_at=?,
+                        duration_seconds=MAX(0, (julianday(?) - julianday(started_at)) * 86400),
+                        reason_code='lease_expired_reclaimed', updated_at=?
+                    WHERE run_id=? AND status='running'
+                    """,
+                    (claimed_iso, claimed_iso, claimed_iso, recovery_of),
+                )
+                if expired_cursor.rowcount != 1:
+                    raise RuntimeError("expired scheduler run history is missing")
+                _record_health_transition(
+                    conn, event_type="lease_expired", health_state="degraded",
+                    observed_at=claimed_iso, account_id=account_id, platform=normalized,
+                    severity="warning", run_id=recovery_of, instance_id=instance_id,
+                    reason_code="lease_expired_reclaimed",
+                )
+            retry_row = conn.execute(
+                "SELECT scheduler_retry_count FROM platform_sync_state "
+                "WHERE account_id=? AND platform=?", (account_id, normalized),
+            ).fetchone()
+            conn.execute(
+                """
+                INSERT INTO runtime_operation_history
+                (run_id, component, operation_type, account_id, platform,
+                 reporting_date, instance_id, status, started_at,
+                 last_heartbeat_at, retry_count, recovery_of_run_id, reason_code,
+                 created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (run_id, RUNTIME_COMPONENT, RUNTIME_OPERATION, account_id, normalized,
+                 str(daily_date), instance_id, claimed_iso, claimed_iso,
+                 int(retry_row["scheduler_retry_count"] or 0), recovery_of,
+                 "lease_reclaimed" if recovery_of else "scheduled_due",
+                 claimed_iso, claimed_iso),
+            )
+            _record_health_transition(
+                conn, event_type="lease_reclaimed" if recovery_of else "run_started",
+                health_state="running", observed_at=claimed_iso, account_id=account_id,
+                platform=normalized, run_id=run_id, instance_id=instance_id,
+                reason_code="lease_reclaimed" if recovery_of else "scheduled_due",
+            )
+        conn.commit()
     return {
         "claimed": claimed,
         "reason": "claimed" if claimed else "not_claimed",
+        "run_id": run_id if claimed else None,
+        "recovery_of_run_id": recovery_of if claimed else None,
         "sync_state": get_sync_state(account_id, normalized, create=False),
     }
 
@@ -399,6 +616,7 @@ def renew_scheduler_lease(
     renewed_iso = renewed.isoformat()
     expires_iso = (renewed + timedelta(seconds=max(1, int(lease_seconds)))).isoformat()
     with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         cursor = conn.execute(
             """
             UPDATE platform_sync_state
@@ -416,6 +634,20 @@ def renew_scheduler_lease(
                 str(owner_id), str(daily_date), renewed_iso, str(daily_date),
             ),
         )
+        if cursor.rowcount == 1:
+            state = conn.execute(
+                "SELECT scheduler_lease_run_id FROM platform_sync_state "
+                "WHERE account_id=? AND platform=?", (account_id, normalized),
+            ).fetchone()
+            history_cursor = conn.execute(
+                "UPDATE runtime_operation_history SET last_heartbeat_at=?, updated_at=? "
+                "WHERE run_id=? AND status='running' AND account_id=? AND platform=? "
+                "AND instance_id=?",
+                (renewed_iso, renewed_iso, state["scheduler_lease_run_id"], account_id,
+                 normalized, str(owner_id).replace("-", "")[:12]),
+            )
+            if history_cursor.rowcount != 1:
+                raise RuntimeError("active scheduler run history is missing")
         conn.commit()
     return {
         "applied": cursor.rowcount == 1,
@@ -432,6 +664,12 @@ def mark_scheduler_success(
     ensure_sync_state(account_id, normalized_platform)
     succeeded_at = succeeded_at or _now()
     with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        lease = conn.execute(
+            "SELECT scheduler_lease_run_id FROM platform_sync_state "
+            "WHERE account_id=? AND platform=? AND scheduler_lease_owner=?",
+            (account_id, normalized_platform, str(owner_id)),
+        ).fetchone()
         owner_clause = " AND scheduler_lease_owner=?"
         cursor = conn.execute(
             """
@@ -442,13 +680,30 @@ def mark_scheduler_success(
                 scheduler_last_finished_at=?, scheduler_last_duration_seconds=?,
                 scheduler_lease_owner=NULL, scheduler_lease_daily_date=NULL,
                 scheduler_lease_acquired_at=NULL, scheduler_lease_expires_at=NULL,
-                scheduler_lease_last_renewed_at=NULL,
+                scheduler_lease_last_renewed_at=NULL, scheduler_lease_run_id=NULL,
                 updated_at=?
             WHERE account_id=? AND platform=?
             """ + owner_clause,
             tuple([succeeded_at, str(daily_date), succeeded_at, duration_seconds,
                    succeeded_at, account_id, normalized_platform, str(owner_id)]),
         )
+        if cursor.rowcount == 1 and lease and lease["scheduler_lease_run_id"]:
+            run_id = lease["scheduler_lease_run_id"]
+            history_cursor = conn.execute(
+                "UPDATE runtime_operation_history SET status='success', finished_at=?, "
+                "duration_seconds=?, reason_code='completed', updated_at=? "
+                "WHERE run_id=? AND status='running'",
+                (succeeded_at, duration_seconds, succeeded_at, run_id),
+            )
+            if history_cursor.rowcount != 1:
+                raise RuntimeError("active scheduler run history is missing")
+            _record_health_transition(
+                conn, event_type="run_succeeded", health_state="healthy",
+                observed_at=succeeded_at, account_id=account_id,
+                platform=normalized_platform, run_id=run_id,
+                instance_id=str(owner_id).replace("-", "")[:12], reason_code="completed",
+            )
+            _prune_runtime_history(conn, succeeded_at)
         conn.commit()
     state = get_sync_state(account_id, normalized_platform, create=False)
     return {
@@ -483,7 +738,14 @@ def mark_scheduler_failure(
     delay = delays[min(retry_count - 1, len(delays) - 1)]
     next_retry = failed + timedelta(seconds=delay)
     failed_iso = failed.isoformat()
+    sanitized_error = sanitize_operational_error(error)
     with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        lease = conn.execute(
+            "SELECT scheduler_lease_run_id FROM platform_sync_state "
+            "WHERE account_id=? AND platform=? AND scheduler_lease_owner=?",
+            (account_id, normalized_platform, str(owner_id)),
+        ).fetchone()
         owner_clause = " AND scheduler_lease_owner=?"
         cursor = conn.execute(
             """
@@ -493,7 +755,7 @@ def mark_scheduler_failure(
                 scheduler_last_finished_at=?, scheduler_last_duration_seconds=?,
                 scheduler_lease_owner=NULL, scheduler_lease_daily_date=NULL,
                 scheduler_lease_acquired_at=NULL, scheduler_lease_expires_at=NULL,
-                scheduler_lease_last_renewed_at=NULL,
+                scheduler_lease_last_renewed_at=NULL, scheduler_lease_run_id=NULL,
                 updated_at=?
             WHERE account_id=? AND platform=?
             """ + owner_clause,
@@ -504,6 +766,28 @@ def mark_scheduler_failure(
                 normalized_platform, str(owner_id),
             ]),
         )
+        if cursor.rowcount == 1 and lease and lease["scheduler_lease_run_id"]:
+            run_id = lease["scheduler_lease_run_id"]
+            final_status = "partial" if status == "partial" else "failed"
+            history_cursor = conn.execute(
+                "UPDATE runtime_operation_history SET status=?, finished_at=?, "
+                "duration_seconds=?, retry_count=?, reason_code=?, sanitized_error=?, updated_at=? "
+                "WHERE run_id=? AND status='running'",
+                (final_status, failed_iso, duration_seconds, retry_count,
+                 "partial_result" if final_status == "partial" else "execution_failed",
+                 sanitized_error, failed_iso, run_id),
+            )
+            if history_cursor.rowcount != 1:
+                raise RuntimeError("active scheduler run history is missing")
+            _record_health_transition(
+                conn, event_type="retry_scheduled", health_state="retrying",
+                observed_at=failed_iso, account_id=account_id,
+                platform=normalized_platform, severity="warning", run_id=run_id,
+                instance_id=str(owner_id).replace("-", "")[:12],
+                reason_code="partial_result" if final_status == "partial" else "execution_failed",
+                message=sanitized_error,
+            )
+            _prune_runtime_history(conn, failed_iso)
         conn.commit()
     final_state = get_sync_state(account_id, normalized_platform, create=False)
     return {
@@ -511,6 +795,94 @@ def mark_scheduler_failure(
         "reason": "released" if cursor.rowcount == 1 else "lease_lost",
         "sync_state": final_state,
     }
+
+
+def list_runtime_operation_history(
+    *, limit=20, account_id=None, platform=None, status=None,
+):
+    _ensure_table()
+    bounded_limit = min(200, max(1, int(limit)))
+    clauses = ["component=?"]
+    params = [RUNTIME_COMPONENT]
+    if account_id is not None:
+        clauses.append("account_id=?")
+        params.append(int(account_id))
+    if platform:
+        clauses.append("platform=?")
+        params.append(_normalize_platform(platform))
+    if status:
+        normalized_status = str(status).strip().lower()
+        if normalized_status not in TERMINAL_RUN_STATUSES | {"running"}:
+            raise ValueError(f"unsupported runtime status: {status}")
+        clauses.append("status=?")
+        params.append(normalized_status)
+    params.append(bounded_limit)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM runtime_operation_history WHERE " + " AND ".join(clauses)
+            + " ORDER BY started_at DESC, id DESC LIMIT ?", tuple(params),
+        ).fetchall()
+    return [_serialize(row) for row in rows]
+
+
+def list_runtime_health_events(
+    *, limit=20, account_id=None, platform=None, severity=None, event_type=None,
+):
+    _ensure_table()
+    bounded_limit = min(200, max(1, int(limit)))
+    clauses = ["component=?"]
+    params = [RUNTIME_COMPONENT]
+    if account_id is not None:
+        clauses.append("account_id=?")
+        params.append(int(account_id))
+    if platform:
+        clauses.append("platform=?")
+        params.append(_normalize_platform(platform))
+    if severity:
+        clauses.append("severity=?")
+        params.append(str(severity).strip().lower())
+    if event_type:
+        clauses.append("event_type=?")
+        params.append(str(event_type).strip().lower())
+    params.append(bounded_limit)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM runtime_health_events WHERE " + " AND ".join(clauses)
+            + " ORDER BY observed_at DESC, id DESC LIMIT ?", tuple(params),
+        ).fetchall()
+    return [_serialize(row) for row in rows]
+
+
+def record_scheduler_lifecycle_event(event_type, health_state, *, instance_id, severity="info"):
+    _ensure_table()
+    observed_at = _now()
+    with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        inserted = _record_health_transition(
+            conn, event_type=event_type, health_state=health_state,
+            observed_at=observed_at, instance_id=str(instance_id)[:12], severity=severity,
+        )
+        conn.commit()
+    return inserted
+
+
+def record_scheduler_health_transition(
+    event_type, health_state, *, account_id, platform, run_id=None,
+    instance_id=None, severity="info", reason_code=None, message=None,
+):
+    _ensure_table()
+    observed_at = _now()
+    normalized = _normalize_platform(platform)
+    with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        inserted = _record_health_transition(
+            conn, event_type=event_type, health_state=health_state,
+            observed_at=observed_at, account_id=account_id, platform=normalized,
+            run_id=run_id, instance_id=str(instance_id or "")[:12] or None,
+            severity=severity, reason_code=reason_code, message=message,
+        )
+        conn.commit()
+    return inserted
 
 
 def get_scheduler_persistent_summary(*, now=None, stuck_warning_seconds=3600):

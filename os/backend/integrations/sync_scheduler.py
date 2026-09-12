@@ -12,11 +12,15 @@ from analytics.registry import get_analytics_adapter_registration
 from data.sync_state import (
     get_scheduler_persistent_summary,
     get_sync_state,
+    list_runtime_health_events,
+    list_runtime_operation_history,
     mark_scheduler_failure,
     mark_scheduler_success,
     mark_sync_failure,
     mark_sync_partial,
     renew_scheduler_lease,
+    record_scheduler_lifecycle_event,
+    record_scheduler_health_transition,
     try_claim_scheduler_run,
 )
 from integrations.sync_planner import build_account_sync_plan
@@ -292,9 +296,10 @@ class BackgroundAccountSyncScheduler:
         self.last_error = None
         self.check_count = 0
 
-    def _start_lease_heartbeat(self, account_id, platform, daily_date):
+    def _start_lease_heartbeat(self, account_id, platform, daily_date, run_id=None):
         stop_event = threading.Event()
-        state = {'lease_lost': False, 'renewals': 0, 'last_error': None}
+        state = {'lease_lost': False, 'renewals': 0, 'last_error': None, 'stuck_recorded': False}
+        heartbeat_started = time.monotonic()
 
         def heartbeat():
             while not stop_event.wait(self.heartbeat_seconds):
@@ -312,6 +317,16 @@ class BackgroundAccountSyncScheduler:
                         state['last_error'] = transition['reason']
                         return
                     state['renewals'] += 1
+                    if (
+                        not state['stuck_recorded']
+                        and time.monotonic() - heartbeat_started >= self.stuck_warning_seconds
+                    ):
+                        state['stuck_recorded'] = record_scheduler_health_transition(
+                            'stuck_suspected', 'stuck_suspected',
+                            account_id=account_id, platform=platform, run_id=run_id,
+                            instance_id=self.instance_id, severity='warning',
+                            reason_code='run_age_threshold_exceeded',
+                        )
                 except Exception as exc:
                     state['last_error'] = str(exc)
 
@@ -350,7 +365,9 @@ class BackgroundAccountSyncScheduler:
                 })
                 continue
             heartbeat_stop, heartbeat_thread, heartbeat_state = (
-                self._start_lease_heartbeat(account['id'], platform, daily_date)
+                self._start_lease_heartbeat(
+                    account['id'], platform, daily_date, claim.get('run_id')
+                )
             )
             started_monotonic = time.monotonic()
             try:
@@ -478,12 +495,18 @@ class BackgroundAccountSyncScheduler:
             daemon=True,
         )
         self._thread.start()
+        record_scheduler_lifecycle_event(
+            'scheduler_started', 'healthy', instance_id=self.instance_id
+        )
         return self.status()
 
     def stop(self):
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=min(self.interval_seconds, 2.0))
+        record_scheduler_lifecycle_event(
+            'scheduler_stopped', 'stopped', instance_id=self.instance_id
+        )
         return self.status()
 
     def status(self):
@@ -534,6 +557,8 @@ class BackgroundAccountSyncScheduler:
                 'due_accounts_count': due_count,
                 **persistent,
             },
+            'latest_run': next(iter(list_runtime_operation_history(limit=1)), None),
+            'latest_health_event': next(iter(list_runtime_health_events(limit=1)), None),
         }
 
 

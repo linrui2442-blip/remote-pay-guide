@@ -5,7 +5,11 @@ from pydantic import BaseModel, Field
 
 from accounts.manager import create_account, get_account, get_accounts
 from accounts.models import Account
-from data.sync_state import get_sync_state
+from data.sync_state import (
+    get_sync_state,
+    list_runtime_health_events,
+    list_runtime_operation_history,
+)
 from integrations.sync_planner import build_account_sync_plan
 from integrations.sync_registry import run_content_sync
 from integrations.sync_scheduler import account_sync_scheduler, execute_account_sync
@@ -34,6 +38,42 @@ def accounts():
 def scheduler_status():
     """Read-only process and persistent health for background account sync."""
     return account_sync_scheduler.status()
+
+
+@router.get('/accounts/scheduler/history')
+def scheduler_history(
+    limit: int = 20,
+    account_id: int | None = None,
+    platform: str | None = None,
+    status: str | None = None,
+):
+    """Read-only durable scheduler run history, newest first."""
+    try:
+        return {
+            'items': list_runtime_operation_history(
+                limit=min(200, max(1, limit)), account_id=account_id,
+                platform=platform, status=status,
+            )
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/accounts/scheduler/events')
+def scheduler_events(
+    limit: int = 20,
+    account_id: int | None = None,
+    platform: str | None = None,
+    severity: str | None = None,
+    event_type: str | None = None,
+):
+    """Read-only durable scheduler health transitions, newest first."""
+    return {
+        'items': list_runtime_health_events(
+            limit=min(200, max(1, limit)), account_id=account_id,
+            platform=platform, severity=severity, event_type=event_type,
+        )
+    }
 
 
 @router.get('/accounts/{account_id}')

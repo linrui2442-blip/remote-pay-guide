@@ -69,3 +69,30 @@
   overflow-wrap: anywhere;
   text-align: right;
 }
+
+.runtime-event-list {
+  display: grid;
+  gap: 10px;
+}
+
+.runtime-event {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  background: #f9fafb;
+}
+
+.runtime-event div {
+  display: grid;
+  gap: 3px;
+}
+
+.runtime-event span,
+.runtime-event time {
+  color: #667085;
+  font-size: 0.82rem;
+}
