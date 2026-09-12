@@ -10,7 +10,8 @@ def test_adapter_is_registered_but_live_gate_remains_closed():
     assert status["publish_ready"] is False
     assert status["execution_mode"] == "simulated"
     assert status["status"] == "ready"
-    assert "live publish" in status["reason"]
+    assert status["reason"]
+    assert "not configured" in status["reason"].lower()
 
 
 def test_reels_requires_public_url():

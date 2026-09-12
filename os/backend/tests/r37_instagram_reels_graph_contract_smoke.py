@@ -76,12 +76,39 @@ def test_missing_media_id_and_http_error_are_safe(monkeypatch):
 
     class FailingTransport(FakeTransport):
         def post(self, url, **kwargs):
-            raise RuntimeError("Bearer SUPER_SECRET_FAKE_META_TOKEN Authorization")
+            raise RuntimeError("Bearer SUPER_SECRET_FAKE_META_TOKEN Authorization access_token=SUPER_SECRET_FAKE_META_TOKEN")
 
     try:
         InstagramAdapter(transport=FailingTransport([])).publish_reel_via_graph({"asset_url": "https://example.test/reel.mp4"}, 3)
     except RuntimeError as exc:
         assert "SUPER_SECRET_FAKE_META_TOKEN" not in str(exc)
         assert "Authorization" not in str(exc)
+        assert "Bearer [REDACTED]" in str(exc)
     else:
         raise AssertionError("HTTP failure must fail closed")
+
+
+def test_create_status_and_publish_errors_redact_runtime_token(monkeypatch):
+    ready(monkeypatch, token(access_token="runtime-token"))
+    class FailingTransport(FakeTransport):
+        def __init__(self, fail_on):
+            super().__init__([{"id": "creation-1"}, {"status_code": "FINISHED"}, {"id": "media-1"}])
+            self.fail_on = fail_on
+        def post(self, url, **kwargs):
+            if self.fail_on == "create" or (self.fail_on == "publish" and url.endswith("media_publish")):
+                raise RuntimeError("Bearer runtime-token Authorization access_token=runtime-token")
+            return super().post(url, **kwargs)
+        def get(self, url, **kwargs):
+            if self.fail_on == "status":
+                raise RuntimeError("Bearer runtime-token Authorization access_token=runtime-token")
+            return super().get(url, **kwargs)
+    for failure in ("create", "status", "publish"):
+        try:
+            InstagramAdapter(transport=FailingTransport(failure)).publish_reel_via_graph(
+                {"asset_url": "https://example.test/reel.mp4"}, 3, sleep_fn=lambda _: None
+            )
+        except RuntimeError as exc:
+            assert "runtime-token" not in str(exc)
+            assert "Authorization" not in str(exc)
+        else:
+            raise AssertionError(f"{failure} failure must fail closed")

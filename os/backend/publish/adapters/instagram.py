@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 import json
+import re
 import requests
 from accounts.manager import get_account
 from oauth.manager import get_token
@@ -33,11 +34,14 @@ class InstagramAdapter:
         }
 
     @staticmethod
-    def _safe_error(error):
+    def _safe_error(error, secrets=None):
         text = str(error)
-        for secret in ("SUPER_SECRET_FAKE_META_TOKEN",):
-            text = text.replace(secret, "[REDACTED]")
-        text = text.replace("Authorization", "[REDACTED_HEADER]")
+        for secret in secrets or ():
+            if secret:
+                text = text.replace(str(secret), "[REDACTED]")
+        text = re.sub(r"(?i)Bearer\s+[^\s,;]+", "Bearer [REDACTED]", text)
+        text = re.sub(r"(?i)(access_token|client_secret|authorization_code|fb_exchange_token)=([^\s&;,]+)", r"\1=[REDACTED]", text)
+        text = re.sub(r"(?i)Authorization", "[REDACTED_HEADER]", text)
         return text
 
     @staticmethod
@@ -90,6 +94,7 @@ class InstagramAdapter:
         base = f"https://graph.facebook.com/{self.api_version}/{ig_user_id}"
         http = transport or self.transport
         headers = {"Authorization": f"Bearer {token['access_token']}"}
+        sensitive = [token.get("access_token")]
         if provider_operation_id:
             creation_id = provider_operation_id
         else:
@@ -97,7 +102,7 @@ class InstagramAdapter:
                 container = http.post(f"{base}/media", params={"media_type": "REELS", "video_url": url, "caption": caption or ""}, headers=headers, timeout=30)
                 container.raise_for_status()
             except Exception as exc:
-                raise RuntimeError(self._safe_error(exc)) from None
+                raise RuntimeError(self._safe_error(exc, sensitive)) from None
             creation_id = container.json().get("id")
         if not creation_id:
             raise RuntimeError("Instagram Reels container response did not include an id")
@@ -111,7 +116,7 @@ class InstagramAdapter:
                 state_response.raise_for_status()
                 state_payload = state_response.json()
             except Exception as exc:
-                raise RuntimeError(self._safe_error(exc)) from None
+                raise RuntimeError(self._safe_error(exc, sensitive)) from None
             state = state_payload.get("status_code") or state_payload.get("status")
             if operation_callback:
                 operation_callback(creation_id, state)
@@ -129,7 +134,7 @@ class InstagramAdapter:
             published = http.post(f"{base}/media_publish", params={"creation_id": creation_id}, headers=headers, timeout=30)
             published.raise_for_status()
         except Exception as exc:
-            raise RuntimeError(self._safe_error(exc)) from None
+            raise RuntimeError(self._safe_error(exc, sensitive)) from None
         media_id = published.json().get("id")
         if not media_id:
             raise RuntimeError("Instagram publish response did not include a media id")
