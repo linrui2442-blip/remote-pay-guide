@@ -44,6 +44,7 @@ def fake_authorize(account_id, scope_profile):
         account_id,
         state,
         provider=PLATFORM,
+        connector_platform=PLATFORM,
         scope_profile=scope_profile,
         code_verifier='mock-verifier',
     )
