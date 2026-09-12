@@ -52,8 +52,9 @@ def test_default_production_gate_is_closed(): assert InstagramAdapter().get_stat
 
 def test_local_only_instagram_asset_rejected_before_task_creation(monkeypatch,isolated):
     asset=isolated[3].copy(); asset.update(asset_url=None,location="C:/private/reel.mp4",file_path="C:/private/reel.mp4"); monkeypatch.setattr(orch,"get_asset_by_asset_id",lambda _:asset)
+    fake=FakeTransport(); install(monkeypatch,fake)
     with pytest.raises(Exception,match="public http"): orch.prepare_publish_task(task())
-    assert pm.get_publish_tasks()==[]
+    assert pm.get_publish_tasks()==[] and fake.calls==[]
 
 def test_prepare_public_asset_makes_zero_graph_calls(monkeypatch,isolated):
     fake=FakeTransport(); install(monkeypatch,fake); result=orch.prepare_publish_task(task()); assert result["created"] is True and fake.calls==[]
@@ -86,7 +87,9 @@ def test_retry_resumes_existing_operation(monkeypatch,isolated):
 
 def test_resume_published_container_never_republishes(monkeypatch,isolated):
     fake=FakeTransport(states=["PUBLISHED"]); install(monkeypatch,fake); prepared=orch.prepare_publish_task(task())
-    with pytest.raises(Exception): orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
+    result=orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
+    assert result["task"]["status"]=="failed"
+    assert result["task"]["provider_operation_id"]=="creation-1"
     assert not any(c[1].endswith("/media_publish") for c in fake.calls)
 
 def test_task_error_message_redacts_actual_token(monkeypatch,isolated):

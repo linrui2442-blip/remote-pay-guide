@@ -39,7 +39,7 @@ class InstagramAdapter:
         for secret in secrets or ():
             if secret:
                 text = text.replace(str(secret), "[REDACTED]")
-        text = re.sub(r"(?i)Bearer\s+[^\s,;]+", "Bearer [REDACTED]", text)
+        text = re.sub(r"(?i)Bearer\s+[^\s,;]+", "[REDACTED_CREDENTIAL]", text)
         text = re.sub(r"(?i)(access_token|client_secret|authorization_code|fb_exchange_token)=([^\s&;,]+)", r"\1=[REDACTED]", text)
         text = re.sub(r"(?i)Authorization", "[REDACTED_HEADER]", text)
         return text

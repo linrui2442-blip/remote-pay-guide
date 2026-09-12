@@ -83,7 +83,7 @@ def test_missing_media_id_and_http_error_are_safe(monkeypatch):
     except RuntimeError as exc:
         assert "SUPER_SECRET_FAKE_META_TOKEN" not in str(exc)
         assert "Authorization" not in str(exc)
-        assert "Bearer [REDACTED]" in str(exc)
+        assert "[REDACTED_CREDENTIAL]" in str(exc)
     else:
         raise AssertionError("HTTP failure must fail closed")
 
