@@ -68,20 +68,19 @@ YouTube-only publishing is not sufficient for Production Trial Ready.
 
 Current state:
 
-- YouTube official publish architecture exists; real new-video publish E2E still needs closeout
-- Instagram OS live publish is not yet real-verified
-- Facebook OS live publish is not yet real-verified
+- YouTube: REAL PRIVATE E2E VERIFIED
+- Meta OAuth, resource discovery, and resource binding: REAL E2E VERIFIED
+- Instagram: OAuth and Professional Account binding verified; official Reels publish adapter is not real E2E verified
+- Facebook: OAuth and Page binding verified; official Reels publish adapter is not real E2E verified
 
 ## Current Next Development Stage
 
 ### P0 — Multi-Platform Live Publish
 
-1. Close one real YouTube official private-publish E2E after explicit authorization.
-2. Extend existing provider-neutral Account/OAuth architecture for Meta.
-3. Implement Instagram Reels official live publish adapter.
-4. Implement Facebook Reels official live publish adapter.
-5. Use the existing Publish Center / Registry / PublishTask system for all three.
-6. Produce real publish evidence for YouTube + Instagram + Facebook.
+1. Harden the Instagram Reels official publish adapter.
+2. Implement the Facebook Reels official live publish adapter.
+3. Use the existing Publish Center / Registry / PublishTask system for all three.
+4. Produce real publish evidence for YouTube + Instagram + Facebook.
 
 Only after all three real paths are closed should the project be called Production Trial Ready for the user's daily publishing requirement.
 

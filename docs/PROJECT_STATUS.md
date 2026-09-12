@@ -140,39 +140,19 @@ Current real OS publish state:
 
 Meta account connection and resource binding are closed; official Instagram Reels and Facebook Reels adapters are now the primary launch-blocking development track.
 
-### 1. YouTube Official Publish Closeout
-
-After explicit user authorization, verify one safe real upload, preferably private:
-
-```text
-Ready VideoAsset
-→ pending PublishTask
-→ explicit run
-→ YouTube official API
-→ platform_video_id
-→ published_url
-→ status=published
-```
-
-Do not redesign Publish Center and do not fall back to Postiz.
-
-### 2. Meta Account / OAuth Foundation
-
-Extend the existing provider-neutral account/OAuth architecture for Meta. Do not create a second account system or second OAuth stack.
-
-### 3. Instagram Reels Official Publish Adapter
+### 1. Instagram Reels Official Publish Adapter
 
 Implement real live publishing through the existing Publish Registry / Adapter / Readiness boundaries.
 
-### 4. Facebook Reels Official Publish Adapter
+### 2. Facebook Reels Official Publish Adapter
 
 Implement real live publishing through the same existing boundaries.
 
-### 5. Unified Publish Center
+### 3. Unified Publish Center
 
 One ready VideoAsset should be publishable through the existing Publish Center to the three target platforms without duplicating PublishTask, Data Center, Registry, or Runtime systems.
 
-### 6. Real Publish E2E for all three platforms
+### 4. Real Publish E2E for all three platforms
 
 Production Trial Ready requires real evidence for:
 
