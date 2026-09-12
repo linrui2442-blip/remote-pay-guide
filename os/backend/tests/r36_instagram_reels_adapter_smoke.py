@@ -6,7 +6,9 @@ def test_adapter_is_registered_but_live_gate_remains_closed():
     status = InstagramAdapter().get_status()
     assert status["platform"] == "instagram"
     assert status["publish_ready"] is False
-    assert status["execution_mode"] == "live_api"
+    assert status["execution_mode"] == "simulated"
+    assert status["status"] == "ready"
+    assert "live publish" in status["reason"]
 
 
 def test_reels_requires_public_url():
@@ -16,3 +18,8 @@ def test_reels_requires_public_url():
         assert "public http(s)" in str(exc)
     else:
         raise AssertionError("private path must not be accepted")
+
+
+def test_publish_video_remains_simulated_without_http():
+    result = InstagramAdapter().publish_video({"asset_url": "https://example.test/video.mp4"}, 999)
+    assert result["status"] == "simulated"

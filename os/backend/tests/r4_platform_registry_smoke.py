@@ -20,13 +20,18 @@ with tempfile.TemporaryDirectory() as tmpdir:
     assert youtube_status["publish_ready"] is True
     assert youtube_status["execution_mode"] == "live_api"
 
-    for platform in {"facebook", "instagram", "tiktok"}:
+    for platform in {"facebook", "tiktok"}:
         adapter = registry.get_adapter(platform)
         assert adapter is not None
         status = adapter.get_status()
         assert status["status"] == "placeholder"
         assert status["publish_ready"] is False
         assert status["execution_mode"] == "simulated"
+
+    instagram_status = registry.get_adapter("instagram").get_status()
+    assert instagram_status["status"] == "ready"
+    assert instagram_status["publish_ready"] is False
+    assert instagram_status["execution_mode"] == "simulated"
 
     registry_status = {item["platform"]: item for item in registry.get_registry_status()}
     assert registry_status["youtube"]["publish_ready"] is True

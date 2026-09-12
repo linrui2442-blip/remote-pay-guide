@@ -26,6 +26,14 @@ class InstagramAdapter:
             "error": "Instagram live OS publishing adapter is not configured",
         }
 
+    @staticmethod
+    def _video_url(video_asset):
+        value = video_asset.get("asset_url") or video_asset.get("location")
+        parsed = urlparse(str(value or ""))
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Instagram Reels requires a public http(s) video URL")
+        return value
+
     def get_account_readiness(self, account_id):
         account = get_account(account_id) if account_id is not None else None
         binding = get_binding(account_id) if account_id is not None else None
@@ -38,10 +46,7 @@ class InstagramAdapter:
         readiness = self.get_account_readiness(account_id)
         if not readiness["ready"]:
             raise RuntimeError(readiness["reason"])
-        url = video_asset.get("asset_url") or video_asset.get("location")
-        parsed = urlparse(str(url or ""))
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("Instagram Reels requires a public http(s) video URL")
+        url = self._video_url(video_asset)
         token = get_token(account_id)
         ig_user_id = get_binding(account_id)["instagram_user_id"]
         base = f"https://graph.facebook.com/{self.api_version}/{ig_user_id}"
