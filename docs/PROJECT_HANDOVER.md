@@ -100,6 +100,18 @@ public URL in `VideoAsset.location` for compatibility. D2 contract status:
 Postiz remains legacy compatibility only; it is not a dependency of the
 official OS publish path.
 
+## Meta Page Publishing Credential Boundary
+
+Meta OAuth stores the user/account credential. At explicit live execution,
+the existing bound `page_id` is used to resolve a Page access credential in
+memory for the official adapter. Page credentials are not stored in bindings,
+PublishTask, ProductionResult, logs, or resource API responses.
+
+Readiness remains network-free and the production Instagram gate defaults to
+closed. Historical Meta OAuth/resource binding verification does not imply a
+currently usable live credential; current external Meta state remains blocked
+by Facebook account enforcement.
+
 AI Gateway remains remote-service architecture. Do not replace it with local GPU inference.
 
 Comment-body synchronization remains forbidden. Numeric aggregate comment counts are allowed.

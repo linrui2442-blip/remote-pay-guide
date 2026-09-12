@@ -8,6 +8,13 @@ from oauth.manager import get_token
 from oauth.meta_bindings import get_binding
 from oauth.meta_runtime_config import meta_runtime_config
 from oauth.providers.meta import INSTAGRAM_PUBLISH_SCOPES
+from oauth.providers.meta import MetaOAuthProvider
+
+
+def resolve_page_access_token(account_id, page_id, user_access_token, transport):
+    return MetaOAuthProvider(platform="instagram").resolve_page_access_token(
+        account_id, page_id, access_token=user_access_token, transport=transport
+    )
 
 class InstagramAdapter:
     platform_name = "instagram"
@@ -92,10 +99,12 @@ class InstagramAdapter:
         url = self._video_url(video_asset)
         token = get_token(account_id)
         ig_user_id = get_binding(account_id)["instagram_user_id"]
+        page_id = get_binding(account_id).get("page_id")
         base = f"https://graph.facebook.com/{self.api_version}/{ig_user_id}"
         http = transport or self.transport
-        headers = {"Authorization": f"Bearer {token['access_token']}"}
-        sensitive = [token.get("access_token")]
+        page_token = resolve_page_access_token(account_id, page_id, token.get("access_token"), http)
+        headers = {"Authorization": f"Bearer {page_token}"}
+        sensitive = [token.get("access_token"), page_token]
         if provider_operation_id:
             creation_id = provider_operation_id
             if str(provider_operation_status or "").upper() == "PUBLISHED":

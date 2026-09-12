@@ -52,6 +52,7 @@ Binance registration/conversion attribution is intentionally deferred. The curre
 - GA4 landing-page integration: REAL ACTIVE
 - Content → Binance referral click attribution: **REAL GA4 E2E VERIFIED (2026-09-09)**
 - GitHub Pages → VideoAsset → Instagram prepare: CODE + TEST VERIFIED
+- Meta Page publishing credential boundary: CODE + ISOLATED TEST VERIFIED
 
 Scheduler Operational Hardening is CLOSED. Do not add more scheduler infrastructure unless a real production failure exposes a concrete gap.
 
@@ -130,6 +131,7 @@ Current real OS publish state:
 - Verified 2026-09-09: account_id=1, asset_id=youtube_private_e2e_short04, task_id=12, provider video id=uEQR9PSAfUA, privacy=private; first failed task 11 remains preserved.
 - Meta Account/OAuth: Historical REAL E2E VERIFIED — 2026-09-10. Current Meta operational credential is blocked by Facebook account enforcement.
 - Instagram: official Graph implementation present; production live gate remains disabled; real external E2E is not verified pending a valid Meta operational identity.
+- Instagram live execution will resolve a bound Page credential in memory from the stored user/account credential; Page tokens are not persisted or exposed.
 - Facebook: Page binding was historically verified; official Reels publish adapter is not real E2E verified.
 - Postiz: legacy compatibility only; must not become the formal OS publish dependency
 

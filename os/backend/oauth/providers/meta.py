@@ -1,10 +1,15 @@
 import secrets
+import json
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 import requests
 from config.network import configure_outbound_proxy
 from oauth.manager import create_oauth_state
 from oauth.meta_runtime_config import meta_runtime_config
+from oauth.manager import get_token
+from oauth.meta_bindings import get_binding
+from accounts.manager import get_account
 
 FACEBOOK_PUBLISH_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"]
 INSTAGRAM_PUBLISH_SCOPES = ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_content_publish"]
@@ -16,6 +21,8 @@ class MetaOAuthConfigurationError(RuntimeError):
 class MetaOAuthRequestError(RuntimeError):
     def __init__(self, status, error_type=None, code=None, subcode=None, message=None, fbtrace_id=None):
         safe_message = str(message or "Meta OAuth request failed").replace("access_token", "credential").replace("client_secret", "credential").replace("authorization_code", "credential")
+        safe_message = re.sub(r"(?i)bearer\s+\S+", "[REDACTED_CREDENTIAL]", safe_message)
+        safe_message = re.sub(r"\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET)\b", "[REDACTED_CREDENTIAL]", safe_message)
         fields = [f"HTTP {status}", f"type={error_type or 'unknown'}", f"code={code if code is not None else 'unknown'}"]
         if subcode is not None: fields.append(f"subcode={subcode}")
         fields.append(f"message={safe_message}")
@@ -93,3 +100,49 @@ class MetaOAuthProvider:
             if self.platform == "instagram" and not ig.get("id"): continue
             result.append({"page_id": page.get("id"), "page_name": page.get("name"), "tasks": page.get("tasks") or [], "has_instagram_business_account": bool(ig.get("id")), "instagram_user_id": ig.get("id")})
         return result
+
+    def resolve_page_access_token(self, account_id, bound_page_id, access_token=None, transport=None):
+        """Resolve a bound Page credential in memory for one live operation."""
+        account = get_account(account_id)
+        binding = get_binding(account_id)
+        token = {"access_token": access_token} if access_token else get_token(account_id)
+        if not account or str(account.get("platform", "")).lower() not in {"facebook", "instagram"}:
+            raise MetaOAuthConfigurationError("Meta account is missing")
+        if not binding or not bound_page_id or str(binding.get("page_id")) != str(bound_page_id):
+            raise MetaOAuthConfigurationError("Meta binding page identity is invalid")
+        if not token or not token.get("access_token"):
+            raise MetaOAuthConfigurationError("Meta user credential is missing")
+        scopes = token.get("scopes") or []
+        if isinstance(scopes, str):
+            try: scopes = json.loads(scopes)
+            except Exception: scopes = scopes.split()
+        required = set(INSTAGRAM_PUBLISH_SCOPES if str(account.get("platform", "")).lower() == "instagram" else FACEBOOK_PUBLISH_SCOPES)
+        if not required.issubset(set(scopes)):
+            raise MetaOAuthConfigurationError("Meta user credential lacks page publishing scope metadata")
+        if token.get("expires_at"):
+            try:
+                expiry = datetime.fromisoformat(str(token["expires_at"]).replace("Z", "+00:00"))
+                if expiry.tzinfo is None: expiry = expiry.replace(tzinfo=timezone.utc)
+                if expiry <= datetime.now(timezone.utc): raise MetaOAuthConfigurationError("Meta user credential is expired")
+            except ValueError: raise MetaOAuthConfigurationError("Meta user credential expiry is invalid")
+        http = transport or requests
+        try:
+            response = http.get(
+                f"https://graph.facebook.com/{self.config.get('graph_api_version') or 'v26.0'}/{bound_page_id}",
+                params={"fields": "id,access_token"},
+                headers={"Authorization": f"Bearer {token['access_token']}"}, timeout=30,
+            )
+            if not response.ok:
+                try: error = (response.json() or {}).get("error") or {}
+                except Exception: error = {}
+                raise MetaOAuthRequestError(response.status_code, error.get("type"), error.get("code"), error.get("error_subcode"), error.get("message"), error.get("fbtrace_id"))
+            payload = response.json() or {}
+        except MetaOAuthRequestError:
+            raise
+        except Exception as exc:
+            raise MetaOAuthConfigurationError("Meta page credential resolution failed") from None
+        if str(payload.get("id")) != str(bound_page_id):
+            raise MetaOAuthConfigurationError("Meta page credential response identity mismatch")
+        if not payload.get("access_token"):
+            raise MetaOAuthConfigurationError("Meta page credential response was missing access token")
+        return payload["access_token"]

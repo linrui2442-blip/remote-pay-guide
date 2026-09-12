@@ -26,6 +26,7 @@ def ready(monkeypatch, value=None, binding=None):
     monkeypatch.setattr(module, "get_account", lambda _: {"id": 3, "platform": "instagram"})
     monkeypatch.setattr(module, "get_binding", lambda _: binding or {"platform": "instagram", "instagram_user_id": "ig-3"})
     monkeypatch.setattr(module, "get_token", lambda _: value or token())
+    monkeypatch.setattr(module, "resolve_page_access_token", lambda *args: "page-token")
 
 
 def test_readiness_fail_closed(monkeypatch):

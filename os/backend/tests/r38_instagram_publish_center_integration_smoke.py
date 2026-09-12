@@ -42,6 +42,7 @@ def isolated(monkeypatch):
     monkeypatch.setattr(orch,"get_account",lambda _:account); monkeypatch.setattr(orch,"get_asset_by_asset_id",lambda _:asset); monkeypatch.setattr(orch,"get_asset",lambda _:asset)
     monkeypatch.setattr(worker_module,"get_asset_by_asset_id",lambda _:asset); monkeypatch.setattr(worker_module,"get_asset",lambda _:asset)
     monkeypatch.setattr(instagram_module,"get_account",lambda _:account); monkeypatch.setattr(instagram_module,"get_binding",lambda _:binding); monkeypatch.setattr(instagram_module,"get_token",lambda _:token)
+    monkeypatch.setattr(instagram_module,"resolve_page_access_token",lambda *args: "page-token")
     return account,binding,token,asset
 
 def install(monkeypatch, transport):
