@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from integrations.youtube import YouTubeContentSync
+from integrations.instagram import InstagramContentSync
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,14 @@ def run_content_sync(
 register_content_sync_adapter(
     'youtube',
     YouTubeContentSync,
+    active_limit=10,
+    supports_incremental=True,
+    supports_full_refresh=True,
+)
+
+register_content_sync_adapter(
+    'instagram',
+    InstagramContentSync,
     active_limit=10,
     supports_incremental=True,
     supports_full_refresh=True,

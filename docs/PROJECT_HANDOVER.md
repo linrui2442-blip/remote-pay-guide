@@ -239,6 +239,7 @@ Current real OS state:
 - Evidence: 2026-09-09, account_id=1, asset_id=youtube_private_e2e_short04, task_id=12, provider video id=uEQR9PSAfUA, privacy=private; task 11 failed history remains unchanged.
 - Meta Account/OAuth: Historical REAL E2E VERIFIED — 2026-09-10. Current Meta operational credential is blocked by Facebook account enforcement.
 - Instagram: official Graph implementation present; production live gate remains disabled and `publish_ready=false`; real external E2E is not verified pending a valid Meta operational identity.
+- Instagram content sync: CODE + CONTRACT TEST VERIFIED; bounded Reels metadata synchronization is registered and keeps analytics disabled. Real Meta read E2E is not verified.
 - Facebook: Page binding was historically verified; official Reels publish adapter is not real E2E verified.
 - Facebook Reels adapter: CODE + CONTRACT TEST VERIFIED; the live gate defaults to disabled and no external publish E2E is claimed.
 - TikTok: not a current launch requirement.

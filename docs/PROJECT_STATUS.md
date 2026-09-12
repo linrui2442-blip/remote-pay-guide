@@ -132,6 +132,7 @@ Current real OS publish state:
 - Meta Account/OAuth: Historical REAL E2E VERIFIED — 2026-09-10. Current Meta operational credential is blocked by Facebook account enforcement.
 - Instagram: official Graph implementation present; production live gate remains disabled; real external E2E is not verified pending a valid Meta operational identity.
 - Instagram live execution will resolve a bound Page credential in memory from the stored user/account credential; Page tokens are not persisted or exposed.
+- Instagram content sync: CODE + CONTRACT TEST VERIFIED; bounded Reels metadata import reuses the existing sync registry, PublishTask, VideoAsset, and D4 Page-token resolver. Real Meta read E2E is not verified.
 - Facebook: Page binding was historically verified; official Reels publish adapter is not real E2E verified.
 - Facebook Reels adapter: CODE + CONTRACT TEST VERIFIED; the live publish gate remains disabled by default and no external publish E2E is claimed.
 - Postiz: legacy compatibility only; must not become the formal OS publish dependency
