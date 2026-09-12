@@ -79,6 +79,23 @@ class PublishWorker:
         result.setdefault("provider_operation_status", latest.get("status"))
         return result
 
+    def _publish_facebook(self, adapter, asset, task):
+        operation = task.get("provider_operation_id")
+        latest = {"id": operation, "status": task.get("provider_operation_status")}
+
+        def callback(operation_id, status):
+            latest.update(id=operation_id, status=status)
+            update_publish_status(task["id"], "publishing", provider_operation_id=operation_id, provider_operation_status=status)
+
+        result = adapter.publish_video(
+            asset, task.get("account_id"), title=task.get("title") or "",
+            description=task.get("description") or "", provider_operation_id=operation,
+            provider_operation_status=task.get("provider_operation_status"), operation_callback=callback,
+        )
+        result.setdefault("provider_operation_id", latest.get("id"))
+        result.setdefault("provider_operation_status", latest.get("status"))
+        return result
+
     def run_once(self):
         processed = 0
 
@@ -116,6 +133,8 @@ class PublishWorker:
                     result = self._publish_youtube(adapter, asset, task)
                 elif task.get("platform") == "instagram":
                     result = self._publish_instagram(adapter, asset, task)
+                elif task.get("platform") == "facebook":
+                    result = self._publish_facebook(adapter, asset, task)
                 else:
                     result = adapter.publish_video(asset, task.get("account_id"))
             except Exception as exc:

@@ -240,6 +240,7 @@ Current real OS state:
 - Meta Account/OAuth: Historical REAL E2E VERIFIED — 2026-09-10. Current Meta operational credential is blocked by Facebook account enforcement.
 - Instagram: official Graph implementation present; production live gate remains disabled and `publish_ready=false`; real external E2E is not verified pending a valid Meta operational identity.
 - Facebook: Page binding was historically verified; official Reels publish adapter is not real E2E verified.
+- Facebook Reels adapter: CODE + CONTRACT TEST VERIFIED; the live gate defaults to disabled and no external publish E2E is claimed.
 - TikTok: not a current launch requirement.
 
 Do not equate adapter registration with live provider readiness.
@@ -251,7 +252,7 @@ Do not equate adapter registration with live provider readiness.
 The current launch blocker is:
 
 ```text
-Instagram operational readiness and controlled real publish
+Instagram/Facebook operational readiness and controlled real publish
 ```
 
 The Instagram official Graph implementation is present, but the production
@@ -311,7 +312,9 @@ PublishTask
 
 ## P0.4 — Facebook Reels Official Live Publish
 
-Implement real Facebook Reels publishing through the same boundaries.
+The Facebook adapter contract is implemented and isolated tests are verified;
+the production live gate remains closed pending a valid operational Meta
+identity and explicit controlled-publish authorization.
 
 ## P0.5 — Unified Three-Platform Publish Center
 

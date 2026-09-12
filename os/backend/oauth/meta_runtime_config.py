@@ -17,10 +17,12 @@ def _flag(env_name, default=False):
         return default
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
-def meta_runtime_config(app_id=None, app_secret=None, redirect_uri=None, graph_api_version=None, facebook_login_config_id=None, instagram_live_publish_enabled=None):
+def meta_runtime_config(app_id=None, app_secret=None, redirect_uri=None, graph_api_version=None, facebook_login_config_id=None, instagram_live_publish_enabled=None, facebook_live_publish_enabled=None):
     if instagram_live_publish_enabled is None:
         instagram_live_publish_enabled = _flag("META_INSTAGRAM_LIVE_PUBLISH_ENABLED", False)
-    return {"app_id": _value(app_id, "META_OAUTH_APP_ID", "meta_oauth_app_id"), "app_secret": _value(app_secret, "META_OAUTH_APP_SECRET", "meta_oauth_app_secret"), "redirect_uri": _value(redirect_uri, "META_OAUTH_REDIRECT_URI"), "facebook_redirect_uri": _value(None, "META_FACEBOOK_OAUTH_REDIRECT_URI"), "instagram_redirect_uri": _value(None, "META_INSTAGRAM_OAUTH_REDIRECT_URI"), "graph_api_version": _value(graph_api_version, "META_GRAPH_API_VERSION"), "facebook_login_config_id": _value(facebook_login_config_id, "META_FACEBOOK_LOGIN_CONFIG_ID"), "instagram_live_publish_enabled": bool(instagram_live_publish_enabled)}
+    if facebook_live_publish_enabled is None:
+        facebook_live_publish_enabled = _flag("META_FACEBOOK_LIVE_PUBLISH_ENABLED", False)
+    return {"app_id": _value(app_id, "META_OAUTH_APP_ID", "meta_oauth_app_id"), "app_secret": _value(app_secret, "META_OAUTH_APP_SECRET", "meta_oauth_app_secret"), "redirect_uri": _value(redirect_uri, "META_OAUTH_REDIRECT_URI"), "facebook_redirect_uri": _value(None, "META_FACEBOOK_OAUTH_REDIRECT_URI"), "instagram_redirect_uri": _value(None, "META_INSTAGRAM_OAUTH_REDIRECT_URI"), "graph_api_version": _value(graph_api_version, "META_GRAPH_API_VERSION"), "facebook_login_config_id": _value(facebook_login_config_id, "META_FACEBOOK_LOGIN_CONFIG_ID"), "instagram_live_publish_enabled": bool(instagram_live_publish_enabled), "facebook_live_publish_enabled": bool(facebook_live_publish_enabled)}
 
 def meta_config_status():
     config = meta_runtime_config()

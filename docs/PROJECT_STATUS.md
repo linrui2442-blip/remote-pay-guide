@@ -133,6 +133,7 @@ Current real OS publish state:
 - Instagram: official Graph implementation present; production live gate remains disabled; real external E2E is not verified pending a valid Meta operational identity.
 - Instagram live execution will resolve a bound Page credential in memory from the stored user/account credential; Page tokens are not persisted or exposed.
 - Facebook: Page binding was historically verified; official Reels publish adapter is not real E2E verified.
+- Facebook Reels adapter: CODE + CONTRACT TEST VERIFIED; the live publish gate remains disabled by default and no external publish E2E is claimed.
 - Postiz: legacy compatibility only; must not become the formal OS publish dependency
 
 Official OS media path:
@@ -153,7 +154,7 @@ dependency of the official OS publish path.
 
 # CURRENT NEXT STEP
 
-## P0 — INSTAGRAM OPERATIONAL READINESS / REAL PUBLISH
+## P0 — INSTAGRAM / FACEBOOK OPERATIONAL READINESS / REAL PUBLISH
 
 Meta account connection and resource binding remain historical evidence; current operational identity is blocked by account enforcement. The Instagram adapter code exists, but its production gate is closed by default.
 
@@ -163,7 +164,9 @@ Implement real live publishing through the existing Publish Registry / Adapter /
 
 ### 2. Facebook Reels Official Publish Adapter
 
-Implement real live publishing through the same existing boundaries.
+The provider-neutral adapter and isolated Graph contract are implemented and
+verified. Live publishing remains disabled until a valid operational Meta
+identity and explicit controlled-publish authorization are available.
 
 ### 3. Unified Publish Center
 
