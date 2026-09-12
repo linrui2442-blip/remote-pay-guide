@@ -143,21 +143,34 @@ The final polished asset is stored under the content output directory.
 
 # 5. Publishing Pipeline
 
-The validated short04 publishing architecture is:
+The legacy short04 publishing workflow is:
 
 ```
-Polished MP4
+GitHub Production Artifact
       ↓
 GitHub Pages public media
       ↓
-Postiz
+VideoAsset.asset_url
       ↓
-YouTube Shorts
-Instagram Reels
-Facebook Reels
+Publish Center
+      ↓
+Official platform adapter
 ```
 
-Important:
+Postiz remains a legacy compatibility workflow only. It is not a dependency
+of the official OS publish path.
+
+The official OS path is:
+
+```text
+GitHub Production Artifact
+→ existing GitHub Pages media hosting
+→ VideoAsset.asset_url
+→ Publish Center
+→ official platform adapter
+```
+
+Legacy compatibility note:
 
 Postiz uses a public media URL.
 

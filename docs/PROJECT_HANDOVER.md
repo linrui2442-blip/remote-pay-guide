@@ -80,6 +80,26 @@ Preserve existing systems. Do not create replacements for:
 
 Formal OS publishing must use real provider/platform adapters and official/provider APIs. Postiz is legacy compatibility only.
 
+## GitHub Pages VideoAsset Integration
+
+The canonical OS media path is:
+
+```text
+GitHub Production Artifact
+→ existing GitHub Pages media hosting
+→ VideoAsset.asset_url
+→ Publish Center
+→ official platform adapter
+```
+
+The completed-result binding preserves provider-supplied `video_id` or
+`content_id`, marks verified GitHub Pages MP4 URLs as ready, and keeps the
+public URL in `VideoAsset.location` for compatibility. D2 contract status:
+`GITHUB PAGES → VIDEOASSET → INSTAGRAM PREPARE CONTRACT VERIFIED`.
+
+Postiz remains legacy compatibility only; it is not a dependency of the
+official OS publish path.
+
 AI Gateway remains remote-service architecture. Do not replace it with local GPU inference.
 
 Comment-body synchronization remains forbidden. Numeric aggregate comment counts are allowed.

@@ -22,18 +22,44 @@ def _public_url(client, asset_filename):
     return f"https://{client.owner}.github.io/{client.repo}/media/{asset_filename}"
 
 
-def _verify_public_url(url, max_attempts=24, poll_interval=5):
+def _verify_public_url(url, max_attempts=24, poll_interval=5, session=None):
+    """Verify a public direct video response without exposing sensitive errors."""
+    parsed = __import__("urllib.parse", fromlist=["urlparse"]).urlparse(url or "")
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("public asset URL must be an absolute https URL")
+    http = session or requests
     last_error = None
     for _ in range(max_attempts):
         try:
-            response = requests.head(url, allow_redirects=True, timeout=15)
-            if response.status_code < 400:
+            response = http.head(url, allow_redirects=True, timeout=15)
+            final_url = response.url or url
+            final = __import__("urllib.parse", fromlist=["urlparse"]).urlparse(final_url)
+            content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            content_length = response.headers.get("Content-Length")
+            non_empty = content_length is None or int(content_length) > 0
+            valid_type = content_type.startswith("video/") or (
+                not content_type and final.path.lower().endswith(".mp4")
+            )
+            if response.status_code < 400 and final.scheme == "https" and non_empty and valid_type:
                 return True
+            if response.status_code in {405, 501}:
+                response.close()
+                response = http.get(
+                    url, allow_redirects=True, timeout=15,
+                    headers={"Range": "bytes=0-0"}, stream=True,
+                )
+                final = __import__("urllib.parse", fromlist=["urlparse"]).urlparse(response.url or url)
+                content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+                if response.status_code < 400 and final.scheme == "https" and content_type.startswith("video/"):
+                    return True
             last_error = f"HTTP {response.status_code}"
+            response.close()
         except requests.RequestException as exc:
-            last_error = str(exc)
+            last_error = type(exc).__name__
+        except (TypeError, ValueError):
+            last_error = "invalid media response"
         time.sleep(poll_interval)
-    raise TimeoutError(f"GitHub Pages URL did not become reachable: {url} ({last_error})")
+    raise TimeoutError(f"GitHub Pages URL did not become a valid media response ({last_error})")
 
 
 def promote_artifact_to_pages(

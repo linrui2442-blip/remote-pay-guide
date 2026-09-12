@@ -55,9 +55,12 @@ class ProductionRuntimeWorker:
             update_job_result(job['id'], output, error)
 
             result_status = self._normalize_status(provider_status)
+            # Preserve provider/content identity when the provider returns it;
+            # runtime task identity is only a fallback for legacy providers.
+            output_identity = output.get('video_id') or output.get('content_id') if isinstance(output, dict) else None
             production_result = create_result({
                 'runtime_job_id': job['id'],
-                'video_id': str(job.get('task_id')) if job.get('task_id') is not None else None,
+                'video_id': output_identity or (str(job.get('task_id')) if job.get('task_id') is not None else None),
                 'provider': result.get('provider', job.get('provider')),
                 'status': result_status,
                 'output': output,

@@ -51,6 +51,7 @@ Binance registration/conversion attribution is intentionally deferred. The curre
 - Signed HMAC attribution ingestion contract: LOCAL CONTRACT VERIFIED
 - GA4 landing-page integration: REAL ACTIVE
 - Content → Binance referral click attribution: **REAL GA4 E2E VERIFIED (2026-09-09)**
+- GitHub Pages → VideoAsset → Instagram prepare: CODE + TEST VERIFIED
 
 Scheduler Operational Hardening is CLOSED. Do not add more scheduler infrastructure unless a real production failure exposes a concrete gap.
 
@@ -131,6 +132,20 @@ Current real OS publish state:
 - Instagram: REAL OAuth and Professional Account binding verified; official Reels publish adapter remains simulated (`publish_ready=false`)
 - Facebook: REAL OAuth and Page binding verified; official Reels publish adapter remains simulated (`publish_ready=false`)
 - Postiz: legacy compatibility only; must not become the formal OS publish dependency
+
+Official OS media path:
+
+```text
+GitHub Production Artifact
+→ existing GitHub Pages media hosting
+→ VideoAsset.asset_url
+→ Publish Center
+→ official platform adapter
+```
+
+Existing public GitHub Pages MP4 media is directly readable over HTTPS with
+`video/mp4` responses. Postiz remains legacy compatibility only and is not a
+dependency of the official OS publish path.
 
 ---
 
