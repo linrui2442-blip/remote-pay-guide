@@ -34,6 +34,9 @@ def _init_db():
             platform_video_id TEXT,
             published_url TEXT,
             error_message TEXT,
+            provider_operation_id TEXT,
+            provider_operation_status TEXT,
+            provider_operation_updated_at TEXT,
             created_at TEXT,
             updated_at TEXT
         )
@@ -53,6 +56,9 @@ def _init_db():
         "error_message": "TEXT",
         "created_at": "TEXT",
         "updated_at": "TEXT",
+        "provider_operation_id": "TEXT",
+        "provider_operation_status": "TEXT",
+        "provider_operation_updated_at": "TEXT",
     }
     for name, field_type in migrations.items():
         if name not in columns:
@@ -100,8 +106,9 @@ def create_publish_task(task):
         """
         INSERT INTO publish_tasks
         (asset_id, video_id, platform, account_id, status, scheduled_time,
-         title, description, tags, privacy_status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         title, description, tags, privacy_status, provider_operation_id,
+         provider_operation_status, provider_operation_updated_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             _task_value(task, "asset_id"),
@@ -114,6 +121,9 @@ def create_publish_task(task):
             _task_value(task, "description", "") or "",
             json.dumps(_task_value(task, "tags", []) or [], ensure_ascii=False),
             _task_value(task, "privacy_status", "private") or "private",
+            _task_value(task, "provider_operation_id"),
+            _task_value(task, "provider_operation_status"),
+            _task_value(task, "provider_operation_updated_at"),
             now,
             now,
         ),
@@ -146,13 +156,19 @@ def update_publish_status(
     platform_video_id=None,
     published_url=None,
     error_message=None,
+    provider_operation_id=None,
+    provider_operation_status=None,
 ):
     _init_db()
     conn = _connect()
     conn.execute(
         """
         UPDATE publish_tasks
-        SET status=?, platform_video_id=?, published_url=?, error_message=?, updated_at=?
+        SET status=?, platform_video_id=COALESCE(?, platform_video_id),
+            published_url=COALESCE(?, published_url), error_message=?,
+            provider_operation_id=COALESCE(?, provider_operation_id),
+            provider_operation_status=COALESCE(?, provider_operation_status),
+            provider_operation_updated_at=?, updated_at=?
         WHERE id=?
         """,
         (
@@ -160,10 +176,23 @@ def update_publish_status(
             platform_video_id,
             published_url,
             error_message,
-            datetime.utcnow().isoformat(),
+            provider_operation_id, provider_operation_status,
+            datetime.utcnow().isoformat(), datetime.utcnow().isoformat(),
             task_id,
         ),
     )
     conn.commit()
     conn.close()
     return get_publish_task(task_id)
+
+
+def claim_publish_task(task_id):
+    _init_db()
+    conn = _connect()
+    cursor = conn.execute(
+        "UPDATE publish_tasks SET status='publishing', updated_at=? "
+        "WHERE id=? AND status IN ('pending','failed')",
+        (datetime.utcnow().isoformat(), task_id),
+    )
+    conn.commit(); conn.close()
+    return cursor.rowcount == 1

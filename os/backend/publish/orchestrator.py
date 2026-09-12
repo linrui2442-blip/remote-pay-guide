@@ -141,6 +141,8 @@ def _resolve_asset(task: PublishTask):
         remote_candidate = location
     remote_usable = _usable_http_url(remote_candidate)
 
+    if str(task.platform).lower() == "instagram" and not remote_usable:
+        raise PublishContractError("Instagram Reels requires a public http(s) asset URL")
     if not local_usable and not remote_usable:
         if file_path:
             raise PublishContractError(

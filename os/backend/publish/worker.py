@@ -1,7 +1,7 @@
 from assets.manager import get_asset, get_asset_by_asset_id
 from events.publish_events import emit_publish_completed, emit_publish_failed
 from publish.asset_resolver import AssetResolver, AssetResolutionError
-from publish.manager import get_publish_task, update_publish_status
+from publish.manager import claim_publish_task, get_publish_task, update_publish_status
 from publish.registry import get_adapter
 
 
@@ -56,6 +56,28 @@ class PublishWorker:
             if prepared:
                 prepared.cleanup()
 
+    def _publish_instagram(self, adapter, asset, task):
+        operation = task.get("provider_operation_id")
+        latest = {"id": operation, "status": task.get("provider_operation_status")}
+
+        def callback(operation_id, status):
+            latest.update(id=operation_id, status=status)
+            update_publish_status(
+                task["id"], "publishing", provider_operation_id=operation_id,
+                provider_operation_status=status,
+            )
+
+        result = adapter.publish_video(
+            asset,
+            task.get("account_id"),
+            caption=task.get("description") or task.get("title") or "",
+            provider_operation_id=operation,
+            operation_callback=callback,
+        )
+        result.setdefault("provider_operation_id", latest.get("id"))
+        result.setdefault("provider_operation_status", latest.get("status"))
+        return result
+
     def run_once(self):
         processed = 0
 
@@ -84,11 +106,15 @@ class PublishWorker:
                 processed += 1
                 continue
 
-            update_publish_status(task_id, "publishing")
+            if not claim_publish_task(task_id):
+                self.queue.remove_task(task_id)
+                continue
 
             try:
                 if task.get("platform") == "youtube":
                     result = self._publish_youtube(adapter, asset, task)
+                elif task.get("platform") == "instagram":
+                    result = self._publish_instagram(adapter, asset, task)
                 else:
                     result = adapter.publish_video(asset, task.get("account_id"))
             except Exception as exc:
@@ -100,6 +126,8 @@ class PublishWorker:
                     "published",
                     platform_video_id=result.get("video_id"),
                     published_url=result.get("url"),
+                    provider_operation_id=result.get("provider_operation_id"),
+                    provider_operation_status="PUBLISHED",
                 )
                 emit_publish_completed(task, result)
             else:
@@ -108,6 +136,8 @@ class PublishWorker:
                     task_id,
                     "failed",
                     error_message=error,
+                    provider_operation_id=result.get("provider_operation_id"),
+                    provider_operation_status=result.get("provider_operation_status"),
                 )
                 emit_publish_failed(task, error)
 

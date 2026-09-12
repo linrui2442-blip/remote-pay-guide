@@ -9,6 +9,8 @@ on:
       - 'os/backend/tests/r4_platform_registry_smoke.py'
       - 'os/backend/tests/r36_instagram_reels_adapter_smoke.py'
       - 'os/backend/tests/r37_instagram_reels_graph_contract_smoke.py'
+      - 'os/backend/tests/r20_publish_center_execution_contract_smoke.py'
+      - 'os/backend/tests/r38_instagram_publish_center_integration_smoke.py'
       - '.github/workflows/os-platform-registry-verification.yml'
 
 jobs:
@@ -50,3 +52,13 @@ jobs:
         env:
           PYTHONPATH: os/backend
         run: python os/backend/tests/r37_instagram_reels_graph_contract_smoke.py
+
+      - name: Verify Publish Center execution contract
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r20_publish_center_execution_contract_smoke.py
+
+      - name: Verify Instagram Publish Center integration
+        env:
+          PYTHONPATH: os/backend
+        run: python os/backend/tests/r38_instagram_publish_center_integration_smoke.py

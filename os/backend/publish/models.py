@@ -20,5 +20,8 @@ class PublishTask(BaseModel):
     platform_video_id: Optional[str] = None
     published_url: Optional[str] = None
     error_message: Optional[str] = None
+    provider_operation_id: Optional[str] = None
+    provider_operation_status: Optional[str] = None
+    provider_operation_updated_at: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
