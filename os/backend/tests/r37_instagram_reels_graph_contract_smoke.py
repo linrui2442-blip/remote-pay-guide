@@ -62,3 +62,26 @@ def test_url_gate_and_publish_response_validation(monkeypatch):
     try: InstagramAdapter._video_url({"asset_url": "C:/private/reel.mp4"})
     except ValueError: pass
     else: raise AssertionError("private path accepted")
+
+
+def test_missing_media_id_and_http_error_are_safe(monkeypatch):
+    ready(monkeypatch)
+    fake = FakeTransport([{"id": "creation-1"}, {"status_code": "FINISHED"}, {}])
+    try:
+        InstagramAdapter(transport=fake).publish_reel_via_graph({"asset_url": "https://example.test/reel.mp4"}, 3, sleep_fn=lambda _: None)
+    except RuntimeError as exc:
+        assert "media id" in str(exc)
+    else:
+        raise AssertionError("missing media id must fail closed")
+
+    class FailingTransport(FakeTransport):
+        def post(self, url, **kwargs):
+            raise RuntimeError("Bearer SUPER_SECRET_FAKE_META_TOKEN Authorization")
+
+    try:
+        InstagramAdapter(transport=FailingTransport([])).publish_reel_via_graph({"asset_url": "https://example.test/reel.mp4"}, 3)
+    except RuntimeError as exc:
+        assert "SUPER_SECRET_FAKE_META_TOKEN" not in str(exc)
+        assert "Authorization" not in str(exc)
+    else:
+        raise AssertionError("HTTP failure must fail closed")

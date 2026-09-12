@@ -33,6 +33,14 @@ class InstagramAdapter:
         }
 
     @staticmethod
+    def _safe_error(error):
+        text = str(error)
+        for secret in ("SUPER_SECRET_FAKE_META_TOKEN",):
+            text = text.replace(secret, "[REDACTED]")
+        text = text.replace("Authorization", "[REDACTED_HEADER]")
+        return text
+
+    @staticmethod
     def _video_url(video_asset):
         value = video_asset.get("asset_url") or video_asset.get("location")
         parsed = urlparse(str(value or ""))
@@ -85,8 +93,11 @@ class InstagramAdapter:
         if provider_operation_id:
             creation_id = provider_operation_id
         else:
-            container = http.post(f"{base}/media", params={"media_type": "REELS", "video_url": url, "caption": caption or ""}, headers=headers, timeout=30)
-            container.raise_for_status()
+            try:
+                container = http.post(f"{base}/media", params={"media_type": "REELS", "video_url": url, "caption": caption or ""}, headers=headers, timeout=30)
+                container.raise_for_status()
+            except Exception as exc:
+                raise RuntimeError(self._safe_error(exc)) from None
             creation_id = container.json().get("id")
         if not creation_id:
             raise RuntimeError("Instagram Reels container response did not include an id")
@@ -95,9 +106,12 @@ class InstagramAdapter:
         sleep_fn = sleep_fn or __import__("time").sleep
         state = None
         for attempt in range(max(1, int(max_attempts))):
-            state_response = http.get(f"https://graph.facebook.com/{self.api_version}/{creation_id}", params={"fields": "status_code,status"}, headers=headers, timeout=30)
-            state_payload = state_response.json()
-            state_response.raise_for_status()
+            try:
+                state_response = http.get(f"https://graph.facebook.com/{self.api_version}/{creation_id}", params={"fields": "status_code,status"}, headers=headers, timeout=30)
+                state_response.raise_for_status()
+                state_payload = state_response.json()
+            except Exception as exc:
+                raise RuntimeError(self._safe_error(exc)) from None
             state = state_payload.get("status_code") or state_payload.get("status")
             if operation_callback:
                 operation_callback(creation_id, state)
@@ -111,8 +125,11 @@ class InstagramAdapter:
                 sleep_fn(poll_interval_seconds)
         if state != "FINISHED":
             raise RuntimeError("Instagram media container polling timed out")
-        published = http.post(f"{base}/media_publish", params={"creation_id": creation_id}, headers=headers, timeout=30)
-        published.raise_for_status()
+        try:
+            published = http.post(f"{base}/media_publish", params={"creation_id": creation_id}, headers=headers, timeout=30)
+            published.raise_for_status()
+        except Exception as exc:
+            raise RuntimeError(self._safe_error(exc)) from None
         media_id = published.json().get("id")
         if not media_id:
             raise RuntimeError("Instagram publish response did not include a media id")

@@ -3,7 +3,9 @@ from publish.adapters.instagram import InstagramAdapter
 
 
 def test_adapter_is_registered_but_live_gate_remains_closed():
-    status = InstagramAdapter().get_status()
+    adapter = InstagramAdapter()
+    adapter.initialize()
+    status = adapter.get_status()
     assert status["platform"] == "instagram"
     assert status["publish_ready"] is False
     assert status["execution_mode"] == "simulated"
