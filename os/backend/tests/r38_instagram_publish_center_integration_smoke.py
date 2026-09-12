@@ -35,7 +35,7 @@ class FakeTransport:
 def isolated(monkeypatch):
     pm._init_db(); conn=pm._connect(); conn.execute("DELETE FROM publish_tasks"); conn.commit(); conn.close()
     account={"id":3,"platform":"instagram","status":"connected"}; binding={"platform":"instagram","instagram_user_id":"ig-3"}
-    token={"provider":"meta","access_token":TOKEN,"scopes":["pages_show_list","pages_read_engagement","instagram_basic","instagram_content_publish"],"expires_at":(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()}
+    token={"provider":"instagram","access_token":TOKEN,"scopes":["pages_show_list","pages_read_engagement","instagram_basic","instagram_content_publish"],"expires_at":(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()}
     asset={"asset_id":"asset-1","video_id":"video-1","status":"ready","asset_url":"https://example.test/reel.mp4","file_path":None,"location":"https://example.test/reel.mp4"}
     monkeypatch.setattr(orch,"get_account",lambda _:account); monkeypatch.setattr(orch,"get_asset_by_asset_id",lambda _:asset); monkeypatch.setattr(orch,"get_asset",lambda _:asset)
     monkeypatch.setattr(worker_module,"get_asset_by_asset_id",lambda _:asset); monkeypatch.setattr(worker_module,"get_asset",lambda _:asset)

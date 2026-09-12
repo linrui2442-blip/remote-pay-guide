@@ -61,8 +61,8 @@ class InstagramAdapter:
             missing.append("instagram_account")
         if not binding or str(binding.get("platform")).lower() != "instagram" or not binding.get("instagram_user_id"):
             missing.append("instagram_binding")
-        if not token or token.get("provider") != "meta" or not token.get("access_token"):
-            missing.append("meta_access_token")
+        if not token or token.get("provider") != "instagram" or not token.get("access_token"):
+            missing.append("instagram_access_token")
         scopes = token.get("scopes") if token else []
         if isinstance(scopes, str):
             try:

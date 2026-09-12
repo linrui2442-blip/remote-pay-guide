@@ -17,7 +17,7 @@ class FakeTransport:
 
 
 def token(**overrides):
-    value = {"provider": "meta", "access_token": "fake-token", "scopes": ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_content_publish"], "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
+    value = {"provider": "instagram", "access_token": "fake-token", "scopes": ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_content_publish"], "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()}
     value.update(overrides)
     return value
 
@@ -34,6 +34,13 @@ def test_readiness_fail_closed(monkeypatch):
     ready(monkeypatch, binding={"platform": "facebook", "instagram_user_id": "ig-3"}); assert not adapter.get_account_readiness(3)["ready"]
     ready(monkeypatch, token(scopes=["pages_show_list"])); assert not adapter.get_account_readiness(3)["ready"]
     ready(monkeypatch, token(expires_at="2000-01-01T00:00:00+00:00")); assert not adapter.get_account_readiness(3)["ready"]
+
+
+def test_oauth_storage_provider_contract(monkeypatch):
+    adapter = InstagramAdapter()
+    ready(monkeypatch, token(provider="instagram")); assert adapter.get_account_readiness(3)["ready"]
+    ready(monkeypatch, token(provider="meta")); assert not adapter.get_account_readiness(3)["ready"]
+    ready(monkeypatch, token(provider="facebook")); assert not adapter.get_account_readiness(3)["ready"]
 
 
 def test_polling_order_and_terminal_states(monkeypatch):
