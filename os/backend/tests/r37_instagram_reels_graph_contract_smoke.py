@@ -51,6 +51,19 @@ def test_polling_order_and_terminal_states(monkeypatch):
     assert [call[0] for call in fake.calls] == ["POST", "GET", "GET", "POST"]
 
 
+def test_resume_existing_operation_never_emits_created(monkeypatch):
+    ready(monkeypatch)
+    fake = FakeTransport([{"status_code": "FINISHED", "status": "FINISHED"}, {"id": "media-1"}])
+    events = []
+    InstagramAdapter(transport=fake).publish_reel_via_graph(
+        {"asset_url": "https://example.test/reel.mp4"}, 3,
+        provider_operation_id="creation-1", operation_callback=lambda *_args: events.append(_args),
+        sleep_fn=lambda _: None,
+    )
+    assert events == [("creation-1", "FINISHED"), ("creation-1", "PUBLISHED")]
+    assert fake.calls[0][0] == "GET"
+
+
 def test_terminal_states_and_timeout_never_publish(monkeypatch):
     ready(monkeypatch)
     for state in ("ERROR", "EXPIRED", "PUBLISHED"):

@@ -2,7 +2,7 @@ from data.database_path import database_path
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 DB_PATH = database_path()
 
@@ -134,6 +134,60 @@ def create_publish_task(task):
     return get_publish_task(task_id)
 
 
+def create_or_get_publish_task(task, *, active_statuses=None):
+    """Atomically create one task for a platform/account/canonical asset identity."""
+    _init_db()
+    active_statuses = tuple(active_statuses or ("pending", "publishing", "published"))
+    platform = _task_value(task, "platform")
+    account_id = _task_value(task, "account_id")
+    asset_id = _task_value(task, "asset_id")
+    video_id = _task_value(task, "video_id")
+    now = datetime.utcnow().isoformat()
+    conn = _connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        placeholders = ",".join("?" for _ in active_statuses)
+        if asset_id:
+            existing = conn.execute(
+                f"SELECT * FROM publish_tasks WHERE platform=? AND account_id=? "
+                f"AND asset_id=? AND status IN ({placeholders}) ORDER BY id DESC LIMIT 1",
+                (platform, account_id, asset_id, *active_statuses),
+            ).fetchone()
+        elif video_id:
+            existing = conn.execute(
+                f"SELECT * FROM publish_tasks WHERE platform=? AND account_id=? "
+                f"AND asset_id IS NULL AND video_id=? AND status IN ({placeholders}) ORDER BY id DESC LIMIT 1",
+                (platform, account_id, video_id, *active_statuses),
+            ).fetchone()
+        else:
+            existing = None
+        if existing:
+            conn.commit()
+            return {"created": False, "task": _serialize(existing)}
+        cursor = conn.execute(
+            """INSERT INTO publish_tasks
+            (asset_id, video_id, platform, account_id, status, scheduled_time,
+             title, description, tags, privacy_status, provider_operation_id,
+             provider_operation_status, provider_operation_updated_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (_task_value(task, "asset_id"), _task_value(task, "video_id"), platform,
+             account_id, _task_value(task, "status", "pending"), _task_value(task, "scheduled_time"),
+             _task_value(task, "title"), _task_value(task, "description", "") or "",
+             json.dumps(_task_value(task, "tags", []) or [], ensure_ascii=False),
+             _task_value(task, "privacy_status", "private") or "private",
+             _task_value(task, "provider_operation_id"), _task_value(task, "provider_operation_status"),
+             _task_value(task, "provider_operation_updated_at"), now, now),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM publish_tasks WHERE id=?", (cursor.lastrowid,)).fetchone()
+        return {"created": True, "task": _serialize(row)}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def get_publish_tasks():
     _init_db()
     conn = _connect()
@@ -193,6 +247,22 @@ def claim_publish_task(task_id):
         "UPDATE publish_tasks SET status='publishing', updated_at=? "
         "WHERE id=? AND status IN ('pending','failed')",
         (datetime.utcnow().isoformat(), task_id),
+    )
+    conn.commit(); conn.close()
+    return cursor.rowcount == 1
+
+
+def recover_stale_publishing_task(task_id, *, lease_seconds=300):
+    """Atomically make a stale Instagram task retryable only when an operation exists."""
+    _init_db()
+    conn = _connect()
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(1, int(lease_seconds)))
+    now = datetime.utcnow().isoformat()
+    cursor = conn.execute(
+        """UPDATE publish_tasks SET status='failed', updated_at=?, error_message=?
+           WHERE id=? AND status='publishing' AND provider_operation_id IS NOT NULL
+           AND updated_at IS NOT NULL AND updated_at < ?""",
+        (now, "stale publishing lease recovered for provider reconciliation", task_id, cutoff.replace(tzinfo=None).isoformat()),
     )
     conn.commit(); conn.close()
     return cursor.rowcount == 1

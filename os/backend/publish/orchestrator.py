@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from accounts.manager import get_account
 from assets.manager import get_asset, get_asset_by_asset_id
-from publish.manager import create_publish_task, get_publish_task, get_publish_tasks
+from publish.manager import create_or_get_publish_task, get_publish_task, recover_stale_publishing_task
 from publish.models import PublishTask
 from publish.queue import PublishQueue
 from publish.registry import get_adapter
@@ -186,36 +186,10 @@ def _validate_publish_contract(task: PublishTask):
     return platform, readiness, account, asset
 
 
-def _find_existing_task(task: PublishTask, platform: str):
-    active_statuses = {"pending", "publishing", "published"}
-    for current in reversed(get_publish_tasks()):
-        if str(current.get("platform") or "").lower() != platform:
-            continue
-        if current.get("account_id") != task.account_id:
-            continue
-        if str(current.get("status") or "").lower() not in active_statuses:
-            continue
-        if task.asset_id and current.get("asset_id") == task.asset_id:
-            return current
-        if not task.asset_id and task.video_id and current.get("video_id") == task.video_id:
-            return current
-    return None
-
-
 def prepare_publish_task(task):
     """Validate and persist a publish task without performing any external upload."""
     payload = task if isinstance(task, PublishTask) else PublishTask(**dict(task))
     platform, readiness, account, asset = _validate_publish_contract(payload)
-
-    existing = _find_existing_task(payload, platform)
-    if existing:
-        return {
-            "created": False,
-            "task": existing,
-            "readiness": readiness,
-            "account": account,
-            "asset_id": asset.get("asset_id"),
-        }
 
     payload.platform = platform
     payload.status = "pending"
@@ -223,10 +197,10 @@ def prepare_publish_task(task):
         payload.asset_id = asset.get("asset_id")
     if not payload.video_id:
         payload.video_id = asset.get("video_id")
-    created = create_publish_task(payload)
+    result = create_or_get_publish_task(payload)
     return {
-        "created": True,
-        "task": created,
+        "created": result["created"],
+        "task": result["task"],
         "readiness": readiness,
         "account": account,
         "asset_id": asset.get("asset_id"),
@@ -252,6 +226,11 @@ def execute_publish_task(task_id, *, queue=None, worker_factory=PublishWorker):
         raise PublishContractError("publish task not found")
 
     status = str(stored.get("status") or "").lower()
+    if status == "publishing":
+        if not recover_stale_publishing_task(task_id):
+            raise PublishContractError("publish task is actively publishing or cannot be safely recovered")
+        stored = get_publish_task(task_id)
+        status = str(stored.get("status") or "").lower()
     if status not in {"pending", "failed"}:
         raise PublishContractError(
             f"publish task status {status or 'unknown'} cannot be executed"

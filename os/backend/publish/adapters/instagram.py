@@ -22,9 +22,9 @@ class InstagramAdapter:
         self.status = "ready"
         return self.get_status()
 
-    def publish_video(self, video_asset, account_id=None, *, caption="", provider_operation_id=None, operation_callback=None):
+    def publish_video(self, video_asset, account_id=None, *, caption="", provider_operation_id=None, provider_operation_status=None, operation_callback=None):
         if self.live_publish_enabled:
-            return self.publish_reel_via_graph(video_asset, account_id, caption, provider_operation_id=provider_operation_id, operation_callback=operation_callback)
+            return self.publish_reel_via_graph(video_asset, account_id, caption, provider_operation_id=provider_operation_id, provider_operation_status=provider_operation_status, operation_callback=operation_callback)
         # Keep the legacy adapter method available for compatibility tests, but
         # Publish Center orchestration must never treat this as a live publish.
         return {
@@ -83,7 +83,7 @@ class InstagramAdapter:
                 missing.append("invalid_token_expiry")
         return {"ready": not missing, "account_found": bool(account), "binding_found": bool(binding), "token_found": bool(token), "publish_scope_granted": not missing_scopes, "missing_scopes": missing_scopes, "reason": None if not missing else "Instagram publish readiness failed closed: " + ", ".join(missing)}
 
-    def publish_reel_via_graph(self, video_asset, account_id, caption="", transport=None, *, provider_operation_id=None, operation_callback=None, sleep_fn=None, max_attempts=5, poll_interval_seconds=2):
+    def publish_reel_via_graph(self, video_asset, account_id, caption="", transport=None, *, provider_operation_id=None, provider_operation_status=None, operation_callback=None, sleep_fn=None, max_attempts=5, poll_interval_seconds=2):
         """Documented two-step Reels flow; transport is injectable for tests."""
         readiness = self.get_account_readiness(account_id)
         if not readiness["ready"]:
@@ -97,6 +97,9 @@ class InstagramAdapter:
         sensitive = [token.get("access_token")]
         if provider_operation_id:
             creation_id = provider_operation_id
+            if str(provider_operation_status or "").upper() == "PUBLISHED":
+                return {"platform": "instagram", "status": "published", "video_id": None, "url": None, "provider_operation_id": creation_id, "provider_operation_status": "PUBLISHED"}
+            created_new = False
         else:
             try:
                 container = http.post(f"{base}/media", params={"media_type": "REELS", "video_url": url, "caption": caption or ""}, headers=headers, timeout=30)
@@ -104,9 +107,10 @@ class InstagramAdapter:
             except Exception as exc:
                 raise RuntimeError(self._safe_error(exc, sensitive)) from None
             creation_id = container.json().get("id")
+            created_new = True
         if not creation_id:
             raise RuntimeError("Instagram Reels container response did not include an id")
-        if operation_callback:
+        if operation_callback and created_new:
             operation_callback(creation_id, "CREATED")
         sleep_fn = sleep_fn or __import__("time").sleep
         state = None
@@ -122,7 +126,9 @@ class InstagramAdapter:
                 operation_callback(creation_id, state)
             if state == "FINISHED":
                 break
-            if state in {"ERROR", "EXPIRED", "PUBLISHED"}:
+            if state == "PUBLISHED":
+                return {"platform": "instagram", "status": "published", "video_id": None, "url": None, "provider_operation_id": creation_id, "provider_operation_status": "PUBLISHED"}
+            if state in {"ERROR", "EXPIRED"}:
                 raise RuntimeError(f"Instagram media container is {state.lower()}")
             if state != "IN_PROGRESS":
                 raise RuntimeError("Instagram media container returned an unknown state")
@@ -138,6 +144,8 @@ class InstagramAdapter:
         media_id = published.json().get("id")
         if not media_id:
             raise RuntimeError("Instagram publish response did not include a media id")
+        if operation_callback:
+            operation_callback(creation_id, "PUBLISHED")
         return {"platform": "instagram", "status": "published", "video_id": media_id, "url": None, "provider_operation_id": creation_id, "provider_operation_status": "PUBLISHED"}
 
     def get_status(self):

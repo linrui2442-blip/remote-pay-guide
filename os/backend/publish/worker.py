@@ -72,6 +72,7 @@ class PublishWorker:
             task.get("account_id"),
             caption=task.get("description") or task.get("title") or "",
             provider_operation_id=operation,
+            provider_operation_status=task.get("provider_operation_status"),
             operation_callback=callback,
         )
         result.setdefault("provider_operation_id", latest.get("id"))

@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta, timezone
 import os
 import pytest
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 import publish.manager as pm
 import publish.orchestrator as orch
 import publish.worker as worker_module
@@ -59,6 +61,21 @@ def test_local_only_instagram_asset_rejected_before_task_creation(monkeypatch,is
 def test_prepare_public_asset_makes_zero_graph_calls(monkeypatch,isolated):
     fake=FakeTransport(); install(monkeypatch,fake); result=orch.prepare_publish_task(task()); assert result["created"] is True and fake.calls==[]
 
+def test_prepare_is_atomic_create_or_get(monkeypatch,isolated):
+    fake=FakeTransport(); install(monkeypatch,fake)
+    first=orch.prepare_publish_task(task()); second=orch.prepare_publish_task(task())
+    assert first["created"] is True and second["created"] is False
+    assert first["task"]["id"] == second["task"]["id"]
+    assert len(pm.get_publish_tasks()) == 1 and fake.calls == []
+
+def test_concurrent_prepare_has_one_active_row(monkeypatch,isolated):
+    fake=FakeTransport(); install(monkeypatch,fake)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results=list(pool.map(lambda _: orch.prepare_publish_task(task()), range(2)))
+    assert {item["task"]["id"] for item in results}.__len__() == 1
+    assert sum(1 for item in results if item["created"]) == 1
+    assert len(pm.get_publish_tasks()) == 1 and fake.calls == []
+
 def execute(monkeypatch,fake,**kwargs):
     install(monkeypatch,fake); prepared=orch.prepare_publish_task(task(**kwargs)); return prepared,orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
 
@@ -85,10 +102,43 @@ def test_failure_after_container_preserves_operation(monkeypatch,isolated):
 def test_retry_resumes_existing_operation(monkeypatch,isolated):
     fake=FakeTransport(fail_at=2); prepared,_=execute(monkeypatch,fake); fake.fail_at=None; fake.calls.clear(); fake.states=["FINISHED"]; result=orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue()); assert result["task"]["status"]=="published" and fake.calls[0][0]=="GET" and not any(c[1].endswith("/media") for c in fake.calls)
 
+def test_local_published_operation_is_idempotent(monkeypatch,isolated):
+    fake=FakeTransport(); install(monkeypatch,fake); prepared=orch.prepare_publish_task(task())
+    pm.update_publish_status(prepared["task"]["id"], "failed", provider_operation_id="creation-1", provider_operation_status="PUBLISHED")
+    result=orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
+    assert result["task"]["status"]=="published" and result["task"]["provider_operation_status"]=="PUBLISHED" and fake.calls==[]
+
+def test_remote_published_operation_never_republishes(monkeypatch,isolated):
+    fake=FakeTransport(states=["PUBLISHED"]); install(monkeypatch,fake); prepared=orch.prepare_publish_task(task())
+    pm.update_publish_status(prepared["task"]["id"], "failed", provider_operation_id="creation-1", provider_operation_status="CREATED")
+    result=orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
+    assert result["task"]["status"]=="published" and result["task"]["platform_video_id"] is None
+    assert [call[0] for call in fake.calls]==["GET"]
+
+def test_fresh_publishing_cannot_be_reclaimed(monkeypatch,isolated):
+    fake=FakeTransport(); install(monkeypatch,fake); prepared=orch.prepare_publish_task(task())
+    pm.update_publish_status(prepared["task"]["id"], "publishing", provider_operation_id="creation-1", provider_operation_status="CREATED")
+    with pytest.raises(Exception, match="actively publishing"):
+        orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
+    assert fake.calls==[]
+
+def test_stale_publishing_with_operation_recovers_once(monkeypatch,isolated):
+    fake=FakeTransport(states=["FINISHED"]); install(monkeypatch,fake); prepared=orch.prepare_publish_task(task())
+    conn=pm._connect(); conn.execute("UPDATE publish_tasks SET status='publishing', provider_operation_id='creation-1', provider_operation_status='CREATED', updated_at=? WHERE id=?", ((datetime.utcnow()-timedelta(seconds=600)).isoformat(), prepared["task"]["id"])); conn.commit(); conn.close()
+    result=orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
+    assert result["task"]["status"]=="published" and fake.calls[0][0]=="GET"
+
+def test_stale_publishing_without_operation_is_blocked(monkeypatch,isolated):
+    fake=FakeTransport(); install(monkeypatch,fake); prepared=orch.prepare_publish_task(task())
+    conn=pm._connect(); conn.execute("UPDATE publish_tasks SET status='publishing', provider_operation_id=NULL, updated_at=? WHERE id=?", ((datetime.utcnow()-timedelta(seconds=600)).isoformat(), prepared["task"]["id"])); conn.commit(); conn.close()
+    with pytest.raises(Exception, match="actively publishing"):
+        orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
+    assert fake.calls==[]
+
 def test_resume_published_container_never_republishes(monkeypatch,isolated):
     fake=FakeTransport(states=["PUBLISHED"]); install(monkeypatch,fake); prepared=orch.prepare_publish_task(task())
     result=orch.execute_publish_task(prepared["task"]["id"],queue=PublishQueue())
-    assert result["task"]["status"]=="failed"
+    assert result["task"]["status"]=="published"
     assert result["task"]["provider_operation_id"]=="creation-1"
     assert not any(c[1].endswith("/media_publish") for c in fake.calls)
 
@@ -96,4 +146,5 @@ def test_task_error_message_redacts_actual_token(monkeypatch,isolated):
     fake=FakeTransport(fail_at=1); _,result=execute(monkeypatch,fake); error=result["task"]["error_message"] or ""; assert TOKEN not in error and "Bearer" not in error and "Authorization" not in error
 
 def test_test_database_is_not_production():
-    assert os.environ.get("OS_TESTING")=="1"; assert str(pm.database_path()).lower()!=r"c:\users\l-r\desktop\remote-pay-guide-git\os\database\os.db"
+    production_db = Path(__file__).resolve().parents[2] / "database" / "os.db"
+    assert os.environ.get("OS_TESTING")=="1"; assert pm.database_path().resolve() != production_db
