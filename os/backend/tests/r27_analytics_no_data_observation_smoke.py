@@ -2,7 +2,7 @@ from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_p
 import os
 import sqlite3
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -88,18 +88,20 @@ class MixedCollector:
 
 def main():
     test_now = datetime.now(timezone.utc)
+    reporting_date = (test_now.date() - timedelta(days=1)).isoformat()
+    aggregate_start = (date.fromisoformat(reporting_date) - timedelta(days=27)).isoformat()
     reset_db()
     for index in range(1, 11):
         add_published(index)
 
     client = YouTubeAnalyticsAPIClient(service=EmptyService())
     try:
-        client.collect_video_metrics("video-10", "2026-09-06", "2026-09-06")
+        client.collect_video_metrics("video-10", reporting_date, reporting_date)
         raise AssertionError("missing provider rows must have a typed outcome")
     except AnalyticsNoData:
         pass
     try:
-        client.collect_channel_metrics("2026-09-06", "2026-09-06")
+        client.collect_channel_metrics(reporting_date, reporting_date)
         raise AssertionError("channel no-data must not become a zero metric")
     except AnalyticsNoData:
         pass
@@ -107,7 +109,7 @@ def main():
 
     operation = create_operation(
         ACCOUNT_ID, platform="youtube", date_range="custom",
-        start_date="2026-09-06", end_date="2026-09-06",
+        start_date=reporting_date, end_date=reporting_date,
     )
     finished = AnalyticsBackfillWorker(
         batch_size=10, collector=NoDataCollector(),
@@ -125,11 +127,11 @@ def main():
     coverage = get_backfill_no_data_coverage(ACCOUNT_ID, "youtube")
     assert len(coverage) == 10
     restarted_plan = plan_backfill(
-        ACCOUNT_ID, date_range="custom", start_date="2026-09-06",
-        end_date="2026-09-06", today=test_now.date(),
+        ACCOUNT_ID, date_range="custom", start_date=reporting_date,
+        end_date=reporting_date, today=test_now.date(),
     )
     assert restarted_plan["estimated_request_count"] == 0
-    assert all(item["observed_no_data_dates"] == ["2026-09-06"] for item in restarted_plan["eligible_videos"])
+    assert all(item["observed_no_data_dates"] == [reporting_date] for item in restarted_plan["eligible_videos"])
 
     # Expired recent coverage is queried again after the 24-hour TTL.
     expired_at = (test_now - timedelta(hours=25)).isoformat()
@@ -144,42 +146,42 @@ def main():
         )
         conn.commit()
     expired_plan = plan_backfill(
-        ACCOUNT_ID, date_range="custom", start_date="2026-09-06",
-        end_date="2026-09-06", today=test_now.date(),
+        ACCOUNT_ID, date_range="custom", start_date=reporting_date,
+        end_date=reporting_date, today=test_now.date(),
     )
     assert expired_plan["estimated_request_count"] == 10
 
     # A real daily snapshot wins over no-data coverage; a 28-day aggregate does not.
     save_metric(AnalyticsMetric(
         video_id="video-10", content_id="content-10", platform="youtube",
-        account_id=ACCOUNT_ID, source="test", period_start="2026-09-06",
-        period_end="2026-09-06", views=5,
+        account_id=ACCOUNT_ID, source="test", period_start=reporting_date,
+        period_end=reporting_date, views=5,
     ))
     save_metric(AnalyticsMetric(
         video_id="video-9", content_id="content-9", platform="youtube",
-        account_id=ACCOUNT_ID, source="test", period_start="2026-08-10",
-        period_end="2026-09-06", views=280,
+        account_id=ACCOUNT_ID, source="test", period_start=aggregate_start,
+        period_end=reporting_date, views=280,
     ))
     real_plan = plan_backfill(
-        ACCOUNT_ID, date_range="custom", start_date="2026-09-06",
-        end_date="2026-09-06", today=test_now.date(),
+        ACCOUNT_ID, date_range="custom", start_date=reporting_date,
+        end_date=reporting_date, today=test_now.date(),
     )
     indexed = {item["video_id"]: item for item in real_plan["eligible_videos"]}
-    assert indexed["video-10"]["existing_dates"] == ["2026-09-06"]
+    assert indexed["video-10"]["existing_dates"] == [reporting_date]
     assert indexed["video-10"]["missing_dates"] == []
     assert indexed["video-9"]["existing_dates"] == []
-    assert indexed["video-9"]["missing_dates"] == ["2026-09-06"]
+    assert indexed["video-9"]["missing_dates"] == [reporting_date]
 
     query = query_data_center(
         account_id=ACCOUNT_ID, platform="youtube", date_range="custom",
-        start_date="2026-09-06", end_date="2026-09-06", interval="daily",
+        start_date=reporting_date, end_date=reporting_date, interval="daily",
     )
     assert query["summary"]["total_views"] == 5
     assert len(query["time_series"]["points"]) == 1
 
     success = collect_account_publish_metrics(
         ACCOUNT_ID, platform="youtube", collector=MixedCollector(failures=0),
-        start_date="2026-09-06", end_date="2026-09-06",
+        start_date=reporting_date, end_date=reporting_date,
     )
     assert success["collected"] == 3 and success["no_data"] == 7
     assert success["failed"] == 0
@@ -187,7 +189,7 @@ def main():
 
     partial = collect_account_publish_metrics(
         ACCOUNT_ID, platform="youtube", collector=MixedCollector(failures=1),
-        start_date="2026-09-06", end_date="2026-09-06",
+        start_date=reporting_date, end_date=reporting_date,
     )
     assert partial["collected"] == 3 and partial["no_data"] == 6
     assert partial["failed"] == 1
