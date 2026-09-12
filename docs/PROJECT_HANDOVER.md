@@ -225,9 +225,9 @@ Current real OS state:
 
 - YouTube: real OAuth/content/analytics verified; official AuthorizedSession/requests publish adapter; REAL PRIVATE E2E VERIFIED (task 12, private read-back confirmed).
 - Evidence: 2026-09-09, account_id=1, asset_id=youtube_private_e2e_short04, task_id=12, provider video id=uEQR9PSAfUA, privacy=private; task 11 failed history remains unchanged.
-- Meta Account/OAuth: REAL E2E VERIFIED — 2026-09-10. Facebook account_id=2 has REAL OAuth, Page discovery, and Page binding verified (Remote Pay Guide, resource id 1333510043181176). Instagram account_id=3 has REAL OAuth, Professional Account discovery, and resource binding verified (Remote Pay Guide, resource id 17841441779628429). Both publish adapters remain simulated and publish_ready=false.
-- Instagram: REAL OAuth and Professional Account binding verified; official Reels publish adapter remains simulated and publish_ready=false.
-- Facebook: REAL OAuth and Page binding verified; official Reels publish adapter remains simulated and publish_ready=false.
+- Meta Account/OAuth: Historical REAL E2E VERIFIED — 2026-09-10. Current Meta operational credential is blocked by Facebook account enforcement.
+- Instagram: official Graph implementation present; production live gate remains disabled and `publish_ready=false`; real external E2E is not verified pending a valid Meta operational identity.
+- Facebook: Page binding was historically verified; official Reels publish adapter is not real E2E verified.
 - TikTok: not a current launch requirement.
 
 Do not equate adapter registration with live provider readiness.
@@ -239,8 +239,13 @@ Do not equate adapter registration with live provider readiness.
 The current launch blocker is:
 
 ```text
-Multi-Platform Live Publish
+Instagram operational readiness and controlled real publish
 ```
+
+The Instagram official Graph implementation is present, but the production
+live gate is closed by default. Historical Meta OAuth/resource binding evidence
+must not be treated as a currently usable credential: the current operational
+identity is blocked by Facebook account enforcement.
 
 not GA4 attribution, Query V2, Scheduler, or Binance registration conversion.
 

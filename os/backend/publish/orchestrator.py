@@ -57,6 +57,9 @@ def get_publish_execution_readiness(platform):
         "status": status.get("status"),
         "publish_ready": bool(publish_ready),
         "execution_mode": execution_mode,
+        "implementation_ready": bool(status.get("implementation_ready", True)),
+        "configuration_ready": bool(status.get("configuration_ready", publish_ready)),
+        "account_ready": status.get("account_ready"),
         "reason": reason,
     }
 
@@ -91,6 +94,7 @@ def get_publish_account_readiness(platform, account_id):
         "account_id": account_id,
         "checked": True,
         "ready": bool(result.get("ready")),
+        "account_ready": bool(result.get("ready")),
         "reason": result.get("reason"),
         **result,
     }

@@ -12,11 +12,12 @@ from oauth.providers.meta import INSTAGRAM_PUBLISH_SCOPES
 class InstagramAdapter:
     platform_name = "instagram"
 
-    def __init__(self, transport=None, live_publish_enabled=False):
+    def __init__(self, transport=None, live_publish_enabled=None):
         self.status = "initialized"
         self.transport = transport or requests
-        self.live_publish_enabled = bool(live_publish_enabled)
-        self.api_version = meta_runtime_config().get("graph_api_version") or "v26.0"
+        config = meta_runtime_config()
+        self.live_publish_enabled = bool(config.get("instagram_live_publish_enabled")) if live_publish_enabled is None else bool(live_publish_enabled)
+        self.api_version = config.get("graph_api_version") or "v26.0"
 
     def initialize(self):
         self.status = "ready"
@@ -153,6 +154,9 @@ class InstagramAdapter:
             "platform": "instagram",
             "status": self.status,
             "publish_ready": self.live_publish_enabled,
+            "implementation_ready": True,
+            "configuration_ready": self.live_publish_enabled,
+            "account_ready": None,
             "reason": None if self.live_publish_enabled else "Instagram live OS publishing adapter is not configured",
             "execution_mode": "live_test" if self.live_publish_enabled else "simulated",
         }

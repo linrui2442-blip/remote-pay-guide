@@ -128,9 +128,9 @@ Current real OS publish state:
 
 - YouTube: official AuthorizedSession/requests adapter; REAL PRIVATE E2E VERIFIED (task 12, private read-back confirmed)
 - Verified 2026-09-09: account_id=1, asset_id=youtube_private_e2e_short04, task_id=12, provider video id=uEQR9PSAfUA, privacy=private; first failed task 11 remains preserved.
-- Meta Account/OAuth: REAL E2E VERIFIED — 2026-09-10. Facebook and Instagram OAuth, resource discovery, and resource binding are verified; live publish adapters remain simulated (`publish_ready=false`).
-- Instagram: REAL OAuth and Professional Account binding verified; official Reels publish adapter remains simulated (`publish_ready=false`)
-- Facebook: REAL OAuth and Page binding verified; official Reels publish adapter remains simulated (`publish_ready=false`)
+- Meta Account/OAuth: Historical REAL E2E VERIFIED — 2026-09-10. Current Meta operational credential is blocked by Facebook account enforcement.
+- Instagram: official Graph implementation present; production live gate remains disabled; real external E2E is not verified pending a valid Meta operational identity.
+- Facebook: Page binding was historically verified; official Reels publish adapter is not real E2E verified.
 - Postiz: legacy compatibility only; must not become the formal OS publish dependency
 
 Official OS media path:
@@ -151,9 +151,9 @@ dependency of the official OS publish path.
 
 # CURRENT NEXT STEP
 
-## P0 — REAL META PUBLISH ADAPTERS
+## P0 — INSTAGRAM OPERATIONAL READINESS / REAL PUBLISH
 
-Meta account connection and resource binding are closed; official Instagram Reels and Facebook Reels adapters are now the primary launch-blocking development track.
+Meta account connection and resource binding remain historical evidence; current operational identity is blocked by account enforcement. The Instagram adapter code exists, but its production gate is closed by default.
 
 ### 1. Instagram Reels Official Publish Adapter
 
