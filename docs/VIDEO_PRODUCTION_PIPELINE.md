@@ -344,3 +344,20 @@ Make minimum change
         ↓
 Validate production flow
 ```
+
+## Visual Novelty and Provenance
+
+```text
+candidate content
+→ Content Novelty Gate
+→ Visual Plan Novelty Gate
+→ MoneyPrinterTurbo material selection
+→ material provenance (source ID / URL / SHA256)
+→ Exact Material Identity Gate (10-content cooling window)
+→ polish
+→ VideoAsset
+```
+
+Within-video plans require at least three distinct action/location/composition
+combinations and two location/composition families. Exact material reuse is
+blocked after selection/render; missing provenance fields are recorded as null.

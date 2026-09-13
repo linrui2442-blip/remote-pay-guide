@@ -102,3 +102,11 @@ title rewrite alone != new content
 short11 and short12 exposed the first real duplicate-topic risk: both teach the
 same network/address matching workflow despite different titles. New candidates
 must receive `PASS`, `WARN`, or `BLOCK` before production integration is added.
+
+## Visual Novelty Gates
+
+Visual plans are checked before render for scene-term overlap and within-video
+diversity. After selection/render, provenance records provider, source ID, URL,
+local filename, and SHA256 when available. Exact provider/source ID, normalized
+URL, or clip fingerprint reuse in the latest 10 contents is blocked. A title or
+query rewrite is not new visual material.

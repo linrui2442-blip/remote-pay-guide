@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from visual_provenance import check_within_video_diversity, fingerprint_file
 
 
 def _run_stream(command: list[str], *, cwd: Path, log_path: Path) -> int:
@@ -71,6 +72,9 @@ def main() -> None:
     for index, (task, meta) in enumerate(zip(task_records, meta_records), start=1):
         content_id = str(meta["content_id"])
         hook = str(meta["hook"])
+        diversity = check_within_video_diversity(task.get("video_terms") or [])
+        if not diversity["pass"]:
+            raise SystemExit(f"Visual plan diversity gate failed for {content_id}")
         target = output_root / content_id
         target.mkdir(parents=True, exist_ok=True)
         print(f"\n===== {content_id} ({index}/{len(task_records)}) =====")
@@ -179,6 +183,8 @@ def main() -> None:
             "video_script": task.get("video_script"),
             "video_terms": task.get("video_terms"),
             "output": polished.name,
+            "materials": [{"provider": "pexels", "source_id": None, "source_url": None, "local_filename": final_video.name, "sha256": fingerprint_file(final_video), "matched_term": None}],
+            "scene_terms": task.get("video_terms") or [],
         }
         (target / "metadata.json").write_text(
             json.dumps(record, ensure_ascii=False, indent=2) + "\n",
