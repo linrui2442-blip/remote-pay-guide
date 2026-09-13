@@ -40,14 +40,17 @@ def extract_material_provenance(task_dir):
                 obj=None
                 try: obj=__import__("json").loads(data)
                 except Exception: pass
-                records=obj if isinstance(obj,list) else [obj] if isinstance(obj,dict) else []
+                records=(obj.get("material_sources") if isinstance(obj,dict) and "material_sources" in obj else obj) or []
+                if isinstance(records,dict): records=[records]
                 for rec in records:
                     if not isinstance(rec,dict): continue
-                    url=rec.get("source_url") or rec.get("video_url") or rec.get("download_url")
-                    source_id=rec.get("source_id") or rec.get("video_id") or rec.get("clip_id")
+                    url=rec.get("source_url") or rec.get("source_page") or rec.get("video_url") or rec.get("download_url")
+                    source_id=rec.get("source_id") or rec.get("asset_id") or rec.get("video_id") or rec.get("clip_id")
                     provider=str(rec.get("provider") or "").lower()
                     if url and (provider=="pexels" or "pexels.com/video" in str(url).lower()):
-                        materials.append({"provider":"pexels","source_id":source_id,"source_url":url,"local_filename":None,"sha256":None,"matched_term":rec.get("matched_term")})
+                        local=rec.get("local_filename") or rec.get("local_file")
+                        fp=fingerprint_file(root/local) if local and (root/local).is_file() else None
+                        materials.append({"provider":"pexels","source_id":source_id,"source_url":url,"local_filename":local,"sha256":fp,"matched_term":rec.get("matched_term") or rec.get("search_term")})
             except OSError: pass
     return {"provenance_status":"available" if materials else "unavailable","materials":materials}
 

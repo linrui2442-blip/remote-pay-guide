@@ -1,0 +1,29 @@
+name: Recover polish artifact
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id: {required: true, type: string}
+      artifact_name: {required: true, type: string}
+      content_id: {required: true, type: string}
+      hook: {required: true, type: string}
+      recovery_artifact_name: {required: true, type: string}
+permissions: {actions: read, contents: read}
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: ${{ inputs.artifact_name }}, path: source-artifact, github-token: ${{ github.token }}, run-id: ${{ inputs.source_run_id }}}
+      - name: Polish existing final video
+        shell: bash
+        env: {HOOK_TEXT: ${{ inputs.hook }}, CONTENT_ID: ${{ inputs.content_id }}}
+        run: |
+          set -euo pipefail
+          FINAL_VIDEO="$(find source-artifact -type f -name final-1.mp4 | head -n 1)"
+          test -n "$FINAL_VIDEO"
+          python3 video-factory/polish_short.py --input "$FINAL_VIDEO" --output polished-${CONTENT_ID}.mp4 --hook "$HOOK_TEXT" --font resource/fonts/BeVietnamPro-Bold.ttf
+          mkdir recovery-artifacts
+          cp polished-${CONTENT_ID}.mp4 recovery-artifacts/final-output.mp4
+      - uses: actions/upload-artifact@v4
+        with: {name: ${{ inputs.recovery_artifact_name }}, path: recovery-artifacts, retention-days: 7}

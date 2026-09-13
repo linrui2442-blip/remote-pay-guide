@@ -200,6 +200,9 @@ def claim_result_for_completion(result_id):
     conn.close()
     return cursor.rowcount == 1
 
+def claim_failed_result_for_recovery(result_id):
+    init_results_table(); conn=_connect(); cur=conn.execute("UPDATE production_results SET status='running', updated_at=? WHERE id=? AND status='failed'",(datetime.utcnow().isoformat(),result_id)); conn.commit(); conn.close(); return cur.rowcount==1
+
 
 def update_result(result_id, *, status=None, output=None, error=None):
     init_results_table()

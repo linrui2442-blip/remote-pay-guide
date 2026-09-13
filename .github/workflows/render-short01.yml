@@ -110,6 +110,9 @@ jobs:
 
       - name: Polish hook and CTA
         shell: bash
+        env:
+          HOOK_TEXT: ${{ inputs.hook }}
+          CONTENT_ID: ${{ inputs.content_id }}
         run: |
           FINAL_VIDEO="$(find MoneyPrinterTurbo/storage/tasks -type f -name 'final-1.mp4' | head -n 1)"
           if [ -z "$FINAL_VIDEO" ]; then
@@ -118,9 +121,9 @@ jobs:
           fi
           uv run --project MoneyPrinterTurbo python video-factory/polish_short.py \
             --input "$FINAL_VIDEO" \
-            --output "$(dirname "$FINAL_VIDEO")/polished-${{ inputs.content_id }}.mp4" \
+            --output "$(dirname "$FINAL_VIDEO")/polished-${CONTENT_ID}.mp4" \
             --font MoneyPrinterTurbo/resource/fonts/BeVietnamPro-Bold.ttf \
-            --hook "${{ inputs.hook }}"
+            --hook "$HOOK_TEXT"
 
       - name: Collect render files
         if: always()
