@@ -14,7 +14,8 @@ def evaluate_and_persist_novelty(plan_id):
 
 def _write(plan_id,payload,p):
     import sqlite3,json; from data.database_path import database_path
-    c=sqlite3.connect(database_path()); c.execute('UPDATE intelligence_content_plans SET payload_json=? WHERE id=?',(json.dumps(payload,ensure_ascii=False),plan_id)); c.commit(); c.close(); return get_plan(plan_id)
+    from datetime import datetime, timezone
+    c=sqlite3.connect(database_path()); c.execute('UPDATE intelligence_content_plans SET payload_json=?,updated_at=? WHERE id=?',(json.dumps(payload,ensure_ascii=False),datetime.now(timezone.utc).isoformat(),plan_id)); c.commit(); c.close(); return get_plan(plan_id)
 
 def approve_plan(plan_id):
     p=get_plan(plan_id)
