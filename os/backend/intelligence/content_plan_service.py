@@ -10,7 +10,7 @@ def evaluate_and_persist_novelty(plan_id):
     if not p: raise KeyError('plan not found')
     n=evaluate_content_plan_novelty(ContentPlan(**p['plan'])); n['evaluated_revision']=p.get('revision',1)
     payload=dict(p['plan']); payload['novelty_status']=n['decision']; payload['novelty_evidence']=n
-    return update_plan(plan_id, {}) if False else _write(plan_id,payload,p)
+    return _write(plan_id,payload,p)
 
 def _write(plan_id,payload,p):
     import sqlite3,json; from data.database_path import database_path
@@ -52,7 +52,7 @@ def materialize_plan(plan_id, failure_hook=None):
         c.commit()
         if cur.rowcount==0:
             latest=get_plan(plan_id)
-            if latest and latest['status']=='materialized': return get_task_by_idempotency_key(key)
+            if latest and latest['status']=='materialized': return _validate_materialized_task(get_task_by_idempotency_key(key),plan_id,p.get('revision'),key)
             raise ValueError('concurrent materialization conflict')
     return task
 def _validate_materialized_task(task, plan_id, revision, key):
