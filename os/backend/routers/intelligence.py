@@ -10,6 +10,8 @@ from intelligence.feedback_bridge import (
 from intelligence.insights import get_insights, get_video_insight
 from intelligence.manager import analyze_video
 from production.tasks.execution import get_execution_readiness
+from intelligence.content_brain import DeterministicContentPlanProvider, save_plan, get_plan, list_plans, update_plan, set_plan_status
+from intelligence.feedback_bridge import get_feedback_snapshot
 
 
 router = APIRouter()
@@ -94,3 +96,31 @@ def status():
         'explicit_task_materialization': True,
         'execution_readiness_exposed': True,
     }
+
+@router.post('/intelligence/feedback/{snapshot_id}/content-plan')
+def generate_content_plan(snapshot_id: int):
+    snapshot = get_feedback_snapshot(snapshot_id)
+    if not snapshot: raise HTTPException(status_code=404, detail='snapshot not found')
+    plan = DeterministicContentPlanProvider().generate_content_plan(snapshot, {})
+    return {'plan': save_plan(plan, snapshot_id), 'runtime': {'implementation_ready': True, 'runtime_ready': False}}
+
+@router.get('/intelligence/content-plans')
+def content_plans(): return list_plans()
+
+@router.get('/intelligence/content-plans/{plan_id}')
+def content_plan(plan_id: int):
+    value=get_plan(plan_id)
+    if not value: raise HTTPException(status_code=404, detail='plan not found')
+    return value
+
+@router.patch('/intelligence/content-plans/{plan_id}')
+def edit_content_plan(plan_id: int, changes: dict): return update_plan(plan_id, changes)
+
+@router.post('/intelligence/content-plans/{plan_id}/approve')
+def approve_content_plan(plan_id: int): return set_plan_status(plan_id, 'approved')
+
+@router.post('/intelligence/content-plans/{plan_id}/materialize')
+def materialize_content_plan(plan_id: int):
+    plan=get_plan(plan_id)
+    if not plan or plan['status'] != 'approved': raise HTTPException(status_code=400, detail='plan must be approved first')
+    return {'plan': set_plan_status(plan_id, 'materialized'), 'production_task': None, 'execution': {'ready': False, 'reason': 'production bridge pending'}}
