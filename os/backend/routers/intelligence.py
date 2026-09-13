@@ -13,6 +13,7 @@ from production.tasks.execution import get_execution_readiness
 from intelligence.content_brain import DeterministicContentPlanProvider, save_plan, get_plan, list_plans, update_plan, set_plan_status
 from intelligence.task_generator import generate_production_task
 from intelligence.production_spec import build_production_spec
+from intelligence.novelty import evaluate_content_plan_novelty
 from intelligence.feedback_bridge import get_feedback_snapshot
 
 
@@ -119,7 +120,13 @@ def content_plan(plan_id: int):
 def edit_content_plan(plan_id: int, changes: dict): return update_plan(plan_id, changes)
 
 @router.post('/intelligence/content-plans/{plan_id}/approve')
-def approve_content_plan(plan_id: int): return set_plan_status(plan_id, 'approved')
+def approve_content_plan(plan_id: int):
+    plan=get_plan(plan_id)
+    if not plan: raise HTTPException(status_code=404, detail='plan not found')
+    from intelligence.content_brain import ContentPlan
+    novelty=evaluate_content_plan_novelty(ContentPlan(**plan['plan']))
+    if novelty['decision']=='BLOCK': raise HTTPException(status_code=422, detail='content novelty blocked')
+    return set_plan_status(plan_id, 'approved')
 
 @router.post('/intelligence/content-plans/{plan_id}/materialize')
 def materialize_content_plan(plan_id: int):

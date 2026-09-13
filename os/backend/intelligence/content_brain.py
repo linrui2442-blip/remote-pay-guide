@@ -41,9 +41,11 @@ class ContentPlanProvider(Protocol):
 
 class DeterministicContentPlanProvider:
     def generate_content_plan(self, snapshot, context):
+        topics=['Prepare a stablecoin invoice for a client','Payment instructions checklist','Confirm receiving platform support','Keep stablecoin payment records','Pending versus credited balance']
+        topic=topics[int((snapshot or {}).get('id',0) or 0)%len(topics)]
         return ContentPlan(
             content_id="plan-preview",
-            topic="Verify a stablecoin payment arrived",
+            topic=topic,
             angle="payment verification before declaring work paid",
             target_audience="freelancers and remote workers",
             hook="A payment screenshot is not proof that your money arrived.",
