@@ -35,6 +35,7 @@ def init_tasks_table():
             branch TEXT,
             created_at TEXT,
             updated_at TEXT
+            ,idempotency_key TEXT
         )
         """
     )
@@ -59,6 +60,7 @@ def init_tasks_table():
     for name, field_type in migrations.items():
         if name not in columns:
             cursor.execute(f"ALTER TABLE production_tasks ADD COLUMN {name} {field_type}")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_production_tasks_idempotency_key ON production_tasks(idempotency_key) WHERE idempotency_key IS NOT NULL")
 
     now = datetime.utcnow().isoformat()
     cursor.execute("UPDATE production_tasks SET source='legacy' WHERE source IS NULL OR source=''")
@@ -122,16 +124,17 @@ def create_task(task: ProductionTask | Dict[str, Any]) -> ProductionTask:
     now = datetime.utcnow().isoformat()
     conn = _connect()
     if idem:
-        existing = conn.execute("SELECT * FROM production_tasks WHERE parameters LIKE ? ORDER BY id LIMIT 1", (f'%\"idempotency_key\": \"{idem}\"%',)).fetchone()
+        existing = conn.execute("SELECT * FROM production_tasks WHERE idempotency_key=?", (idem,)).fetchone()
         if existing:
             conn.close()
             return _row_to_task(existing)
-    cursor = conn.execute(
+    try:
+      cursor = conn.execute(
         """
         INSERT INTO production_tasks
         (source, objective, provider, template, parameters, resources, priority,
-         status, task_type, workflow, branch, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         status, task_type, workflow, branch, created_at, updated_at, idempotency_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.source,
@@ -146,9 +149,12 @@ def create_task(task: ProductionTask | Dict[str, Any]) -> ProductionTask:
             task.workflow,
             task.branch,
             now,
+            idem,
             now,
         ),
-    )
+      )
+    except sqlite3.IntegrityError:
+      existing=conn.execute("SELECT * FROM production_tasks WHERE idempotency_key=?",(idem,)).fetchone(); conn.close(); return _row_to_task(existing)
     conn.commit()
     task_id = cursor.lastrowid
     conn.close()
