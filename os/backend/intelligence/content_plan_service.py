@@ -31,17 +31,20 @@ def materialize_plan(plan_id, failure_hook=None):
     key=f'content-plan:{plan_id}:revision:{p.get("revision",1)}'
     if p['status']=='materialized':
         task=get_task_by_idempotency_key(key)
-        if not task: raise ValueError('materialized plan has no task')
-        if task.parameters.get('content_plan_id') != plan_id or not get_execution_readiness(task)['ready']: raise ValueError('materialized task linkage/readiness invalid')
-        return task
+        return _validate_materialized_task(task,plan_id,p.get('revision'),key)
     if p['status']!='approved' or p.get('approved_revision')!=p.get('revision'): raise ValueError('revision approval conflict')
+    existing=get_task_by_idempotency_key(key)
+    if existing:
+        _validate_materialized_task(existing,plan_id,p.get('revision'),key)
+        set_plan_status(plan_id,'materialized'); return existing
     payload=dict(p['plan']); spec=build_production_spec(ContentPlan(**payload))
     params=dict(spec); params.update({'idempotency_key':key,'content_plan_id':plan_id,'content_plan_revision':p.get('revision',1),'script':payload['script']})
     task=generate_production_task({'provider_suggestion':'github','objective':payload['topic'],'workflow':spec['workflow'],'branch':'main','task_type':'video_batch','parameters':params})
+    _validate_materialized_task(task,plan_id,p.get('revision'),key)
     if not get_execution_readiness(task)['ready']: raise ValueError('production task is not executable')
     if failure_hook: failure_hook()
     latest=get_plan(plan_id)
-    if latest['status']=='materialized': return get_task_by_idempotency_key(key)
+    if latest['status']=='materialized': return _validate_materialized_task(get_task_by_idempotency_key(key),plan_id,p.get('revision'),key)
     import sqlite3
     from data.database_path import database_path
     with sqlite3.connect(database_path()) as c:
@@ -51,4 +54,11 @@ def materialize_plan(plan_id, failure_hook=None):
             latest=get_plan(plan_id)
             if latest and latest['status']=='materialized': return get_task_by_idempotency_key(key)
             raise ValueError('concurrent materialization conflict')
+    return task
+def _validate_materialized_task(task, plan_id, revision, key):
+    if not task: raise ValueError('materialization task missing')
+    p=task.parameters or {}
+    if p.get('content_plan_id') != plan_id or p.get('content_plan_revision') != revision or p.get('idempotency_key') != key:
+        raise ValueError('materialized task linkage invalid')
+    if not get_execution_readiness(task).get('ready'): raise ValueError('materialized task not executable')
     return task
