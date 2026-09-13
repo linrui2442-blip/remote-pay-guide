@@ -56,3 +56,42 @@ try:
 finally:
     svc.evaluate_content_plan_novelty=_original_evaluator
 print('NOVELTY_APPROVAL_MATRIX=PASS')
+
+# Stale novelty must be re-evaluated after an edit, using the current revision.
+_reeval_id=_fresh_plan('stale-reeval'); _reeval_calls=[]
+def _reeval_evaluator(_plan):
+    _reeval_calls.append(_plan.hook)
+    _decision='BLOCK' if len(_reeval_calls)==1 else 'PASS'
+    return {'decision':_decision,'score':0.1,'evidence':{'call':len(_reeval_calls)}}
+_original_evaluator=svc.evaluate_content_plan_novelty
+try:
+    svc.evaluate_content_plan_novelty=_reeval_evaluator
+    _initial=svc.evaluate_and_persist_novelty(_reeval_id)
+    assert _initial['plan']['novelty_status']=='BLOCK'
+    _edited=update_plan(_reeval_id,{'hook':'A materially revised hook for the current payment workflow.'})
+    assert _edited['revision']==_initial['revision']+1 and _edited['plan']['novelty_status']=='unverified' and _edited['plan']['novelty_evidence']=={}
+    _approved=svc.approve_plan(_reeval_id)
+    assert len(_reeval_calls)==2 and _approved['status']=='approved' and _approved['approved_revision']==_edited['revision'] and _approved['plan']['novelty_status']=='PASS' and _approved['plan']['novelty_evidence']['evaluated_revision']==_edited['revision']
+finally:
+    svc.evaluate_content_plan_novelty=_original_evaluator
+print('STALE_NOVELTY_REEVALUATED=PASS')
+
+# A stale pre-edit approval/materialization attempt is rejected; current revision is accepted.
+_guard_id=_fresh_plan('stale-guard'); _guard_original=svc.evaluate_content_plan_novelty
+try:
+    svc.evaluate_content_plan_novelty=lambda _plan: {'decision':'PASS','score':0.1,'evidence':{'source':'r57-guard'}}
+    _guard_approved=svc.approve_plan(_guard_id); _stale_revision=_guard_approved['revision']
+    _guard_edit=update_plan(_guard_id,{'hook':'A new hook invalidates the previous approval.'})
+    assert _guard_edit['revision']==_stale_revision+1 and _guard_edit['status']=='preview' and _guard_edit['approved_revision'] is None
+    try:
+        svc.materialize_plan(_guard_id)
+        raise AssertionError('stale revision unexpectedly materialized')
+    except ValueError as _exc:
+        assert str(_exc)=='revision approval conflict'
+    _current=svc.approve_plan(_guard_id)
+    assert _current['status']=='approved' and _current['approved_revision']==_guard_edit['revision'] and _current['revision']==_guard_edit['revision']
+finally:
+    svc.evaluate_content_plan_novelty=_guard_original
+print('STALE_REVISION_REJECTED=PASS')
+print('CURRENT_REVISION_ACCEPTED=PASS')
+print('NOVELTY_REVISION_GUARD=PASS')
