@@ -127,6 +127,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p render-artifacts
+          POLISHED_VIDEO="$(find MoneyPrinterTurbo/storage/tasks -type f -name 'polished-${{ inputs.content_id }}.mp4' | head -n 1)"
+          if [ -n "$POLISHED_VIDEO" ]; then
+            cp "$POLISHED_VIDEO" render-artifacts/final-output.mp4
+          fi
           if [ -f render-result.json ]; then
             cp render-result.json render-artifacts/
           fi
