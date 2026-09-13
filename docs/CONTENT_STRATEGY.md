@@ -85,3 +85,20 @@ Revenue Feedback
 The key question:
 
 Which content creates users with real stablecoin payment intent?
+
+## Content Novelty Gate
+
+Before a candidate is materialized into a ProductionTask, the local deterministic
+novelty checker compares it with repository task sources and prioritizes content
+confirmed by runtime, asset, or publish evidence.
+
+The rule is:
+
+```text
+same user question + same instructional path = duplicate
+title rewrite alone != new content
+```
+
+short11 and short12 exposed the first real duplicate-topic risk: both teach the
+same network/address matching workflow despite different titles. New candidates
+must receive `PASS`, `WARN`, or `BLOCK` before production integration is added.
