@@ -2,6 +2,27 @@ name: Render short01 proof
 
 on:
   workflow_dispatch:
+    inputs:
+      task_file:
+        description: 'Task manifest under video-factory/'
+        required: false
+        default: 'tasks-short01.jsonl'
+        type: string
+      content_id:
+        description: 'Canonical content id for the polish step'
+        required: false
+        default: 'short01'
+        type: string
+      hook:
+        description: 'Hook text for the polish step'
+        required: false
+        default: 'Can I pay you in USDT?'
+        type: string
+      artifact_name:
+        description: 'Artifact name'
+        required: false
+        default: 'short01-proof'
+        type: string
 
 permissions:
   contents: read
@@ -76,14 +97,16 @@ jobs:
 
       - name: Copy short01 render task
         shell: bash
-        run: cp video-factory/tasks-short01.jsonl MoneyPrinterTurbo/tasks-short01.jsonl
+        env:
+          TASK_FILE: ${{ inputs.task_file }}
+        run: cp "video-factory/${TASK_FILE}" MoneyPrinterTurbo/tasks-selected.jsonl
 
       - name: Render short01
         working-directory: MoneyPrinterTurbo
         shell: bash
         run: |
           set -o pipefail
-          uv run python cli.py --batch-file ./tasks-short01.jsonl --stop-at video | tee ../short01-result.json
+          uv run python cli.py --batch-file ./tasks-selected.jsonl --stop-at video | tee ../render-result.json
 
       - name: Polish hook and CTA
         shell: bash
@@ -95,17 +118,17 @@ jobs:
           fi
           uv run --project MoneyPrinterTurbo python video-factory/polish_short.py \
             --input "$FINAL_VIDEO" \
-            --output "$(dirname "$FINAL_VIDEO")/polished-short01.mp4" \
+            --output "$(dirname "$FINAL_VIDEO")/polished-${{ inputs.content_id }}.mp4" \
             --font MoneyPrinterTurbo/resource/fonts/BeVietnamPro-Bold.ttf \
-            --hook "Can I pay you in USDT?"
+            --hook "${{ inputs.hook }}"
 
       - name: Collect render files
         if: always()
         shell: bash
         run: |
           mkdir -p render-artifacts
-          if [ -f short01-result.json ]; then
-            cp short01-result.json render-artifacts/
+          if [ -f render-result.json ]; then
+            cp render-result.json render-artifacts/
           fi
           if [ -d MoneyPrinterTurbo/storage/tasks ]; then
             find MoneyPrinterTurbo/storage/tasks -type f \
@@ -117,7 +140,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: short01-proof
+          name: ${{ inputs.artifact_name }}
           path: render-artifacts/
           if-no-files-found: warn
           retention-days: 7
