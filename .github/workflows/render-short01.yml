@@ -23,6 +23,11 @@ on:
         required: false
         default: 'short01-proof'
         type: string
+      task_payload_b64:
+        description: 'Base64 encoded single MPT task payload'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -95,11 +100,26 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Copy short01 render task
+      - name: Copy selected render task
         shell: bash
         env:
           TASK_FILE: ${{ inputs.task_file }}
+          TASK_PAYLOAD_B64: ${{ inputs.task_payload_b64 }}
         run: cp "video-factory/${TASK_FILE}" MoneyPrinterTurbo/tasks-selected.jsonl
+
+      - name: Decode dynamic render task
+        if: ${{ inputs.task_payload_b64 != '' }}
+        shell: bash
+        env:
+          TASK_PAYLOAD_B64: ${{ inputs.task_payload_b64 }}
+        run: |
+          python - <<'PY'
+          import base64, json, os
+          task = json.loads(base64.b64decode(os.environ['TASK_PAYLOAD_B64']).decode('utf-8'))
+          if not isinstance(task, dict): raise SystemExit('task payload must be object')
+          with open('MoneyPrinterTurbo/tasks-selected.jsonl','w',encoding='utf-8') as f:
+              f.write(json.dumps(task, ensure_ascii=False) + '\n')
+          PY
 
       - name: Render short01
         working-directory: MoneyPrinterTurbo

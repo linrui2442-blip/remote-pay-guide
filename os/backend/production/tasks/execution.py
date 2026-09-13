@@ -48,6 +48,15 @@ def get_execution_readiness(task: Any) -> Dict[str, Any]:
             missing.append("workflow")
         if not branch:
             missing.append("branch")
+        if data.get("source") == "ai_intelligence" or parameters.get("content_plan_id"):
+            import base64, json
+            for key in ("content_id", "hook", "artifact_name", "task_payload_b64"):
+                if not parameters.get(key): missing.append(key)
+            try:
+                payload=json.loads(base64.b64decode(parameters.get("task_payload_b64", "")).decode())
+                if not payload.get("video_subject") or not payload.get("video_script") or not payload.get("video_terms"): missing.append("valid task payload")
+                if parameters.get("script") and payload.get("video_script") != parameters.get("script"): missing.append("script match")
+            except Exception: missing.append("valid task payload")
     elif provider == "ai_gateway":
         if not task_type:
             missing.append("task_type")

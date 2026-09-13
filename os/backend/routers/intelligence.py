@@ -12,6 +12,7 @@ from intelligence.manager import analyze_video
 from production.tasks.execution import get_execution_readiness
 from intelligence.content_brain import DeterministicContentPlanProvider, save_plan, get_plan, list_plans, update_plan, set_plan_status
 from intelligence.task_generator import generate_production_task
+from intelligence.production_spec import build_production_spec
 from intelligence.feedback_bridge import get_feedback_snapshot
 
 
@@ -124,8 +125,8 @@ def approve_content_plan(plan_id: int): return set_plan_status(plan_id, 'approve
 def materialize_content_plan(plan_id: int):
     plan=get_plan(plan_id)
     if not plan or plan['status'] != 'approved': raise HTTPException(status_code=400, detail='plan must be approved first')
-    payload=dict(plan['plan']); spec=payload.get('production_spec') or {}
-    payload.update({'provider_suggestion':'github','workflow':spec.get('workflow') or 'render-short01.yml','branch':spec.get('branch') or 'main','task_type':'video_batch','parameters':{'content_plan_id':plan_id,'content_plan_revision':plan.get('revision',1),'intelligence_snapshot_id':plan.get('source_snapshot_id'),'content_id':payload.get('content_id'),'hook':payload.get('hook'),'script':payload.get('script'),'cta':payload.get('cta'),'artifact_name':f"remote-pay-guide-{payload.get('content_id')}",'workflow':'render-short01.yml','branch':'main'}})
+    payload=dict(plan['plan']); spec=build_production_spec(__import__('intelligence.content_brain',fromlist=['ContentPlan']).ContentPlan(**payload)); payload['production_spec']=spec
+    payload.update({'provider_suggestion':'github','workflow':spec['workflow'],'branch':spec['branch'],'task_type':'video_batch','parameters':{'content_plan_id':plan_id,'content_plan_revision':plan.get('revision',1),'intelligence_snapshot_id':plan.get('source_snapshot_id'),'content_id':payload.get('content_id'),'hook':payload.get('hook'),'script':payload.get('script'),'cta':payload.get('cta'),'artifact_name':spec['artifact_name'],'task_payload_b64':spec['task_payload_b64'],'workflow':spec['workflow'],'branch':spec['branch']}})
     task=generate_production_task(payload)
     readiness=get_execution_readiness(task)
     if not readiness['ready']: raise HTTPException(status_code=422, detail=readiness)

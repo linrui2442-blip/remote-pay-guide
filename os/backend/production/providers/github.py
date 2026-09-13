@@ -7,7 +7,7 @@ from production.providers.github_monitor import GitHubRunMonitor
 
 
 WORKFLOW_INPUTS = {
-    "render-short01.yml": {"task_file", "content_id", "hook", "artifact_name"},
+    "render-short01.yml": {"task_file", "task_payload_b64", "content_id", "hook", "artifact_name"},
     "render-launch02.yml": {"publish_short04", "schedule_at"},
     "os-github-bridge-test.yml": {"mode"},
     "promote-video-asset.yml": {
