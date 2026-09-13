@@ -95,3 +95,44 @@ finally:
 print('STALE_REVISION_REJECTED=PASS')
 print('CURRENT_REVISION_ACCEPTED=PASS')
 print('NOVELTY_REVISION_GUARD=PASS')
+
+# Exact quote-safe payload roundtrip through the real production-spec/task path.
+from intelligence.production_spec import build_production_spec
+import base64, json, sqlite3
+_quote_plan=ContentPlan(content_id='r57-quote-'+uuid.uuid4().hex[:8],topic='Quote "topic" - 收款',angle='roundtrip',target_audience='freelancer',hook='Client said: "I sent it."\\nPlease verify.',script="Line one: \\path\\file\nLine two: 'credited' - 已到账。",cta="Don't guess - verify it.",title='Title "quoted" / 标题',description="Description with \\ slash and 'apostrophe'",visual_direction='receipt close-up')
+_quote_id=save_plan(_quote_plan,1)['id']; _quote_original=svc.evaluate_content_plan_novelty
+try:
+    svc.evaluate_content_plan_novelty=lambda _plan: {'decision':'PASS','score':0.1,'evidence':{'source':'r57-quote'}}
+    svc.approve_plan(_quote_id); _quote_task=svc.materialize_plan(_quote_id)
+finally:
+    svc.evaluate_content_plan_novelty=_quote_original
+_quote_params=_quote_task.parameters; _quote_spec=build_production_spec(_quote_plan)
+assert _quote_params['hook']==_quote_plan.hook and _quote_params['script']==_quote_plan.script and _quote_params['cta']==_quote_plan.cta and _quote_params['title']==_quote_plan.title and _quote_params['description']==_quote_plan.description
+_decoded=json.loads(base64.b64decode(_quote_params['task_payload_b64']).decode('utf-8'))
+assert _decoded['video_subject']==_quote_plan.topic and _decoded['video_script']==_quote_plan.script
+assert _quote_params['task_payload_b64']==_quote_spec['task_payload_b64']
+print('QUOTE_SAFE_PAYLOAD_ROUNDTRIP=PASS'); print('EXACT_PAYLOAD_PRESERVED=PASS')
+
+# A materialized plan without its backing task must fail the existing validator path.
+_orphan_id=save_plan(ContentPlan(content_id='r57-orphan-'+uuid.uuid4().hex[:8],topic='Orphan materialization',angle='validation',target_audience='freelancer',hook='Check the task.',script='Validate the task before proceeding.',cta='Verify first.',title='Orphan',description='test',visual_direction='receipt review'),1)['id']
+_orphan_original=svc.evaluate_content_plan_novelty
+try:
+    svc.evaluate_content_plan_novelty=lambda _plan: {'decision':'PASS','score':0.1,'evidence':{'source':'r57-orphan'}}
+    svc.approve_plan(_orphan_id); svc.set_plan_status(_orphan_id,'materialized')
+    try:
+        svc.materialize_plan(_orphan_id)
+        raise AssertionError('materialized plan without task unexpectedly accepted')
+    except ValueError as _orphan_exc:
+        assert str(_orphan_exc)=='materialization task missing'
+finally:
+    svc.evaluate_content_plan_novelty=_orphan_original
+print('MATERIALIZED_WITHOUT_TASK_REJECTED=PASS')
+
+# SQL-level proof that the approved plan revision has exactly one task row.
+from data.database_path import database_path
+_idem=t.parameters['idempotency_key']; _same_a=svc.materialize_plan(r['id']).id; _same_b=svc.materialize_plan(r['id']).id
+assert _same_a==_same_b==t.id
+with sqlite3.connect(database_path()) as _db:
+    _count=_db.execute('SELECT COUNT(*) FROM production_tasks WHERE idempotency_key=?',(_idem,)).fetchone()[0]
+assert _count==1
+print('DB_IDEMPOTENCY_EXACT_COUNT_ONE=PASS')
