@@ -149,12 +149,15 @@ def create_task(task: ProductionTask | Dict[str, Any]) -> ProductionTask:
             task.workflow,
             task.branch,
             now,
-            idem,
             now,
+            idem,
         ),
       )
     except sqlite3.IntegrityError:
-      existing=conn.execute("SELECT * FROM production_tasks WHERE idempotency_key=?",(idem,)).fetchone(); conn.close(); return _row_to_task(existing)
+      existing=conn.execute("SELECT * FROM production_tasks WHERE idempotency_key=?",(idem,)).fetchone()
+      if idem is not None and existing:
+          conn.close(); return _row_to_task(existing)
+      conn.close(); raise
     conn.commit()
     task_id = cursor.lastrowid
     conn.close()
