@@ -16,7 +16,9 @@ DEFAULT_SELECTED_METRICS = (
     "likes",
     "comments",
     "shares",
+    "landing_views",
     "referral_clicks",
+    "referral_ctr",
     "conversions",
     "conversion_value",
 )
@@ -90,12 +92,14 @@ def _asset_metadata(video_id):
     }
 
 
-def _metric_map(metric, *, referral_clicks=0, conversions=0, conversion_value=0):
+def _metric_map(metric, *, landing_views=0, referral_clicks=0, conversions=0, conversion_value=0):
     values = dict(metric.get("metrics") or {})
     # Data Center exposes the cross-platform name used by the query/UI while
     # preserving the legacy storage key (retention) in the raw metric payload.
     values["average_view_percentage"] = metric.get("retention")
+    values["landing_views"] = int(landing_views or 0)
     values["referral_clicks"] = int(referral_clicks or 0)
+    values["referral_ctr"] = (referral_clicks / landing_views) if landing_views else None
     values["conversions"] = int(conversions or 0)
     values["conversion_value"] = float(conversion_value or 0)
     return values
@@ -151,16 +155,21 @@ def _current_rows(
 
         content_id = metric.get("content_id") or metric.get("video_id")
         metadata = _asset_metadata(content_id)
-        funnel = get_content_funnel(content_id, growth_start, growth_end)
+        funnel = get_content_funnel(
+            content_id, growth_start, growth_end,
+            platform=metric_platform, account_id=resolved_account_id,
+        )
         intent_by_type = funnel.get("intent", {}).get("by_type", {})
         conversion = funnel.get("conversion", {})
         referral_clicks = int(
             intent_by_type.get("binance_referral_click", 0) or 0
         )
+        landing_views = int(intent_by_type.get("landing_view", 0) or 0)
         conversions = int(conversion.get("total", 0) or 0)
         conversion_value = float(conversion.get("value", 0) or 0)
         metric_values = _metric_map(
             metric,
+            landing_views=landing_views,
             referral_clicks=referral_clicks,
             conversions=conversions,
             conversion_value=conversion_value,
@@ -201,6 +210,8 @@ def _current_rows(
                 "clicks": int(metric.get("clicks") or 0),
                 "ctr": metric.get("ctr"),
                 "referral_clicks": referral_clicks,
+                "landing_views": landing_views,
+                "referral_ctr": (referral_clicks / landing_views) if landing_views else None,
                 "conversions": conversions,
                 "conversion_value": conversion_value,
                 "metrics": metric_values,
@@ -247,7 +258,9 @@ def _historical_rows(account_id=None, platform=None, state=None):
                 "impressions": 0,
                 "clicks": 0,
                 "ctr": None,
+                "landing_views": 0,
                 "referral_clicks": int(item.get("referral_clicks") or 0),
+                "referral_ctr": None,
                 "conversions": int(item.get("conversions") or 0),
                 "conversion_value": float(item.get("conversion_value") or 0),
             }
@@ -314,7 +327,9 @@ def _summary(rows):
         "likes": sum(row.get("likes", 0) for row in rows),
         "comments": sum(row.get("comments", 0) for row in rows),
         "shares": sum(row.get("shares", 0) for row in rows),
+        "landing_views": sum(row.get("landing_views", 0) for row in rows),
         "referral_clicks": sum(row.get("referral_clicks", 0) for row in rows),
+        "referral_ctr": (sum(row.get("referral_clicks", 0) for row in rows) / sum(row.get("landing_views", 0) for row in rows)) if sum(row.get("landing_views", 0) for row in rows) else None,
         "conversions": sum(row.get("conversions", 0) for row in rows),
         "conversion_value": sum(row.get("conversion_value", 0) for row in rows),
     }

@@ -38,6 +38,7 @@ def _ensure_tables():
         for name, field_type in {
             "event_id": "TEXT", "account_id": "INTEGER", "platform": "TEXT",
             "platform_video_id": "TEXT", "campaign_id": "TEXT", "received_at": "TEXT",
+            "event_count": "INTEGER NOT NULL DEFAULT 1",
         }.items():
             if name not in {row[1] for row in conn.execute("PRAGMA table_info(intent_events)")}:
                 conn.execute(f"ALTER TABLE intent_events ADD COLUMN {name} {field_type}")
@@ -119,14 +120,18 @@ def record_intent(event):
         if event.event_id and event.source:
             existing = conn.execute("SELECT * FROM intent_events WHERE source=? AND event_id=?", (event.source, event.event_id)).fetchone()
             if existing:
+                if event.source == "ga4_data_api":
+                    conn.execute("UPDATE intent_events SET event_count=?, occurred_at=?, received_at=?, metadata=? WHERE id=?", (event.event_count, occurred_at, received_at, _json_dump(event.metadata or {}), existing["id"]))
+                    conn.commit()
+                    existing = conn.execute("SELECT * FROM intent_events WHERE id=?", (existing["id"],)).fetchone()
                 result = _serialize_intent(existing); result["created"] = False; result["duplicate"] = True; return result
         cursor = conn.execute(
             """
             INSERT INTO intent_events
             (content_id, video_id, session_id, source, event_type,
              event_value, metadata, occurred_at, event_id, account_id, platform,
-             platform_video_id, campaign_id, received_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             platform_video_id, campaign_id, received_at, event_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event.content_id,
@@ -138,7 +143,7 @@ def record_intent(event):
                 _json_dump(event.metadata or {}),
                 occurred_at,
                 event.event_id, event.account_id, event.platform,
-                event.platform_video_id or event.video_id, event.campaign_id, received_at,
+                event.platform_video_id or event.video_id, event.campaign_id, received_at, event.event_count,
             ),
         )
         event_id = cursor.lastrowid
@@ -208,16 +213,15 @@ def _in_date_range(value, start_date=None, end_date=None):
     )
 
 
-def get_intent_events(content_id=None, start_date=None, end_date=None):
+def get_intent_events(content_id=None, start_date=None, end_date=None, platform=None, account_id=None):
     _ensure_tables()
     with _connect() as conn:
-        if content_id is None:
-            rows = conn.execute("SELECT * FROM intent_events ORDER BY id").fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM intent_events WHERE content_id=? ORDER BY id",
-                (content_id,),
-            ).fetchall()
+        clauses, params = [], []
+        if content_id is not None: clauses.append("content_id=?"); params.append(content_id)
+        if platform is not None: clauses.append("(platform=? OR platform IS NULL)"); params.append(platform)
+        if account_id is not None: clauses.append("(account_id=? OR account_id IS NULL)"); params.append(account_id)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        rows = conn.execute("SELECT * FROM intent_events" + where + " ORDER BY id", params).fetchall()
     return [
         item
         for item in (_serialize_intent(row) for row in rows)
@@ -225,16 +229,15 @@ def get_intent_events(content_id=None, start_date=None, end_date=None):
     ]
 
 
-def get_conversions(content_id=None, start_date=None, end_date=None):
+def get_conversions(content_id=None, start_date=None, end_date=None, platform=None, account_id=None):
     _ensure_tables()
     with _connect() as conn:
-        if content_id is None:
-            rows = conn.execute("SELECT * FROM conversion_records ORDER BY id").fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM conversion_records WHERE content_id=? ORDER BY id",
-                (content_id,),
-            ).fetchall()
+        clauses, params = [], []
+        if content_id is not None: clauses.append("content_id=?"); params.append(content_id)
+        if platform is not None: clauses.append("(platform=? OR platform IS NULL)"); params.append(platform)
+        if account_id is not None: clauses.append("(account_id=? OR account_id IS NULL)"); params.append(account_id)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        rows = conn.execute("SELECT * FROM conversion_records" + where + " ORDER BY id", params).fetchall()
     return [
         item
         for item in (_serialize_conversion(row) for row in rows)
@@ -246,23 +249,23 @@ def _sum_metric(metrics, key):
     return sum((item.get(key) or 0) for item in metrics)
 
 
-def get_content_funnel(content_id, start_date=None, end_date=None):
+def get_content_funnel(content_id, start_date=None, end_date=None, platform=None, account_id=None):
     # Platform APIs usually return cumulative snapshots. Use the newest
     # snapshot per video/platform so scheduled collection does not inflate the
     # growth funnel by summing the same traffic repeatedly.
     traffic = get_latest_content_metrics(content_id)
-    intent = get_intent_events(content_id, start_date, end_date)
-    conversions = get_conversions(content_id, start_date, end_date)
+    intent = get_intent_events(content_id, start_date, end_date, platform, account_id)
+    conversions = get_conversions(content_id, start_date, end_date, platform, account_id)
 
     intent_by_type = {}
     for event in intent:
         event_type = event.get("event_type") or "unknown"
-        intent_by_type[event_type] = intent_by_type.get(event_type, 0) + 1
+        intent_by_type[event_type] = intent_by_type.get(event_type, 0) + int(event.get("event_count") or 1)
 
     conversion_by_type = {}
     for record in conversions:
         conversion_type = record.get("conversion_type") or "unknown"
-        conversion_by_type[conversion_type] = conversion_by_type.get(conversion_type, 0) + 1
+        conversion_by_type[conversion_type] = conversion_by_type.get(conversion_type, 0) + int(record.get("event_count") or 1)
 
     return {
         "content_id": content_id,
@@ -277,11 +280,11 @@ def get_content_funnel(content_id, start_date=None, end_date=None):
             "shares": _sum_metric(traffic, "shares"),
         },
         "intent": {
-            "total": len(intent),
+            "total": sum(int(item.get("event_count") or 1) for item in intent),
             "by_type": intent_by_type,
         },
         "conversion": {
-            "total": len(conversions),
+            "total": sum(int(item.get("event_count") or 1) for item in conversions),
             "value": sum((item.get("value") or 0) for item in conversions),
             "by_type": conversion_by_type,
         },
@@ -299,10 +302,8 @@ def get_funnel_summary():
         "impressions": _sum_metric(traffic, "impressions"),
         "views": _sum_metric(traffic, "views"),
         "clicks": _sum_metric(traffic, "clicks"),
-        "intent_events": len(intent),
-        "referral_clicks": len(
-            [item for item in intent if item.get("event_type") == "binance_referral_click"]
-        ),
-        "conversions": len(conversions),
+        "intent_events": sum(int(item.get("event_count") or 1) for item in intent),
+        "referral_clicks": sum(int(item.get("event_count") or 1) for item in intent if item.get("event_type") == "binance_referral_click"),
+        "conversions": sum(int(item.get("event_count") or 1) for item in conversions),
         "conversion_value": sum((item.get("value") or 0) for item in conversions),
     }

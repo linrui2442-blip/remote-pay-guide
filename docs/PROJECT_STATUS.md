@@ -197,6 +197,13 @@ Do not modify the core Data Center schema to add platform-specific copies of the
 
 ## P1 — GA4 → OS Data Center Ingestion
 
+D9 implementation is now **CODE + CONTRACT VERIFIED**. The backend uses the
+Google Analytics Data API `runReport` boundary with a default-off
+`OS_GA4_DATA_INGEST_ENABLED` gate, bounded reporting dates, fail-closed
+metadata checks for `customEvent:content_id` and `customEvent:src`, and
+idempotent aggregate intent counts. No production ingestion has run and no
+real Data API read has been performed in this phase.
+
 Import GA4 business signals into the existing Data Center:
 
 ```text

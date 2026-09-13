@@ -31,6 +31,7 @@ class IntentEvent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     occurred_at: str | None = None
     received_at: str | None = None
+    event_count: int = Field(default=1, ge=0)
 
 
 class ConversionRecord(BaseModel):

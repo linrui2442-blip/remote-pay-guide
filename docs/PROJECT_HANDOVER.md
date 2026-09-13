@@ -353,6 +353,13 @@ Do not add platform-specific duplicate core metric schemas.
 
 ## P1 — GA4 → OS Data Center Ingestion
 
+D9 is **CODE + CONTRACT VERIFIED**. GA4 remains a business/growth signal
+provider rather than a platform analytics adapter. The implementation is
+disabled by default, accepts only bounded `runReport` ranges, requires
+registered event-scoped `content_id` and `src` dimensions, and upserts
+aggregate counts without fabricating individual events. Production ingestion
+and real GA4 Data API reads remain unverified.
+
 Import:
 
 ```text
