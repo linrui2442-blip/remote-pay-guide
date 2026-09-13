@@ -1,4 +1,4 @@
-from production.results.manager import claim_failed_result_for_recovery, get_result, update_result
+from production.results.manager import claim_failed_result_for_recovery, get_result, update_result, complete_recovered_result
 from production.providers.github_monitor import GitHubRunMonitor
 from assets.github_pages import promote_artifact_to_pages
 from integrations.github.client import GitHubClient
@@ -16,6 +16,6 @@ def recover_failed_github_result(result_id, job, client=None, recovery_run_id=No
         if not video_id: raise RuntimeError('Recovery result is missing video identity')
         promotion=promote_artifact_to_pages(source_run_id=recovery_run_id,artifact_name=artifact['name'],asset_path='final-output.mp4',asset_filename=f'{video_id}.mp4',client=client,monitor=monitor,verify_url=True)
         out.update({'recovery_run_id':recovery_run_id,'recovery_artifact_name':artifact['name'], 'recovery_artifact_id':artifact.get('id'), **promotion})
-        return update_result(result_id,status='completed',output=out,error='')
+        return complete_recovered_result(result_id, output=out)
     except Exception as exc:
         return update_result(result_id,status='failed',output=out,error=str(exc))

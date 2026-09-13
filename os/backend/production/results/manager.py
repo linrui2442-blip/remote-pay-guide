@@ -246,3 +246,61 @@ def update_result(result_id, *, status=None, output=None, error=None):
 
 def update_result_status(result_id, status):
     return update_result(result_id, status=status)
+
+
+def complete_recovered_result(result_id, *, output):
+    """Finalize a verified external recovery without weakening normal transitions."""
+    init_results_table()
+    current = get_result(result_id)
+    if not current:
+        raise ValueError("ProductionResult not found")
+    if current.get("status") == "completed":
+        if not current.get("asset_id") or current.get("asset_status") != "ready":
+            raise ValueError("Completed recovery result has invalid asset state")
+        return current
+    if current.get("status") != "running":
+        raise ValueError("Recovery result must be running")
+    video_id = current.get("video_id")
+    runtime_job_id = current.get("runtime_job_id")
+    if not video_id or runtime_job_id is None:
+        raise ValueError("Recovery result linkage is incomplete")
+    from production.runtime.manager import get_job
+    from production.tasks.manager import get_task
+    job = get_job(runtime_job_id)
+    task = get_task(job.get("task_id")) if job else None
+    if not job or not task or str(job.get("task_id")) != str(task.id):
+        raise ValueError("Recovery result linkage is inconsistent")
+    if job.get("status") not in {"failed", "completed"} or task.status not in {"failed", "completed"}:
+        raise ValueError("Recovery lifecycle state is not recoverable")
+    url = (output or {}).get("asset_url") or (output or {}).get("url")
+    if (output or {}).get("storage_type") != "github_pages" or not (isinstance(url, str) and url.startswith("https://")):
+        raise ValueError("Verified recovery output is missing a secure promoted asset")
+    asset = None
+    if current.get("asset_id"):
+        from assets.manager import get_asset_by_asset_id
+        asset = get_asset_by_asset_id(current["asset_id"])
+    if not asset:
+        binding = _bind_asset(dict(current, output=output))
+        if not binding.get("asset_id") or binding.get("asset_status") != "ready":
+            raise ValueError("Recovered asset binding is not ready")
+        current = get_result(result_id)
+        asset = {"asset_id": current.get("asset_id"), "status": current.get("asset_status")}
+    if asset.get("status") != "ready":
+        raise ValueError("Recovered asset is not ready")
+    now = datetime.utcnow().isoformat()
+    conn = _connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT status FROM production_results WHERE id=?", (result_id,)).fetchone()
+        if not row or row["status"] != "running":
+            raise ValueError("Recovery result was concurrently finalized")
+        conn.execute("UPDATE production_results SET status='completed', output=?, error='', asset_status='ready', updated_at=? WHERE id=?", (json.dumps(output or {}, ensure_ascii=False), now, result_id))
+        conn.execute("UPDATE runtime_jobs SET status='completed', updated_at=? WHERE id=?", (now, runtime_job_id))
+        conn.execute("UPDATE production_tasks SET status='completed', updated_at=? WHERE id=?", (now, job["task_id"]))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return get_result(result_id)
