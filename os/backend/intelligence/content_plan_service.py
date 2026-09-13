@@ -42,4 +42,13 @@ def materialize_plan(plan_id, failure_hook=None):
     if failure_hook: failure_hook()
     latest=get_plan(plan_id)
     if latest['status']=='materialized': return get_task_by_idempotency_key(key)
-    set_plan_status(plan_id,'materialized'); return task
+    import sqlite3
+    from data.database_path import database_path
+    with sqlite3.connect(database_path()) as c:
+        cur=c.execute("UPDATE intelligence_content_plans SET status='materialized',updated_at=datetime('now') WHERE id=? AND status='approved' AND revision=? AND approved_revision=?",(plan_id,p.get('revision'),p.get('revision')))
+        c.commit()
+        if cur.rowcount==0:
+            latest=get_plan(plan_id)
+            if latest and latest['status']=='materialized': return get_task_by_idempotency_key(key)
+            raise ValueError('concurrent materialization conflict')
+    return task
