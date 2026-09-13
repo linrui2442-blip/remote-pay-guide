@@ -54,6 +54,7 @@ def init_tasks_table():
         "branch": "TEXT",
         "created_at": "TEXT",
         "updated_at": "TEXT",
+        "idempotency_key": "TEXT",
     }
     for name, field_type in migrations.items():
         if name not in columns:
@@ -117,8 +118,14 @@ def create_task(task: ProductionTask | Dict[str, Any]) -> ProductionTask:
         task.status = "created"
 
     task.validate()
+    idem = (task.parameters or {}).get("idempotency_key")
     now = datetime.utcnow().isoformat()
     conn = _connect()
+    if idem:
+        existing = conn.execute("SELECT * FROM production_tasks WHERE parameters LIKE ? ORDER BY id LIMIT 1", (f'%\"idempotency_key\": \"{idem}\"%',)).fetchone()
+        if existing:
+            conn.close()
+            return _row_to_task(existing)
     cursor = conn.execute(
         """
         INSERT INTO production_tasks

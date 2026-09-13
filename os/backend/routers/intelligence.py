@@ -126,7 +126,7 @@ def materialize_content_plan(plan_id: int):
     plan=get_plan(plan_id)
     if not plan or plan['status'] != 'approved': raise HTTPException(status_code=400, detail='plan must be approved first')
     payload=dict(plan['plan']); spec=build_production_spec(__import__('intelligence.content_brain',fromlist=['ContentPlan']).ContentPlan(**payload)); payload['production_spec']=spec
-    payload.update({'provider_suggestion':'github','workflow':spec['workflow'],'branch':spec['branch'],'task_type':'video_batch','parameters':{'content_plan_id':plan_id,'content_plan_revision':plan.get('revision',1),'intelligence_snapshot_id':plan.get('source_snapshot_id'),'content_id':payload.get('content_id'),'hook':payload.get('hook'),'script':payload.get('script'),'cta':payload.get('cta'),'artifact_name':spec['artifact_name'],'task_payload_b64':spec['task_payload_b64'],'workflow':spec['workflow'],'branch':spec['branch']}})
+    payload.update({'provider_suggestion':'github','workflow':spec['workflow'],'branch':spec['branch'],'task_type':'video_batch','parameters':{'content_plan_id':plan_id,'content_plan_revision':plan.get('revision',1),'idempotency_key':f'content-plan:{plan_id}:revision:{plan.get("revision",1)}','intelligence_snapshot_id':plan.get('source_snapshot_id'),'content_id':payload.get('content_id'),'hook':payload.get('hook'),'script':payload.get('script'),'cta':payload.get('cta'),'artifact_name':spec['artifact_name'],'task_payload_b64':spec['task_payload_b64'],'workflow':spec['workflow'],'branch':spec['branch']}})
     task=generate_production_task(payload)
     readiness=get_execution_readiness(task)
     if not readiness['ready']: raise HTTPException(status_code=422, detail=readiness)
