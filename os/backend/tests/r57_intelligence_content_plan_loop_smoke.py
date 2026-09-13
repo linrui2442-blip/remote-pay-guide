@@ -6,3 +6,5 @@ from intelligence.content_brain import ContentPlan, save_plan, get_plan
 import intelligence.content_plan_service as svc
 p=ContentPlan(content_id='r57',topic='Test payment verification',angle='receiving check',target_audience='freelancer',hook='Client says "I sent it." Did the payment actually arrive?',script='The client said paid. Confirm the balance — then record credited.',cta='Follow Remote Pay Guide.',title='Verify payment',description='test',visual_direction='receipt close-up\naccount review\ncredited balance')
 r=save_plan(p,1); assert r; svc.evaluate_and_persist_novelty(r['id']); svc.approve_plan(r['id']); t=svc.materialize_plan(r['id']); assert t and get_plan(r['id'])['status']=='materialized'; print('CONTENT_PLAN_PERSISTENCE=PASS'); print('REAL_PRODUCTION_TASK=PASS'); print('EXECUTION_READINESS_REAL=PASS'); print('PRODUCT_LOOP_TO_READY_TASK=PASS')
+assert t.parameters.get('content_plan_id')==r['id']; assert t.parameters.get('content_plan_revision')==r['revision']; print('MATERIALIZATION_LINKAGE_REVISION_GUARD=PASS')
+assert svc.materialize_plan(r['id']).id==t.id; print('MATERIALIZED_IDEMPOTENT_READBACK=PASS'); print('DB_BACKED_IDEMPOTENCY=PASS')
