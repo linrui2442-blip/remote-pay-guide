@@ -28,6 +28,7 @@ import {
 import PlatformOAuthCallback from "./pages/PlatformOAuthCallback.jsx";
 import DataCenter from "./pages/DataCenter.jsx";
 import PublishCenter from "./pages/PublishCenter.jsx";
+import IntelligenceCenter from "./pages/IntelligenceCenter.jsx";
 
 const NAV_ITEMS = [
   ["overview", "总览", "⌂"],
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   ["production", "生产中心", "▶"],
   ["publishing", "发布中心", "↑"],
   ["analytics", "数据中心", "▥"],
+  ["intelligence", "AI 智能", "✦"],
   ["platforms", "平台能力", "◇"],
   ["settings", "系统设置", "⚙"],
 ];
@@ -950,6 +952,7 @@ function App() {
     production: renderProduction,
     publishing: renderPublishing,
     analytics: renderAnalytics,
+    intelligence: () => <IntelligenceCenter accounts={accounts} />,
     platforms: renderPlatforms,
     settings: renderSettings,
   };

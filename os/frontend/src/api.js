@@ -182,3 +182,7 @@ export function getAIGatewaySettings() {
 export function saveAIGatewaySettings(data) {
   return apiPost('/settings/ai-gateway', data);
 }
+
+export function refreshAccountIntelligence(accountId, platform) { return apiPost(`/intelligence/feedback/account/${encodeURIComponent(accountId)}/refresh`, { platform }); }
+export function getAccountIntelligence(accountId, platform) { return apiGet(`/intelligence/feedback/account/${encodeURIComponent(accountId)}?platform=${encodeURIComponent(platform)}`); }
+export function materializeIntelligenceTask(snapshotId) { return apiPost(`/intelligence/feedback/${encodeURIComponent(snapshotId)}/materialize`, {}); }
