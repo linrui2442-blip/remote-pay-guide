@@ -179,6 +179,9 @@ def get_task(task_id):
     conn.close()
     return _row_to_task(row) if row else None
 
+def get_task_by_idempotency_key(key):
+    init_tasks_table(); conn=_connect(); row=conn.execute('SELECT * FROM production_tasks WHERE idempotency_key=?',(key,)).fetchone(); conn.close(); return _row_to_task(row) if row else None
+
 
 def update_task_status(task_id: int, status: str):
     init_tasks_table()
