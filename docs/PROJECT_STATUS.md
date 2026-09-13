@@ -292,6 +292,14 @@ Recommended YouTube Shorts metadata:
 
 YouTube account binding and upload credential readiness are verified for account 1.
 
+short12 YouTube publish is **REAL YOUTUBE PUBLIC VERIFIED**:
+
+- PublishTask: `15`
+- Video ID: `k_zYBNPifSs`
+- Official `videos.list` read-back confirmed the title and `privacyStatus=public`.
+- Processing status: `succeeded`
+- No Instagram/Facebook publishing was performed.
+
 P1-R1 completed one real short12 render and first automatic Pages promotion.
 A duplicate completion race was found and reconciled without rerendering.
 Completion idempotency is now fixed and isolated-verified; short12 remains

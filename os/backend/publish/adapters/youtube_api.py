@@ -137,7 +137,15 @@ class YouTubeAPIClient:
             return self._failure(RuntimeError(), "initialize")
 
     def get_video_status(self, video_id):
-        return {"video_id": video_id, "status": "processing" if self.session else "not_configured"}
+        if not self.session:
+            return {"video_id": video_id, "status": "not_configured"}
+        response = self.session.get("https://www.googleapis.com/youtube/v3/videos", params={"part": "snippet,status,processingDetails", "id": video_id}, timeout=30)
+        response.raise_for_status()
+        items = (response.json() or {}).get("items") or []
+        if not items:
+            return {"video_id": video_id, "status": "not_found"}
+        item = items[0]
+        return {"video_id": item.get("id") or video_id, "title": (item.get("snippet") or {}).get("title"), "privacy_status": (item.get("status") or {}).get("privacyStatus"), "processing_status": (item.get("processingDetails") or {}).get("processingStatus"), "channel_id": (item.get("snippet") or {}).get("channelId"), "status": "available"}
 
     def delete_video(self, video_id):
         return {"status": "ready_for_delete" if self.session else "not_configured"}
