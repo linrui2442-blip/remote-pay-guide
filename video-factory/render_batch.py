@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from visual_provenance import check_within_video_diversity, fingerprint_file
+from visual_provenance import check_within_video_diversity, extract_material_provenance, fingerprint_file
 
 
 def _run_stream(command: list[str], *, cwd: Path, log_path: Path) -> int:
@@ -183,7 +183,9 @@ def main() -> None:
             "video_script": task.get("video_script"),
             "video_terms": task.get("video_terms"),
             "output": polished.name,
-            "materials": [{"provider": "pexels", "source_id": None, "source_url": None, "local_filename": final_video.name, "sha256": fingerprint_file(final_video), "matched_term": None}],
+            "provenance_status": extract_material_provenance(task_dir)["provenance_status"],
+            "materials": extract_material_provenance(task_dir)["materials"],
+            "final_output": {"filename": polished.name, "sha256": fingerprint_file(polished)},
             "scene_terms": task.get("video_terms") or [],
         }
         (target / "metadata.json").write_text(

@@ -110,3 +110,9 @@ diversity. After selection/render, provenance records provider, source ID, URL,
 local filename, and SHA256 when available. Exact provider/source ID, normalized
 URL, or clip fingerprint reuse in the latest 10 contents is blocked. A title or
 query rewrite is not new visual material.
+
+P2-C2 established this contract. Historical exact Pexels reuse for short11 and
+short12 remains UNKNOWN because their source provenance is unavailable. Future
+renders record true source clips when MoneyPrinterTurbo exposes them; otherwise
+provenance is explicitly marked unavailable and the final-output fingerprint is
+kept separate.

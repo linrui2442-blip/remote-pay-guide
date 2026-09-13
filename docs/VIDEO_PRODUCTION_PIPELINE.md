@@ -361,3 +361,8 @@ candidate content
 Within-video plans require at least three distinct action/location/composition
 combinations and two location/composition families. Exact material reuse is
 blocked after selection/render; missing provenance fields are recorded as null.
+
+The final rendered file fingerprint is stored under `final_output` and is never
+used as an original-material identity. If source extraction is unavailable,
+the metadata records `provenance_status=unavailable` without fabricating a
+Pexels source.

@@ -1,8 +1,9 @@
 """Deterministic visual-plan and material identity novelty checks."""
 import hashlib, re
+from pathlib import Path
 
 def _tokens(value): return set(re.findall(r"[a-z0-9]+", " ".join(value or []).lower()))
-def _url(value): return re.sub(r"[?#].*$", "", (value or "").strip().lower().rstrip("/"))
+def _url(value): return re.sub(r"[?#].*$", "", (value or "").strip().lower()).rstrip("/")
 
 def compare_material_identity(candidate, history, cooldown=10):
     prior=history[-cooldown:]
@@ -21,14 +22,24 @@ def compare_scene_terms(candidate_terms, history):
     return {"overlap":round(best,3),"decision":"BLOCK" if best>=.55 else ("WARN" if best>=.3 else "PASS")}
 
 def check_within_video_diversity(terms):
-    text=[" ".join(t).lower() if isinstance(t,list) else str(t).lower() for t in terms]
-    families=[]
-    for s in text:
-        action=next((x for x in ("reading","typing","copying","checking","writing","reviewing","walking","talking","comparing") if x in s),"other")
-        location=next((x for x in ("home office","coworking","cafe","airport","hotel","office","outdoor","transit") if x in s),"other")
-        composition=next((x for x in ("close-up","wide","hands-only","over-shoulder","portrait","screen") if x in s),"other")
-        families.append((action,location,composition))
-    return {"distinct_combinations":len(set(families)),"location_composition_families":len(set((x[1],x[2]) for x in families)),"pass":len(set(families))>=3 and len(set((x[1],x[2]) for x in families))>=2}
+    text=[str(t).lower() for t in terms]
+    normalized=[_tokens([s]) for s in text]
+    overlaps=[]
+    for i in range(len(normalized)):
+        for j in range(i): overlaps.append(len(normalized[i]&normalized[j])/max(1,len(normalized[i]|normalized[j])))
+    near_duplicate = bool(overlaps) and sum(x >= .75 for x in overlaps) / len(overlaps) >= .7
+    return {"distinct_combinations":len(set(text)),"location_composition_families":None,"pass":not near_duplicate}
+
+def extract_material_provenance(task_dir):
+    """Best-effort extraction; absence is explicit and never fabricated."""
+    root=Path(task_dir); materials=[]
+    for path in root.rglob("*") if root.exists() else []:
+        if path.suffix.lower() in {".json",".csv"}:
+            try:
+                raw=path.read_text(encoding="utf-8",errors="ignore")
+                for url in re.findall(r"https?://[^\"'\s]+",raw): materials.append({"provider":None,"source_id":None,"source_url":url,"local_filename":None,"sha256":None,"matched_term":None})
+            except OSError: pass
+    return {"provenance_status":"available" if materials else "unavailable","materials":materials}
 
 def fingerprint_file(path):
     h=hashlib.sha256()
