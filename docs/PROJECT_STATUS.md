@@ -276,6 +276,22 @@ render, promotion, or publish was performed. Advanced media inspection
 
 D10 remains **PARTIAL — waiting for post-registration GA4 content_id data**.
 
+## P2 — Real Content Operations / Data Accumulation
+
+Status: **ACTIVE**
+
+short12 is PRODUCED / READY and is prepared for authorized YouTube publishing
+only. No PublishTask was created and no publishing was performed.
+
+Recommended YouTube Shorts metadata:
+
+- Title: `Which USDT Network Should Your Client Use? | USDT Payment Safety`
+- Description: Confirm the receiving platform supports the network. Both sides must use the same network before sending. Never share a seed phrase or private key. Payment-safety education only; not investment advice.
+- Hashtags: `#USDT #Freelancer #RemoteWork #CryptoPayments`
+- Landing URL: `https://linrui2442-blip.github.io/remote-pay-guide/?src=yt_short12&content_id=short12`
+
+YouTube account binding and upload credential readiness are verified for account 1.
+
 P1-R1 completed one real short12 render and first automatic Pages promotion.
 A duplicate completion race was found and reconciled without rerendering.
 Completion idempotency is now fixed and isolated-verified; short12 remains
