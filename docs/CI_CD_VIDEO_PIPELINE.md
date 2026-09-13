@@ -7,17 +7,17 @@ This document records the GitHub Actions layer of Remote Pay Guide Video Factory
 It describes:
 
 ```
-GitHub Actions
-        ↓
-Render workflow
+GitHub Actions Render
         ↓
 Artifact
         ↓
-Media hosting
+GitHub Pages
         ↓
-Publish workflow
+VideoAsset
         ↓
-Postiz
+Publish Center
+        ↓
+Official Platform Adapter
 ```
 
 Production logic is documented in:
@@ -86,7 +86,11 @@ public media staging
         ↓
 GitHub Pages media URL
         ↓
-Postiz --media-url
+VideoAsset.asset_url
+        ↓
+Publish Center
+        ↓
+Official Platform Adapter
 ```
 
 ---
@@ -128,36 +132,40 @@ media/short04.mp4
 media/short04.json
 ```
 
-Postiz receives the public URL through:
+The OS records the public URL as:
 
 ```
---media-url
+VideoAsset.asset_url
 ```
 
 The publishing runner does not upload the video file directly.
 
 ---
 
-# 5. Postiz Publishing
+# 5. Formal OS Publishing
 
-Publishing uses:
+The current formal production path uses the existing Publish Center, Publish Registry, and official platform adapters. It does not depend on Postiz.
+
+Historical workflows used:
 
 ```
 POSTIZ_API_KEY
 POSTIZ_API_BASE_URL
 ```
 
-The bridge calls:
+and called:
 
 ```
 video-factory/postiz_publish.py
 ```
 
+That path is historical / legacy / unavailable. Postiz is uninstalled and must not be restored or used as a fallback for formal OS publishing.
+
 ---
 
-# 6. Platform-level Retry Behavior
+# 6. Historical Postiz Retry Behavior
 
-The Postiz publishing bridge is idempotent.
+The following records legacy behavior only; it is not the current formal OS publish contract. The historical Postiz publishing bridge was idempotent.
 
 A publish workflow can be safely rerun after a partial platform failure.
 
@@ -190,7 +198,9 @@ Do not manually upload the media again.
 
 ---
 
-# 7. Validated Short04 Chain
+# 7. Historical Validated Short04 Chain
+
+This chain is retained as historical evidence and is not the current formal production dependency:
 
 ```
 render-launch02.yml
@@ -203,7 +213,7 @@ media/short04.mp4
         ↓
 GitHub Pages
         ↓
-Postiz --media-url
+Postiz --media-url (legacy / unavailable)
         ↓
 Social platforms
 ```
@@ -220,4 +230,4 @@ Do not redesign CI/CD without checking:
 4. Publish workflow
 5. Platform retry behavior
 
-Changes should preserve the validated production chain.
+Changes should preserve the current formal chain: GitHub Actions Render → Artifact → GitHub Pages → VideoAsset → Publish Center → Official Platform Adapter. Legacy Postiz evidence may remain documented, but Postiz must not be treated as an available dependency or fallback.

@@ -53,8 +53,33 @@ Binance registration/conversion attribution is intentionally deferred. The curre
 - Content → Binance referral click attribution: **REAL GA4 E2E VERIFIED (2026-09-09)**
 - GitHub Pages → VideoAsset → Instagram prepare: CODE + TEST VERIFIED
 - Meta Page publishing credential boundary: CODE + ISOLATED TEST VERIFIED
+- short11 real production chain: REAL E2E VERIFIED through YouTube PUBLIC
 
 Scheduler Operational Hardening is CLOSED. Do not add more scheduler infrastructure unless a real production failure exposes a concrete gap.
+
+---
+
+## short11 Production Closeout
+
+Content: `How to Give a Client the Correct USDT Address (TRC20 vs ERC20)`
+
+```text
+Content task
+→ GitHub Actions render (run 34746745765)
+→ remote-pay-guide-short11 artifact
+→ Quality Gate PASS
+→ GitHub Pages media (promotion run 34748201584)
+→ VideoAsset github_short11 ready
+→ YouTube PUBLIC (jg5tSD7UETE)
+```
+
+Status:
+
+- YouTube PUBLIC: **REAL E2E VERIFIED**
+- Instagram short11: **NOT PUBLISHED**
+- Instagram Graph writes: **0**
+- Instagram reason: live gate / operational readiness unavailable; no Graph publish request was made.
+- Facebook short11: not executed.
 
 ---
 
@@ -155,47 +180,7 @@ dependency of the official OS publish path.
 
 # CURRENT NEXT STEP
 
-## P0 — INSTAGRAM / FACEBOOK OPERATIONAL READINESS / REAL PUBLISH
-
-Meta account connection and resource binding remain historical evidence; current operational identity is blocked by account enforcement. The Instagram adapter code exists, but its production gate is closed by default.
-
-### 1. Instagram Reels Official Publish Adapter
-
-Implement real live publishing through the existing Publish Registry / Adapter / Readiness boundaries.
-
-### 2. Facebook Reels Official Publish Adapter
-
-The provider-neutral adapter and isolated Graph contract are implemented and
-verified. Live publishing remains disabled until a valid operational Meta
-identity and explicit controlled-publish authorization are available.
-
-### 3. Unified Publish Center
-
-One ready VideoAsset should be publishable through the existing Publish Center to the three target platforms without duplicating PublishTask, Data Center, Registry, or Runtime systems.
-
-### 4. Real Publish E2E for all three platforms
-
-Production Trial Ready requires real evidence for:
-
-```text
-YouTube   → published
-Instagram → published
-Facebook  → published
-```
-
-Each real provider path must persist truthful platform identifiers/status/errors.
-
----
-
-## P1 — Multi-Platform Content Sync / Analytics
-
-After three-platform live publishing is stable, add or close real Instagram/Facebook content-sync and analytics capabilities through existing platform capability boundaries.
-
-Do not modify the core Data Center schema to add platform-specific copies of the same metrics.
-
----
-
-## P1 — GA4 → OS Data Center Ingestion
+## P0 — D10 GA4 Runtime Activation
 
 D9 implementation is now **CODE + CONTRACT VERIFIED**. The backend uses the
 Google Analytics Data API `runReport` boundary with a default-off
@@ -215,17 +200,33 @@ click-through rate
 time window
 ```
 
-This is important for Intelligence, but it no longer blocks the immediate three-platform publishing launch requirement.
-
 No second Analytics storage and no second Query Engine.
 
 ---
 
-## P2 — Operate and Accumulate Real Data
+## P1 — Production Line 1 Operational Automation
+
+Operationalize the existing production line after D10 is complete or explicitly blocked. Do not build a second Production Runtime, Publish system, or scheduler infrastructure.
+
+---
+
+## P2 — Real Content Operations / Data Accumulation
 
 Run the system with real content and traffic, then verify Intelligence uses referral clicks/click rate together with platform traffic/watch quality to recommend the next production strategy.
 
 Keep task materialization and external publishing controlled until enough operational evidence exists.
+
+---
+
+## P3 — SUB2 + Gemini/Veo Production Line 2
+
+SUB2 is a general AI Gateway, not a Remote Pay Guide-specific component. This lane is deferred until P0–P2 priorities permit it.
+
+---
+
+## External Blocker Lane — Meta Instagram/Facebook Operational Identity
+
+Meta account connection and resource binding remain historical evidence; the current operational identity is blocked by account enforcement. Instagram/Facebook live publishing is not the current code-development P0.
 
 ---
 
@@ -243,7 +244,7 @@ Keep task materialization and external publishing controlled until enough operat
 
 ```text
 Do not duplicate completed systems.
-Three-platform live publish is the current launch blocker.
+D10 GA4 Runtime Activation is the current P0.
 Do not claim external E2E without real evidence.
 Preserve runtime DB safety.
 Keep formal OS publish on official/provider adapters, not Postiz.
