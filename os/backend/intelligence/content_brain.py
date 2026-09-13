@@ -96,6 +96,7 @@ def update_plan(plan_id, changes):
     illegal=set(changes)-EDITABLE_FIELDS
     if illegal: raise ValueError('fields not editable: '+','.join(sorted(illegal)))
     p=ContentPlan(**{**row['plan'], **changes}); validate_content_plan(p)
+    p.novelty_status='unverified'; p.novelty_evidence={}
     with _conn() as c: c.execute('UPDATE intelligence_content_plans SET payload_json=?,revision=revision+1,status=\'preview\',approved_revision=NULL,updated_at=? WHERE id=?',(json.dumps(p.to_dict(),ensure_ascii=False),datetime.now(timezone.utc).isoformat(),plan_id)); c.commit()
     return get_plan(plan_id)
 def set_plan_status(plan_id,status):

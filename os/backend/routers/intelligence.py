@@ -14,6 +14,7 @@ from intelligence.content_brain import DeterministicContentPlanProvider, save_pl
 from intelligence.task_generator import generate_production_task
 from intelligence.production_spec import build_production_spec
 from intelligence.novelty import evaluate_content_plan_novelty
+from intelligence.content_plan_service import approve_plan, materialize_plan
 from intelligence.feedback_bridge import get_feedback_snapshot
 
 
@@ -121,20 +122,13 @@ def edit_content_plan(plan_id: int, changes: dict): return update_plan(plan_id, 
 
 @router.post('/intelligence/content-plans/{plan_id}/approve')
 def approve_content_plan(plan_id: int):
-    plan=get_plan(plan_id)
-    if not plan: raise HTTPException(status_code=404, detail='plan not found')
-    from intelligence.content_brain import ContentPlan
-    novelty=evaluate_content_plan_novelty(ContentPlan(**plan['plan']))
-    if novelty['decision']=='BLOCK': raise HTTPException(status_code=422, detail='content novelty blocked')
-    return set_plan_status(plan_id, 'approved')
+    try: return approve_plan(plan_id)
+    except KeyError as e: raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e: raise HTTPException(status_code=422, detail=str(e))
 
 @router.post('/intelligence/content-plans/{plan_id}/materialize')
 def materialize_content_plan(plan_id: int):
-    plan=get_plan(plan_id)
-    if not plan or plan['status'] != 'approved': raise HTTPException(status_code=400, detail='plan must be approved first')
-    payload=dict(plan['plan']); spec=build_production_spec(__import__('intelligence.content_brain',fromlist=['ContentPlan']).ContentPlan(**payload)); payload['production_spec']=spec
-    payload.update({'provider_suggestion':'github','workflow':spec['workflow'],'branch':spec['branch'],'task_type':'video_batch','parameters':{'content_plan_id':plan_id,'content_plan_revision':plan.get('revision',1),'idempotency_key':f'content-plan:{plan_id}:revision:{plan.get("revision",1)}','intelligence_snapshot_id':plan.get('source_snapshot_id'),'content_id':payload.get('content_id'),'hook':payload.get('hook'),'script':payload.get('script'),'cta':payload.get('cta'),'artifact_name':spec['artifact_name'],'task_payload_b64':spec['task_payload_b64'],'workflow':spec['workflow'],'branch':spec['branch']}})
-    task=generate_production_task(payload)
-    readiness=get_execution_readiness(task)
-    if not readiness['ready']: raise HTTPException(status_code=422, detail=readiness)
-    return {'plan': set_plan_status(plan_id, 'materialized'), 'production_task': task.__dict__ if hasattr(task,'__dict__') else task, 'execution': readiness}
+    try:
+        task=materialize_plan(plan_id); return {'production_task': task.__dict__ if hasattr(task,'__dict__') else task, 'execution': get_execution_readiness(task)}
+    except KeyError as e: raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e: raise HTTPException(status_code=409, detail=str(e))
