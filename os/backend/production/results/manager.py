@@ -255,6 +255,14 @@ def complete_recovered_result(result_id, *, output):
     if not current:
         raise ValueError("ProductionResult not found")
     if current.get("status") == "completed":
+        from production.runtime.manager import get_job
+        from production.tasks.manager import get_task
+        job = get_job(current.get("runtime_job_id"))
+        task = get_task(job.get("task_id")) if job else None
+        if not job or not task or str(job.get("task_id")) != str(task.id):
+            raise ValueError("Completed recovery lifecycle is inconsistent")
+        if job.get("status") != "completed" or task.status != "completed":
+            raise ValueError("Completed recovery lifecycle is inconsistent")
         if not current.get("asset_id") or current.get("asset_status") != "ready":
             raise ValueError("Completed recovery result has invalid asset state")
         return current
@@ -270,7 +278,7 @@ def complete_recovered_result(result_id, *, output):
     task = get_task(job.get("task_id")) if job else None
     if not job or not task or str(job.get("task_id")) != str(task.id):
         raise ValueError("Recovery result linkage is inconsistent")
-    if job.get("status") not in {"failed", "completed"} or task.status not in {"failed", "completed"}:
+    if job.get("status") != "failed" or task.status != "failed":
         raise ValueError("Recovery lifecycle state is not recoverable")
     url = (output or {}).get("asset_url") or (output or {}).get("url")
     if (output or {}).get("storage_type") != "github_pages" or not (isinstance(url, str) and url.startswith("https://")):

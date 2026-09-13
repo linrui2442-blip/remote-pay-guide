@@ -60,4 +60,19 @@ except ValueError:
 else:
     raise AssertionError('ambiguous state must be rejected')
 print('AMBIGUOUS_STATE_REJECTION=PASS')
+
+# Completed result with a failed job is not a valid idempotent state.
+conn = sqlite3.connect(os.environ['OS_DATABASE_PATH'])
+conn.execute("UPDATE production_results SET status='completed', asset_id='asset_r56', asset_status='ready' WHERE id=?", (result['id'],))
+conn.execute("UPDATE runtime_jobs SET status='failed' WHERE id=?", (job['id'],)); conn.execute("UPDATE production_tasks SET status='completed' WHERE id=?", (task.id,)); conn.commit(); conn.close()
+try:
+    complete_recovered_result(result['id'], output=out)
+except ValueError:
+    pass
+else:
+    raise AssertionError('completed mixed state must be rejected')
+print('COMPLETED_MIXED_STATE_REJECTION=PASS')
+conn = sqlite3.connect(os.environ['OS_DATABASE_PATH']); conn.execute("UPDATE runtime_jobs SET status='completed' WHERE id=?", (job['id'],)); conn.commit(); conn.close()
+assert complete_recovered_result(result['id'], output=out)['status'] == 'completed'
+print('FULLY_COMPLETED_IDEMPOTENCY=PASS')
 print('Recovery state machine smoke passed')
