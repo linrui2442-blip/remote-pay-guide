@@ -37,7 +37,12 @@ def materialize_plan(plan_id, failure_hook=None):
     existing=get_task_by_idempotency_key(key)
     if existing:
         _validate_materialized_task(existing,plan_id,p.get('revision'),key)
-        set_plan_status(plan_id,'materialized'); return existing
+        try:
+            set_plan_status(plan_id,'materialized')
+        except ValueError:
+            latest=get_plan(plan_id)
+            if not latest or latest.get('status')!='materialized': raise
+        return existing
     payload=dict(p['plan']); spec=build_production_spec(ContentPlan(**payload))
     params=dict(spec); params.update({'idempotency_key':key,'content_plan_id':plan_id,'content_plan_revision':p.get('revision',1),'script':payload['script']})
     task=generate_production_task({'provider_suggestion':'github','objective':payload['topic'],'workflow':spec['workflow'],'branch':'main','task_type':'video_batch','parameters':params})

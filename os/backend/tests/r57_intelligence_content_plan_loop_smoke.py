@@ -136,3 +136,42 @@ with sqlite3.connect(database_path()) as _db:
     _count=_db.execute('SELECT COUNT(*) FROM production_tasks WHERE idempotency_key=?',(_idem,)).fetchone()[0]
 assert _count==1
 print('DB_IDEMPOTENCY_EXACT_COUNT_ONE=PASS')
+
+# Failure reconciliation: task persistence may precede the final plan CAS update.
+def _approved_plan_for(_suffix):
+    _id=save_plan(ContentPlan(content_id='r57-'+_suffix+'-'+uuid.uuid4().hex[:8],topic='Reconciliation '+_suffix,angle='failure recovery',target_audience='freelancer',hook='Verify the payment.',script='Check the record and balance.',cta='Verify first.',title='Reconciliation',description='test',visual_direction='receipt review'),1)['id']
+    _old=svc.evaluate_content_plan_novelty; svc.evaluate_content_plan_novelty=lambda _plan: {'decision':'PASS','score':0.1,'evidence':{'source':'r57-reconcile'}}
+    try: _approved_plan=svc.approve_plan(_id)
+    finally: svc.evaluate_content_plan_novelty=_old
+    return _id,_approved_plan['revision']
+_failure_id,_failure_revision=_approved_plan_for('failure')
+def _injected_failure(): raise RuntimeError('r57 injected materialization failure')
+try:
+    svc.materialize_plan(_failure_id, failure_hook=_injected_failure)
+    raise AssertionError('injected failure unexpectedly succeeded')
+except RuntimeError as _failure:
+    assert str(_failure)=='r57 injected materialization failure'
+_failure_plan=get_plan(_failure_id)
+assert _failure_plan['status']=='approved' and _failure_plan['revision']==_failure_revision
+_failure_key=f'content-plan:{_failure_id}:revision:{_failure_revision}'
+_failure_task=svc.materialize_plan(_failure_id)
+assert _failure_task and get_plan(_failure_id)['status']=='materialized' and _failure_task.parameters['content_plan_id']==_failure_id and _failure_task.parameters['content_plan_revision']==_failure_revision and svc.get_execution_readiness(_failure_task)['ready']
+with sqlite3.connect(database_path()) as _db:
+    _failure_count=_db.execute('SELECT COUNT(*) FROM production_tasks WHERE idempotency_key=?',(_failure_key,)).fetchone()[0]
+assert _failure_count==1
+print('MATERIALIZATION_FAILURE_RECONCILED=PASS'); print('FAILURE_RETRY_IDEMPOTENT=PASS')
+
+# Real eight-way concurrent materialization against one approved revision.
+from concurrent.futures import ThreadPoolExecutor
+_concurrent_id,_concurrent_revision=_approved_plan_for('concurrency')
+with ThreadPoolExecutor(max_workers=8) as _pool:
+    _futures=[_pool.submit(svc.materialize_plan,_concurrent_id) for _ in range(8)]
+    _concurrent_results=[_future.result() for _future in _futures]
+assert len(_concurrent_results)==8 and all(_task is not None for _task in _concurrent_results)
+_concurrent_ids={_task.id for _task in _concurrent_results}; assert len(_concurrent_ids)==1
+assert all(_task.parameters.get('content_plan_id')==_concurrent_id and _task.parameters.get('content_plan_revision')==_concurrent_revision and svc.get_execution_readiness(_task)['ready'] for _task in _concurrent_results)
+_concurrent_key=f'content-plan:{_concurrent_id}:revision:{_concurrent_revision}'
+with sqlite3.connect(database_path()) as _db:
+    _concurrent_count=_db.execute('SELECT COUNT(*) FROM production_tasks WHERE idempotency_key=?',(_concurrent_key,)).fetchone()[0]
+assert _concurrent_count==1 and get_plan(_concurrent_id)['status']=='materialized'
+print('MATERIALIZATION_CONCURRENCY_8WAY=PASS'); print('CONCURRENT_SINGLE_TASK_IDENTITY=PASS'); print('CONCURRENT_DB_COUNT_ONE=PASS'); print('MATERIALIZATION_CONCURRENCY_SEAL=PASS')
