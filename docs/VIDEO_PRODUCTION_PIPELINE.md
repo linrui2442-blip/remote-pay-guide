@@ -358,9 +358,10 @@ candidate content
 → VideoAsset
 ```
 
-Within-video plans require at least three distinct action/location/composition
-combinations and two location/composition families. Exact material reuse is
-blocked after selection/render; missing provenance fields are recorded as null.
+The within-video gate blocks near-duplicate visual plans while allowing
+open-ended scene vocabulary. Scene-history similarity is limited to the most
+recent 10 produced contents; exact material reuse is also limited to a
+10-content cooling window. Missing provenance fields are recorded as null.
 
 The final rendered file fingerprint is stored under `final_output` and is never
 used as an original-material identity. If source extraction is unavailable,

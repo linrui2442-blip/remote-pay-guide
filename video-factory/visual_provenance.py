@@ -15,9 +15,9 @@ def compare_material_identity(candidate, history, cooldown=10):
                 if c.get("sha256") and c.get("sha256")==p.get("sha256"): return {"decision":"BLOCK","reason":"same sha256"}
     return {"decision":"PASS","reason":None}
 
-def compare_scene_terms(candidate_terms, history):
+def compare_scene_terms(candidate_terms, history, cooldown=10):
     ct=_tokens(candidate_terms); best=0
-    for h in history:
+    for h in history[-max(0, int(cooldown)):]:
         ht=_tokens(h.get("scene_terms",[])); best=max(best,len(ct&ht)/max(1,len(ct|ht)))
     return {"overlap":round(best,3),"decision":"BLOCK" if best>=.55 else ("WARN" if best>=.3 else "PASS")}
 
@@ -36,8 +36,18 @@ def extract_material_provenance(task_dir):
     for path in root.rglob("*") if root.exists() else []:
         if path.suffix.lower() in {".json",".csv"}:
             try:
-                raw=path.read_text(encoding="utf-8",errors="ignore")
-                for url in re.findall(r"https?://[^\"'\s]+",raw): materials.append({"provider":None,"source_id":None,"source_url":url,"local_filename":None,"sha256":None,"matched_term":None})
+                data=path.read_text(encoding="utf-8",errors="ignore")
+                obj=None
+                try: obj=__import__("json").loads(data)
+                except Exception: pass
+                records=obj if isinstance(obj,list) else [obj] if isinstance(obj,dict) else []
+                for rec in records:
+                    if not isinstance(rec,dict): continue
+                    url=rec.get("source_url") or rec.get("video_url") or rec.get("download_url")
+                    source_id=rec.get("source_id") or rec.get("video_id") or rec.get("clip_id")
+                    provider=str(rec.get("provider") or "").lower()
+                    if url and (provider=="pexels" or "pexels.com/video" in str(url).lower()):
+                        materials.append({"provider":"pexels","source_id":source_id,"source_url":url,"local_filename":None,"sha256":None,"matched_term":rec.get("matched_term")})
             except OSError: pass
     return {"provenance_status":"available" if materials else "unavailable","materials":materials}
 
