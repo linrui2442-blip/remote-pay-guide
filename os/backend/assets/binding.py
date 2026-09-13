@@ -29,7 +29,9 @@ def create_asset_from_result(result):
 
         if provider == "github":
             source_provider = "github"
-            if asset_url and "github.io/" in asset_url:
+            if output.get("storage_type") == "github_pages":
+                storage_type = "github_pages"
+            elif asset_url and "github.io/" in asset_url:
                 storage_type = "github_pages"
             else:
                 storage_type = "artifact"
