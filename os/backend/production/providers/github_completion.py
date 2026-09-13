@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from assets.github_pages import promote_artifact_to_pages
 from integrations.github.client import GitHubClient
 from production.providers.github_monitor import FAILURE_CONCLUSIONS, GitHubRunMonitor
-from production.results.manager import get_result, update_result
+from production.results.manager import claim_result_for_completion, get_result, update_result
 from production.tasks.manager import get_task
 
 
@@ -32,16 +32,17 @@ def complete_github_execution(result_id, job, client=None):
             error="GitHub Production Result is missing github_run_id",
         )
 
+    if result.get("status") in {"completed", "failed"}:
+        return result
+    if not claim_result_for_completion(result_id):
+        return get_result(result_id)
+
     task = get_task(job.get("task_id")) if job else None
     parameters = dict(getattr(task, "parameters", {}) or {})
     poll_interval = max(1, int(parameters.get("github_poll_interval", 10)))
     max_attempts = max(1, int(parameters.get("github_poll_attempts", 720)))
 
-    update_result(
-        result_id,
-        status="running",
-        output={**output, "github_run_status": "running"},
-    )
+    update_result(result_id, status="running", output={**output, "github_run_status": "running"})
 
     try:
         terminal = monitor.wait_for_terminal(

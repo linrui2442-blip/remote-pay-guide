@@ -275,3 +275,8 @@ render, promotion, or publish was performed. Advanced media inspection
 (1080x1920, H.264/AAC, subtitles) remains a P1 follow-up.
 
 D10 remains **PARTIAL — waiting for post-registration GA4 content_id data**.
+
+P1-R1 completed one real short12 render and first automatic Pages promotion.
+A duplicate completion race was found and reconciled without rerendering.
+Completion idempotency is now fixed and isolated-verified; short12 remains
+PRODUCED / READY and has not been published.

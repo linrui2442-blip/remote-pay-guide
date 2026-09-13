@@ -188,6 +188,19 @@ def get_result_by_job(runtime_job_id):
     return _serialize(row)
 
 
+def claim_result_for_completion(result_id):
+    """Atomically claim a submitted result for its single completion owner."""
+    init_results_table()
+    conn = _connect()
+    cursor = conn.execute(
+        "UPDATE production_results SET status='running', updated_at=? WHERE id=? AND status='submitted'",
+        (datetime.utcnow().isoformat(), result_id),
+    )
+    conn.commit()
+    conn.close()
+    return cursor.rowcount == 1
+
+
 def update_result(result_id, *, status=None, output=None, error=None):
     init_results_table()
     current = get_result(result_id)
