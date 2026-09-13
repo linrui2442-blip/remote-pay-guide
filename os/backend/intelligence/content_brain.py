@@ -59,9 +59,10 @@ class DeterministicContentPlanProvider:
             production_spec={"provider": "github", "workflow": "render-short01.yml", "branch": "main"},
         )
 
+EDITABLE_FIELDS={'hook','script','cta','title','description','visual_direction','production_notes'}
 def _conn():
     c=sqlite3.connect(database_path()); c.row_factory=sqlite3.Row
-    c.execute('''CREATE TABLE IF NOT EXISTS intelligence_content_plans (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_key TEXT UNIQUE, source_snapshot_id INTEGER, content_id TEXT, status TEXT, payload_json TEXT, created_at TEXT, updated_at TEXT)'''); c.commit(); return c
+    c.execute('''CREATE TABLE IF NOT EXISTS intelligence_content_plans (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_key TEXT UNIQUE, source_snapshot_id INTEGER, content_id TEXT, status TEXT, revision INTEGER DEFAULT 1, approved_revision INTEGER, payload_json TEXT, created_at TEXT, updated_at TEXT)'''); c.commit(); return c
 
 def validate_content_plan(plan):
     for f in ('content_id','topic','hook','script','cta','title'):
@@ -82,14 +83,26 @@ def save_plan(plan, source_snapshot_id=None):
 def _row(row):
     d=dict(row); d['plan']=json.loads(d.pop('payload_json')); return d
 def get_plan(plan_id):
-    with _conn() as c: return _row(c.execute('SELECT * FROM intelligence_content_plans WHERE id=?',(plan_id,)).fetchone())
+    with _conn() as c:
+        row=c.execute('SELECT * FROM intelligence_content_plans WHERE id=?',(plan_id,)).fetchone()
+        return _row(row) if row else None
 def list_plans():
     with _conn() as c: return [_row(r) for r in c.execute('SELECT * FROM intelligence_content_plans ORDER BY id DESC').fetchall()]
 def update_plan(plan_id, changes):
-    row=get_plan(plan_id); p=ContentPlan(**{**row['plan'], **changes}); validate_content_plan(p)
-    with _conn() as c: c.execute('UPDATE intelligence_content_plans SET payload_json=?,updated_at=? WHERE id=?',(json.dumps(p.to_dict(),ensure_ascii=False),datetime.now(timezone.utc).isoformat(),plan_id)); c.commit()
+    row=get_plan(plan_id)
+    if not row: raise KeyError('plan not found')
+    illegal=set(changes)-EDITABLE_FIELDS
+    if illegal: raise ValueError('fields not editable: '+','.join(sorted(illegal)))
+    p=ContentPlan(**{**row['plan'], **changes}); validate_content_plan(p)
+    with _conn() as c: c.execute('UPDATE intelligence_content_plans SET payload_json=?,revision=revision+1,status=\'preview\',approved_revision=NULL,updated_at=? WHERE id=?',(json.dumps(p.to_dict(),ensure_ascii=False),datetime.now(timezone.utc).isoformat(),plan_id)); c.commit()
     return get_plan(plan_id)
 def set_plan_status(plan_id,status):
-    if status not in ('approved','materialized','superseded'): raise ValueError('invalid plan status')
-    with _conn() as c: c.execute('UPDATE intelligence_content_plans SET status=?,updated_at=? WHERE id=?',(status,datetime.now(timezone.utc).isoformat(),plan_id)); c.commit()
+    row=get_plan(plan_id)
+    if not row: raise KeyError('plan not found')
+    allowed={'preview':{'approved','superseded'},'approved':{'materialized','superseded'},'materialized':set(),'superseded':set()}
+    if status not in allowed.get(row['status'],set()): raise ValueError('invalid plan status transition')
+    with _conn() as c:
+        if status=='approved': c.execute('UPDATE intelligence_content_plans SET status=?,approved_revision=revision,updated_at=? WHERE id=?',(status,datetime.now(timezone.utc).isoformat(),plan_id))
+        else: c.execute('UPDATE intelligence_content_plans SET status=?,updated_at=? WHERE id=?',(status,datetime.now(timezone.utc).isoformat(),plan_id))
+        c.commit()
     return get_plan(plan_id)
