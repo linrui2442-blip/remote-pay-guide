@@ -249,3 +249,29 @@ Do not claim external E2E without real evidence.
 Preserve runtime DB safety.
 Keep formal OS publish on official/provider adapters, not Postiz.
 ```
+
+## P1 — Production Line 1 Operational Automation
+
+Status: **CODE + ISOLATED TEST VERIFIED**
+
+The existing runtime now accepts the parameterized `render-short01.yml`
+workflow through its allowlist (`task_file`, `content_id`, `hook`, and
+`artifact_name`) and preserves `content_id` in the GitHub provider output. The
+canonical completion chain remains:
+
+```text
+ProductionTask
+→ GitHub workflow dispatch
+→ run discovery and terminal polling
+→ artifact discovery
+→ Pages promotion
+→ HTTPS MP4 verification
+→ ProductionResult completed
+→ VideoAsset ready
+```
+
+This was verified with isolated fake-client contracts. No real GitHub dispatch,
+render, promotion, or publish was performed. Advanced media inspection
+(1080x1920, H.264/AAC, subtitles) remains a P1 follow-up.
+
+D10 remains **PARTIAL — waiting for post-registration GA4 content_id data**.
