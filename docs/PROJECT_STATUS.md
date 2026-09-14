@@ -18,13 +18,15 @@ This mode is a development, validation, fallback, review, recovery and override 
 ## Current main
 
 ```text
-MAIN_HEAD=2e44080e3489dbd5940655cadffdde806c65cf15
+Current canonical branch: main
 P3=CLOSED
 ```
 
 ## Completed or substantially implemented
 
 Accounts and OAuth foundations; YouTube runtime; analytics and historical/backfill foundations; Data Center; ProductionTask lifecycle; GitHub production/render and artifact handling; VideoAsset; publish infrastructure; recovery, idempotency and concurrency guards; Intelligence snapshots; ContentPlan persistence and revision lifecycle; canonical novelty PASS/WARN/BLOCK; human approval; materialization; and the frontend human-gated ContentPlan flow.
+
+G2 real AI content brain is closed: the OpenAI-compatible TextProvider, runtime provider selection, Sub2API with GPT-5.6, directed human constraints, strict JSON parsing, generated and final safety floors, locked fields, trusted production specification, and preview persistence were verified through the canonical route using an isolated database.
 
 These labels describe implementation and verified contracts where applicable; code presence is not automatically a real external-runtime guarantee.
 
@@ -36,11 +38,11 @@ These labels describe implementation and verified contracts where applicable; co
 
 The `customEvent:content_id` and `customEvent:src` dimensions are registered, but post-registration attributable data has not been proven through the real GA4 Data API into the OS Data Center and Intelligence path. Do not call this CLOSED or PASS.
 
-### BREAKPOINT B — real AI content brain
+### Completed milestone — real AI content brain
 
-`REAL_AI_CONTENT_BRAIN=NOT_CLOSED`.
+`G2_REAL_AI_CONTENT_BRAIN=CLOSED`.
 
-The provider-neutral ContentPlan lifecycle is implemented and the deterministic provider exists. A real text-AI provider is not yet the production-closed runtime provider.
+`REAL_AI_CONTENTPLAN_LIVE_E2E=PASS`. The deterministic provider remains a development/fallback implementation; the real text-AI provider and canonical directed ContentPlan preview path are verified.
 
 ### BREAKPOINT C — autonomous orchestration
 

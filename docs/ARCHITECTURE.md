@@ -44,7 +44,7 @@ For `AUTO`, the canonical continuation is approve → materialize → run → re
 - `os/database/os.db`: runtime state, never disposable test output.
 - GitHub artifact → GitHub Pages → VideoAsset → official provider adapters: formal media/publishing path.
 
-The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real text-AI provider remains open.
+The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; policy-driven AUTO/REVIEW/BLOCK orchestration remains future G3 work.
 
 ## Compatibility and legacy
 
