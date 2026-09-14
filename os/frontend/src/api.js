@@ -185,4 +185,9 @@ export function saveAIGatewaySettings(data) {
 
 export function refreshAccountIntelligence(accountId, platform) { return apiPost(`/intelligence/feedback/account/${encodeURIComponent(accountId)}/refresh`, { platform }); }
 export function getAccountIntelligence(accountId, platform) { return apiGet(`/intelligence/feedback/account/${encodeURIComponent(accountId)}?platform=${encodeURIComponent(platform)}`); }
+export function generateContentPlan(snapshotId) { return apiPost(`/intelligence/feedback/${encodeURIComponent(snapshotId)}/content-plan`, {}); }
+export function getContentPlans() { return apiGet('/intelligence/content-plans'); }
+export function updateContentPlan(planId, changes) { return fetch(`${API_BASE}/intelligence/content-plans/${encodeURIComponent(planId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes) }).then(parseResponse); }
+export function approveContentPlan(planId) { return apiPost(`/intelligence/content-plans/${encodeURIComponent(planId)}/approve`, {}); }
+export function materializeContentPlan(planId) { return apiPost(`/intelligence/content-plans/${encodeURIComponent(planId)}/materialize`, {}); }
 export function materializeIntelligenceTask(snapshotId) { return apiPost(`/intelligence/feedback/${encodeURIComponent(snapshotId)}/materialize`, {}); }
