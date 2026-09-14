@@ -35,3 +35,8 @@ No render, promotion, publish, Meta write, production DB write, or secret output
 ## Estimated usability
 
 Engineering completion: approximately 75%. Daily usability: approximately 72%. AI Growth OS completion: approximately 65%. Estimates reflect the new UI/contract but discount missing persisted ContentPlan workflow and incomplete D10 evidence.
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

@@ -223,3 +223,8 @@ analytics time-series/query-contract boundary.
 - Ran the non-destructive verification above.
 - Updated the unique handover and added this audit report.
 - Source code, workflows, configuration, and runtime DB were not modified.
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

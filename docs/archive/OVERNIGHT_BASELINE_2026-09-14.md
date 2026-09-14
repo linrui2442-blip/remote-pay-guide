@@ -20,3 +20,8 @@ Data Center → Intelligence feedback/strategy → explicit ProductionTask → R
 Add an Intelligence control surface, a structured provider-neutral ContentPlan contract, and an execution-ready bridge while preserving explicit user approval for production and publishing.
 
 Historical handover/status documents that contradict current code, tests, or Git history are stale and must not override repository truth.
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

@@ -162,3 +162,8 @@ The publish bridge is idempotent:
 Continue from the current production state.
 
 Do not restart architecture analysis unless a new failure requires it.
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

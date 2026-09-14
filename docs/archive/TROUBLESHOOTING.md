@@ -123,3 +123,8 @@ Facebook: SKIP
 Instagram: SKIP
 YouTube: RETRY SUCCESS
 ```
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical or debugging context only. Do not use to infer current product requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

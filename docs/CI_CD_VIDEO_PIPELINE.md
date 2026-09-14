@@ -231,3 +231,4 @@ Do not redesign CI/CD without checking:
 5. Platform retry behavior
 
 Changes should preserve the current formal chain: GitHub Actions Render → Artifact → GitHub Pages → VideoAsset → Publish Center → Official Platform Adapter. Legacy Postiz evidence may remain documented, but Postiz must not be treated as an available dependency or fallback.
+# Supporting subsystem document. See docs/PROJECT_STATUS.md for current project state and priority.

@@ -84,3 +84,8 @@ Current breakpoint:
 - Sync the verified OAuth backend fix to the user's local copy
 - Restart only the local backend while preserving the current OAuth environment
 - Start a fresh YouTube authorization attempt because the failed state was consumed
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

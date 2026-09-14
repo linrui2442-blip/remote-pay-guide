@@ -367,3 +367,4 @@ The final rendered file fingerprint is stored under `final_output` and is never
 used as an original-material identity. If source extraction is unavailable,
 the metadata records `provenance_status=unavailable` without fabricating a
 Pexels source.
+# Supporting subsystem document. See docs/PROJECT_STATUS.md for current project state and priority.

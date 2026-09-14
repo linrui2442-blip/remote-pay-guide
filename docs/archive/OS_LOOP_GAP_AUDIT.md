@@ -275,3 +275,8 @@ one known content item
 - second Query Engine;
 - another Scheduler;
 - automatic ProductionTask or automatic Publish before real business feedback exists.
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

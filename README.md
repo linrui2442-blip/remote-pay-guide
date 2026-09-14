@@ -1,214 +1,48 @@
-# Remote Pay Guide
+# Remote Pay Guide OS
 
-An overseas content acquisition MVP for people receiving USDT or USDC payments for the first time.
+Remote Pay Guide OS is an **AUTONOMOUS CONTENT GROWTH OS** for scenario-based stablecoin payment education and attributable user acquisition.
 
-## Project Definition
+Target loop:
 
-Remote Pay Guide is not a crypto news, trading, or investment content account.
-
-It is a scenario-based user acquisition system that uses cross-border payment education as the entry point to help Binance acquire new users.
-
-The core idea:
-
-```
-Cross-border payment need
-        ↓
-Stablecoin payment education
-        ↓
-User discovers wallet / exchange needs
-        ↓
-Binance user conversion
+```text
+Platform / website / referral data
+→ Data Center → Intelligence / real AI → ContentPlan
+→ policy decision → production → quality gate → publish
+→ attribution → feedback learning
 ```
 
-The project focuses on people who need to receive international payments, not existing crypto traders.
+The current safe operating mode is human-gated:
 
-## Target Users
-
-Primary users:
-
-- Overseas freelancers receiving international client payments
-- Remote workers receiving salary through USDT / USDC
-- Cross-border service providers
-- Digital nomads needing global payment tools
-
-The project does not target:
-
-- Crypto speculation users
-- Trading audiences
-- Airdrop users
-- Market prediction audiences
-
-## Business Goal
-
-The goal is to test whether payment education content can generate attributable user intent and Binance referral conversions.
-
-The funnel is:
-
-```
-Content
-  ↓
-Traffic
-  ↓
-User Intent
-  ↓
-Binance Referral Conversion
+```text
+Intelligence → ContentPlan → Review/Edit → Novelty → Approve
+→ Create ProductionTask → Run → Publish
 ```
 
-## Content Strategy
+This is SAFE / MANUAL MODE for development, validation, fallback, review and override. It is not the final autonomous operating model.
 
-Content focuses on solving real payment problems:
+## Current state
 
-Examples:
+Read [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for the single current-state truth source and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for canonical and target architecture.
 
-- How freelancers can receive USDT from overseas clients
-- TRC20 vs ERC20 explained for first-time users
-- Common mistakes when receiving stablecoin payments
-- International payment options for remote workers
+Current main: `2e44080e3489dbd5940655cadffdde806c65cf15` (P3 CLOSED).
 
-The project does not compete for crypto news or trading traffic.
+Current breakpoints: D10 GA4 runtime attribution (`PARTIAL`), the real AI Content Brain (`NOT_CLOSED`), and complete autonomous orchestration (`PARTIAL`).
 
-## Content Factory
+## Runtime and development
 
-Remote Pay Guide uses an AI-assisted content production pipeline. AI is used for content structure, scripting, and automation; the visual footage is not generated from scratch.
+Canonical application code is under `os/backend` and `os/frontend`. Runtime state is `os/database/os.db`; never use it as a test database. Tests must set `OS_TESTING=1` and an isolated `OS_DATABASE_PATH`.
 
-Video asset source:
+Use the existing package/runtime instructions for local startup. Do not infer current requirements from dated reports or historical documents.
 
-```
-Pexels video assets
-```
+## Boundaries
 
-Production workflow:
+The formal media path is GitHub artifact → GitHub Pages → VideoAsset → official platform adapters. Postiz and early MVP paths remain legacy/compatibility only. New work must use the canonical ContentPlan lifecycle and existing services rather than direct snapshot-to-task shortcuts.
 
-```
-Topic strategy
-        ↓
-Content tasks (JSONL)
-        ↓
-AI script / content structure
-        ↓
-Pexels video assets
-        ↓
-MoneyPrinterTurbo assembly
-        ↓
-Voice + subtitles + editing
-        ↓
-polish_short.py
-        ↓
-Final Short MP4
-```
+## Documentation reading order
 
-The objective is not mass-producing low-quality AI videos. The objective is to build a repeatable content testing system and learn which content structures create qualified user intent.
+1. `docs/PROJECT_STATUS.md`
+2. `docs/ARCHITECTURE.md`
+3. Relevant subsystem documentation
+4. Source code
 
-## Publishing Architecture
-
-Current system:
-
-```
-Render Layer
-      ↓
-Artifact
-      ↓
-Publish Layer (publish-short.yml)
-      ↓
-GitHub Pages Public Media
-      ↓
-Postiz
-      ↓
-YouTube / Instagram / Facebook
-      ↓
-Landing Page
-      ↓
-GA4
-      ↓
-Binance Referral Conversion
-```
-
-## Referral
-
-Binance referral ID: `137553211`
-
-The landing page discloses the referral relationship and reminds users to verify the exact asset and network before transferring funds.
-
-## Tracking
-
-GA4 is connected.
-
-Tracked user behavior includes:
-
-- `page_view`
-- `payment_type_select`
-- `payer_type_select`
-- `exchange_status_select`
-- `new_to_exchange_identified`
-- `binance_referral_click`
-
-The main measurement goal:
-
-```
-Video
- ↓
-Landing Page
- ↓
-User Intent Events
- ↓
-Binance Referral Click
- ↓
-Conversion
-```
-
-Each content item maps through:
-
-```
-content_id
- ↓
-platform
- ↓
-tracking source
- ↓
-GA4
- ↓
-conversion
-```
-
-## Current MVP Status
-
-Completed:
-
-- Content production pipeline
-- Artifact pipeline
-- Media hosting pipeline
-- Automated publishing pipeline
-- Postiz distribution
-- Publish state tracking
-
-Current batch:
-
-```
-short01 - short10
-```
-
-## Long-Term Asset
-
-The project asset is not individual videos.
-
-The long-term value is:
-
-1. Automated content testing system
-2. Repeatable user acquisition channel
-3. Data model connecting content topics, users, and conversions
-
-The objective is to discover:
-
-```
-Which content
- ↓
-Which audience
- ↓
-Which country
- ↓
-Creates the highest quality Binance conversions
-```
-
-## Deployment
-
-This repository is published through GitHub Pages from the `main` branch root.
+If supporting documentation conflicts with current status or architecture, the canonical documents win; source code wins for actual implementation behavior.

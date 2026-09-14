@@ -116,3 +116,4 @@ short12 remains UNKNOWN because their source provenance is unavailable. Future
 renders record true source clips when MoneyPrinterTurbo exposes them; otherwise
 provenance is explicitly marked unavailable and the final-output fingerprint is
 kept separate.
+# Supporting subsystem document. See docs/PROJECT_STATUS.md for current project state and priority.

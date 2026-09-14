@@ -47,7 +47,7 @@ Content → Binance referral click attribution:
 REAL GA4 E2E VERIFIED (2026-09-09)
 
 GA4 → Remote Pay Guide OS Data Center import:
-NOT IMPLEMENTED
+IMPLEMENTATION PRESENT; post-registration real attributable runtime evidence remains pending (see docs/PROJECT_STATUS.md).
 
 Binance registration conversion provider:
 DEFERRED / NOT CURRENT BLOCKER
@@ -215,3 +215,4 @@ Implementation must reuse the existing Data Center / Growth / Query / Intelligen
 ## Deferred
 
 Binance registration/conversion attribution is deferred until real traffic volume and business need justify connecting a trusted provider callback/API or equivalent source.
+# Supporting subsystem document. See docs/PROJECT_STATUS.md for current project state and priority.

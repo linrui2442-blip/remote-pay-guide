@@ -474,3 +474,8 @@ higher autonomy
 ```
 
 The project is no longer in foundational architecture design. It is now in production-integration closeout for the user's real three-platform operating requirement.
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

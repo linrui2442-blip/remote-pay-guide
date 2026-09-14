@@ -314,3 +314,8 @@ AI Intelligence 的判断目标不是只优化播放量，而是判断：
 - AI Gateway Production Line
 
 避免使用会误导为本地模型推理的“Local AI Production Line”。
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md

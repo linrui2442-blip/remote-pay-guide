@@ -123,3 +123,8 @@ docs/RUNTIME_DATA_POLICY.md
 docs/OS_LOOP_GAP_AUDIT.md
 docs/REMOTE_PAY_GUIDE_OS_BLUEPRINT.md
 ```
+# HISTORICAL / NON-CANONICAL
+#
+# Preserved for historical/debugging context only. Do not use to infer current requirements, runtime readiness, architecture, roadmap or priorities.
+# Current status: docs/PROJECT_STATUS.md
+# Current architecture: docs/ARCHITECTURE.md
