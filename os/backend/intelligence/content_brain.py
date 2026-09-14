@@ -69,6 +69,13 @@ def validate_human_directive_safety(human_brief="", human_constraints=None):
     return True
 
 
+def validate_generated_content_safety(data):
+    text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
+    if any(term in text for term in ("investment advice", "trading recommendation", "price prediction", "seed phrase", "private key", "guaranteed returns")):
+        raise ContentPlanGenerationError("unsafe content constraint")
+    return True
+
+
 def parse_content_plan_response(raw):
     if not isinstance(raw, str): raise ContentPlanGenerationError("AI response must be JSON text")
     value = raw.strip()
@@ -103,9 +110,7 @@ class LLMContentPlanProvider:
         from ai.models import AIRequest
         response = self.text_provider.request(AIRequest(task_type="content_plan", model=getattr(self.text_provider, "model", "auto") or "auto", prompt=prompt))
         data = parse_content_plan_response(response.get("output") if isinstance(response, dict) else getattr(response, "output", None))
-        safety = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
-        directive_safety = brief.lower()
-        if any(term in (safety + " " + directive_safety) for term in ("investment advice", "trading recommendation", "price prediction", "seed phrase", "private key", "what coin will rise", "buy what coin")): raise ContentPlanGenerationError("unsafe content constraint")
+        validate_generated_content_safety(data)
         locks = constraints.get("locked_fields", [])
         for key in ("topic", "angle", "target_audience"):
             if (key in locks or "locked_" + key in constraints) and constraints.get(key, constraints.get("locked_" + key)):
@@ -113,10 +118,11 @@ class LLMContentPlanProvider:
         cta_lock = constraints.get("cta_direction") or constraints.get("locked_cta_direction")
         if cta_lock and ("cta_direction" in locks or "locked_cta_direction" in constraints):
             data["cta"] = cta_lock
+        final_text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
         for required_item in constraints.get("must_include", []):
-            if str(required_item).lower() not in safety: raise ContentPlanGenerationError("must_include constraint not satisfied")
+            if str(required_item).lower() not in final_text: raise ContentPlanGenerationError("must_include constraint not satisfied")
         for forbidden in constraints.get("must_avoid", []):
-            if str(forbidden).lower() in safety: raise ContentPlanGenerationError("must_avoid constraint violated")
+            if str(forbidden).lower() in final_text: raise ContentPlanGenerationError("must_avoid constraint violated")
         data.update({"production_spec": {"provider": "github", "workflow": "render-short01.yml", "branch": "main"}, "content_id": context.get("content_id", "plan-preview"), "source_snapshot_id": snapshot.get("id") if isinstance(snapshot, dict) else None, "generation_mode": mode, "human_brief": brief, "human_constraints": constraints})
         return validate_content_plan(ContentPlan(**data))
 
