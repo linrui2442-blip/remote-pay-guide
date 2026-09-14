@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Protocol
-import json, sqlite3, os
+import json, sqlite3, os, re
 from datetime import datetime, timezone
 from data.database_path import database_path
 
@@ -46,7 +46,28 @@ class ContentPlanGenerationError(ValueError):
     pass
 
 
-_DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
+_DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "guarantee returns", "guarantees returns", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
+
+_SAFE_NEGATION_MARKERS = ("do not", "don't", "never", "avoid", "without", "should not", "must not", "don't share", "never share", "never ask", "do not ask", "not proof", "not request")
+
+
+def validate_safe_educational_crypto_text(text):
+    """Fail closed on dangerous instructions while allowing local warnings/prohibitions."""
+    value = str(text or "")
+    lowered = value.lower()
+    for term in _DANGEROUS_DIRECTIVE_TERMS:
+        start = 0
+        while True:
+            index = lowered.find(term, start)
+            if index < 0:
+                break
+            boundaries = [m.end() for m in re.finditer(r"[.!?;:,]\s*|(?:,?\s+)(?:but|however|yet|except|although|though)\b", lowered[:index])]
+            clause_start = max(boundaries, default=0)
+            prefix = lowered[clause_start:index]
+            if not any(marker in prefix for marker in _SAFE_NEGATION_MARKERS):
+                return False
+            start = index + len(term)
+    return True
 
 
 def validate_human_directive_safety(human_brief="", human_constraints=None):
@@ -71,7 +92,7 @@ def validate_human_directive_safety(human_brief="", human_constraints=None):
 
 def validate_generated_content_safety(data):
     text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
-    if any(term in text for term in ("investment advice", "trading recommendation", "price prediction", "seed phrase", "private key", "guaranteed returns")):
+    if not validate_safe_educational_crypto_text(text):
         raise ContentPlanGenerationError("unsafe content constraint")
     return True
 
@@ -163,7 +184,7 @@ def validate_content_plan(plan):
         if not getattr(plan, f, '').strip(): raise ValueError(f'{f} is required')
     forbidden=('seed phrase','private key','trading recommendation','price prediction','investment advice')
     text=' '.join((plan.hook,plan.script,plan.cta,plan.description)).lower()
-    if any(x in text for x in forbidden): raise ValueError('unsafe content constraint')
+    if not validate_safe_educational_crypto_text(text): raise ValueError('unsafe content constraint')
     if not isinstance(plan.production_spec, dict): raise ValueError('production_spec must be a dict')
     return plan
 
