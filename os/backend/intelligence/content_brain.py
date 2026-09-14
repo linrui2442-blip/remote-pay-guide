@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Protocol
-import json, sqlite3
+import json, sqlite3, os
 from datetime import datetime, timezone
 from data.database_path import database_path
 
@@ -26,6 +26,9 @@ class ContentPlan:
     novelty_status: str = "unverified"
     novelty_evidence: Dict[str, Any] = field(default_factory=dict)
     production_spec: Dict[str, Any] = field(default_factory=dict)
+    generation_mode: str = "autonomous"
+    human_brief: str = ""
+    human_constraints: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self):
         return asdict(self)
@@ -37,6 +40,89 @@ def build_content_brain_prompt(snapshot, strategy, history=None, production_hist
 
 class ContentPlanProvider(Protocol):
     def generate_content_plan(self, snapshot, context) -> ContentPlan: ...
+
+
+class ContentPlanGenerationError(ValueError):
+    pass
+
+
+_DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
+
+
+def validate_human_directive_safety(human_brief="", human_constraints=None):
+    """Reject positive unsafe instructions before any provider call."""
+    constraints = dict(human_constraints or {})
+    lowered = str(human_brief or "").lower()
+    for term in _DANGEROUS_DIRECTIVE_TERMS:
+        index = 0
+        while True:
+            index = lowered.find(term, index)
+            if index < 0: break
+            prefix = lowered[max(0, index - 48):index]
+            if not any(marker in prefix for marker in ("do not", "don't", "never", "avoid", "without")):
+                raise ContentPlanGenerationError("unsafe human directive")
+            index += len(term)
+    for item in constraints.get("must_include", []):
+        if any(term in str(item).lower() for term in _DANGEROUS_DIRECTIVE_TERMS): raise ContentPlanGenerationError("unsafe human directive")
+    for key in ("topic", "angle", "target_audience", "cta_direction", "locked_topic", "locked_angle", "locked_target_audience", "locked_cta_direction"):
+        if any(term in str(constraints.get(key) or "").lower() for term in _DANGEROUS_DIRECTIVE_TERMS): raise ContentPlanGenerationError("unsafe human directive")
+    return True
+
+
+def parse_content_plan_response(raw):
+    if not isinstance(raw, str): raise ContentPlanGenerationError("AI response must be JSON text")
+    value = raw.strip()
+    if value.startswith("```"):
+        lines = value.splitlines()
+        if len(lines) < 3 or not lines[-1].strip().startswith("```"): raise ContentPlanGenerationError("invalid JSON code fence")
+        value = "\n".join(lines[1:-1]).strip()
+    try: data = json.loads(value)
+    except (TypeError, ValueError) as exc: raise ContentPlanGenerationError("AI response is invalid JSON") from exc
+    if not isinstance(data, dict): raise ContentPlanGenerationError("AI response must be a JSON object")
+    required = ("topic", "angle", "target_audience", "hook", "script", "cta", "title", "description", "production_notes", "visual_direction", "reasoning_summary", "strategy_type")
+    for name in required:
+        if not isinstance(data.get(name), str) or not data[name].strip(): raise ContentPlanGenerationError(f"AI field {name} must be a non-empty string")
+    if not isinstance(data.get("hashtags", []), list) or not all(isinstance(x, str) and x.strip() for x in data.get("hashtags", [])): raise ContentPlanGenerationError("AI hashtags must be a list of strings")
+    return data
+
+
+class LLMContentPlanProvider:
+    def __init__(self, text_provider=None):
+        from ai.providers.text import TextProvider
+        self.text_provider = text_provider or TextProvider()
+
+    def readiness(self): return self.text_provider.readiness()
+
+    def generate_content_plan(self, snapshot, context):
+        context = dict(context or {}); brief = str(context.get("human_brief") or "").strip(); constraints = dict(context.get("human_constraints") or {})
+        mode = "directed" if brief or constraints else "autonomous"
+        validate_human_directive_safety(brief, constraints)
+        prompt = build_content_brain_prompt(snapshot, context.get("strategy", ""), context.get("history"), context.get("production_history"), context.get("novelty_history"))
+        if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
+        prompt += "\n\nReturn exactly one valid JSON object with string fields topic, angle, target_audience, hook, script, cta, title, description, production_notes, visual_direction, reasoning_summary, strategy_type and hashtags as list[str]. No markdown or prose outside JSON."
+        from ai.models import AIRequest
+        response = self.text_provider.request(AIRequest(task_type="content_plan", model=getattr(self.text_provider, "model", "auto") or "auto", prompt=prompt))
+        data = parse_content_plan_response(response.get("output") if isinstance(response, dict) else getattr(response, "output", None))
+        safety = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
+        directive_safety = brief.lower()
+        if any(term in (safety + " " + directive_safety) for term in ("investment advice", "trading recommendation", "price prediction", "seed phrase", "private key", "what coin will rise", "buy what coin")): raise ContentPlanGenerationError("unsafe content constraint")
+        locks = constraints.get("locked_fields", [])
+        for key in ("topic", "angle", "target_audience"):
+            if (key in locks or "locked_" + key in constraints) and constraints.get(key, constraints.get("locked_" + key)):
+                data[key] = constraints.get(key, constraints.get("locked_" + key))
+        cta_lock = constraints.get("cta_direction") or constraints.get("locked_cta_direction")
+        if cta_lock and ("cta_direction" in locks or "locked_cta_direction" in constraints):
+            data["cta"] = cta_lock
+        for required_item in constraints.get("must_include", []):
+            if str(required_item).lower() not in safety: raise ContentPlanGenerationError("must_include constraint not satisfied")
+        for forbidden in constraints.get("must_avoid", []):
+            if str(forbidden).lower() in safety: raise ContentPlanGenerationError("must_avoid constraint violated")
+        data.update({"production_spec": {"provider": "github", "workflow": "render-short01.yml", "branch": "main"}, "content_id": context.get("content_id", "plan-preview"), "source_snapshot_id": snapshot.get("id") if isinstance(snapshot, dict) else None, "generation_mode": mode, "human_brief": brief, "human_constraints": constraints})
+        return validate_content_plan(ContentPlan(**data))
+
+
+def select_content_plan_provider():
+    return LLMContentPlanProvider() if os.getenv("OS_CONTENT_PLAN_PROVIDER", "deterministic").strip().lower() == "llm" else DeterministicContentPlanProvider()
 
 
 class DeterministicContentPlanProvider:
@@ -69,7 +155,7 @@ def _conn():
 def validate_content_plan(plan):
     for f in ('content_id','topic','hook','script','cta','title'):
         if not getattr(plan, f, '').strip(): raise ValueError(f'{f} is required')
-    forbidden=('seed phrase','private key','trading recommendation','price prediction')
+    forbidden=('seed phrase','private key','trading recommendation','price prediction','investment advice')
     text=' '.join((plan.hook,plan.script,plan.cta,plan.description)).lower()
     if any(x in text for x in forbidden): raise ValueError('unsafe content constraint')
     if not isinstance(plan.production_spec, dict): raise ValueError('production_spec must be a dict')

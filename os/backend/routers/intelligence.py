@@ -1,4 +1,6 @@
+import os
 from fastapi import APIRouter, HTTPException
+from ai.providers.text import TextProviderError
 from pydantic import BaseModel, Field
 
 from intelligence.feedback_bridge import (
@@ -10,7 +12,7 @@ from intelligence.feedback_bridge import (
 from intelligence.insights import get_insights, get_video_insight
 from intelligence.manager import analyze_video
 from production.tasks.execution import get_execution_readiness
-from intelligence.content_brain import DeterministicContentPlanProvider, save_plan, get_plan, list_plans, update_plan, set_plan_status
+from intelligence.content_brain import LLMContentPlanProvider, select_content_plan_provider, save_plan, get_plan, list_plans, update_plan, set_plan_status
 from intelligence.task_generator import generate_production_task
 from intelligence.production_spec import build_production_spec
 from intelligence.novelty import evaluate_content_plan_novelty
@@ -24,6 +26,11 @@ router = APIRouter()
 class AccountFeedbackRefreshRequest(BaseModel):
     platform: str | None = None
     limit: int = Field(default=10, ge=1, le=200)
+
+
+class ContentPlanGenerationRequest(BaseModel):
+    human_brief: str | None = None
+    human_constraints: dict | None = None
 
 
 @router.post('/intelligence/analyze/{video_id}')
@@ -102,11 +109,25 @@ def status():
     }
 
 @router.post('/intelligence/feedback/{snapshot_id}/content-plan')
-def generate_content_plan(snapshot_id: int):
+def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationRequest | None = None):
     snapshot = get_feedback_snapshot(snapshot_id)
     if not snapshot: raise HTTPException(status_code=404, detail='snapshot not found')
-    plan = DeterministicContentPlanProvider().generate_content_plan(snapshot, {})
-    return {'plan': save_plan(plan, snapshot_id), 'runtime': {'implementation_ready': True, 'runtime_ready': False}}
+    context = {}
+    if request:
+        context = {'human_brief': request.human_brief or '', 'human_constraints': request.human_constraints or {}}
+    provider = select_content_plan_provider()
+    runtime = provider.readiness() if hasattr(provider, 'readiness') else {'implementation_ready': True, 'runtime_ready': True}
+    if not runtime.get('runtime_ready') and os.getenv('OS_CONTENT_PLAN_PROVIDER', 'deterministic').lower() == 'llm':
+        raise HTTPException(status_code=503, detail={'error': 'provider not configured', 'runtime_ready': False, 'missing_configuration': runtime.get('missing_configuration', [])})
+    try:
+        plan = provider.generate_content_plan(snapshot, context)
+    except TextProviderError as exc:
+        message = str(exc)
+        status = 504 if 'timeout' in message else 502
+        raise HTTPException(status_code=status, detail='external text provider failure') from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {'plan': save_plan(plan, snapshot_id), 'runtime': {**runtime, 'real_ai': isinstance(provider, LLMContentPlanProvider)}}
 
 @router.get('/intelligence/content-plans')
 def content_plans(): return list_plans()
