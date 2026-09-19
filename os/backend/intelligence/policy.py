@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from intelligence.content_brain import ContentPlan, get_plan, validate_content_plan
 from intelligence.content_plan_service import evaluate_and_persist_novelty
 from data.database_path import database_path
+from intelligence.policy_signals import collect_policy_signals
 
 POLICY_VERSION = 'g3-v1'
 DECISIONS = {'AUTO','REVIEW','BLOCK'}
@@ -18,7 +19,9 @@ def _conn():
 
 def _canonical(value): return json.dumps(value, sort_keys=True, separators=(',',':'), ensure_ascii=False)
 def source_fingerprint(plan_record, signals):
-    payload={'policy_version':POLICY_VERSION,'content_plan_id':plan_record['id'],'revision':plan_record['revision'],'status':plan_record['status'],'plan':plan_record['plan'],'signals':signals}
+    plan=plan_record.get('plan') or {}
+    stable_plan={k:plan.get(k) for k in ('content_id','topic','angle','target_audience','hook','script','cta','title','description','visual_direction','production_notes','strategy_type')}
+    payload={'policy_version':POLICY_VERSION,'content_plan_id':plan_record['id'],'revision':plan_record['revision'],'status':plan_record['status'],'plan':stable_plan,'signals':signals}
     return hashlib.sha256(_canonical(payload).encode()).hexdigest()
 
 def evaluate_policy_signals(plan_record, signals):
@@ -46,21 +49,16 @@ def _row(r):
     d=dict(r); d['reason_codes']=json.loads(d.pop('reason_codes_json')); d['evidence']=json.loads(d.pop('evidence_json')); d['current']=d.get('superseded_at') is None; return d
 
 def _signals_for_plan(p):
-    plan=p['plan']; n=plan.get('novelty_status'); ev=plan.get('novelty_evidence') or {}
-    if ev.get('evaluated_revision') != p.get('revision'):
-        try: p=evaluate_and_persist_novelty(p['id']); plan=p['plan']; n=plan.get('novelty_status'); ev=plan.get('novelty_evidence') or {}
-        except Exception: n='UNKNOWN'
-    safety='PASS'
-    try: validate_content_plan(ContentPlan(**plan))
-    except Exception: safety='BLOCK'
-    novelty=n if n in {'PASS','WARN','BLOCK'} else 'UNKNOWN'
-    return {'safety':safety,'novelty':novelty,'duplicate_risk':'UNKNOWN','account_health':'UNKNOWN','platform_health':'UNKNOWN','frequency':'UNKNOWN','business':'UNKNOWN','quality':'UNKNOWN','cost':'UNKNOWN','ai_confidence':'UNKNOWN'}, p
+    collected=collect_policy_signals(p)
+    return collected['signals'], p, collected['evidence']
 
 def evaluate_policy(plan_id, signals=None):
     p=get_plan(plan_id)
     if not p: raise KeyError('plan not found')
-    current, p = (_signals_for_plan(p) if signals is None else (signals,p))
-    result=evaluate_policy_signals(p,current); fp=source_fingerprint(p,current)
+    evidence={}
+    if signals is None: current, p, evidence = _signals_for_plan(p)
+    else: current, p = signals, p
+    result=evaluate_policy_signals(p,current); result['evidence']['policy_signal_evidence']=evidence; fp=source_fingerprint(p,{'signals':current,'evidence':evidence})
     with _conn() as c:
         c.execute('BEGIN IMMEDIATE')
         row=c.execute('SELECT * FROM intelligence_policy_decisions WHERE content_plan_id=? AND content_plan_revision=? AND policy_version=? AND source_fingerprint=? AND superseded_at IS NULL',(plan_id,p['revision'],POLICY_VERSION,fp)).fetchone()

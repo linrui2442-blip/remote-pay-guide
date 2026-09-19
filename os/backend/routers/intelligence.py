@@ -19,6 +19,7 @@ from intelligence.novelty import evaluate_content_plan_novelty
 from intelligence.content_plan_service import approve_plan, materialize_plan
 from intelligence.feedback_bridge import get_feedback_snapshot
 from intelligence.policy import evaluate_policy, get_current_policy_decision, list_policy_history, list_review_queue
+from intelligence.autonomy import get_effective_authorization, set_policy_override, clear_policy_override
 
 
 router = APIRouter()
@@ -155,6 +156,21 @@ def content_plan_policy(plan_id: int):
         current=get_current_policy_decision(plan_id)
         return {'plan_id':plan_id,'current_revision':p['revision'],'current_decision':current,'policy_status': 'UNEVALUATED' if not list_policy_history(plan_id) else ('STALE_REVIEW_REQUIRED' if current is None else current['decision'])}
     except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@router.get('/intelligence/content-plans/{plan_id}/policy/effective')
+def content_plan_policy_effective(plan_id: int):
+    try: return get_effective_authorization(plan_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@router.post('/intelligence/content-plans/{plan_id}/policy/override')
+def override_content_plan_policy(plan_id: int, request: dict):
+    try: return set_policy_override(plan_id, request.get('override_decision'), request.get('reason'))
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+@router.post('/intelligence/content-plans/{plan_id}/policy/override/clear')
+def clear_content_plan_policy_override(plan_id: int, request: dict):
+    try: return clear_policy_override(plan_id, request.get('reason'))
+    except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 @router.patch('/intelligence/content-plans/{plan_id}')
 def edit_content_plan(plan_id: int, changes: dict): return update_plan(plan_id, changes)
