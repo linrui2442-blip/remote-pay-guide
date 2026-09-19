@@ -47,7 +47,27 @@ Content → Binance referral click attribution:
 REAL GA4 E2E VERIFIED (2026-09-09)
 
 GA4 → Remote Pay Guide OS Data Center import:
-IMPLEMENTATION PRESENT; post-registration real attributable runtime evidence remains pending (see docs/PROJECT_STATUS.md).
+REAL E2E VERIFIED.
+
+Verified chain:
+
+GA4 Standard Reporting
+→ customEvent:content_id / customEvent:src
+→ canonical attribution.ga4.sync
+→ GA4DataAPIClient
+→ Data Center persistence
+→ Intelligence feedback snapshot
+
+Standard Reporting evidence:
+
+```text
+content_id = short12
+src = yt_short12
+binance_referral_click = 1
+page_view attribution = true
+referral attribution = true
+idempotent replay = true
+```
 
 Binance registration conversion provider:
 DEFERRED / NOT CURRENT BLOCKER
@@ -193,11 +213,15 @@ No-data and aggregate-window semantics remain distinct from real zero values.
 
 ---
 
+## Standard Reporting / OS Ingestion Evidence
+
+The short04 evidence above remains valid as Realtime browser-to-GA4 proof. The short12 evidence is the separate Standard Reporting-to-OS canonical ingestion proof: custom dimensions persisted through reporting, canonical identity resolution succeeded, Data Center exposed page_view and referral signals, Intelligence consumed the funnel, and replay preserved the existing unique source/event_id invariant.
+
 ## Next Analytics Development
 
-GA4 → OS Data Center ingestion remains important, but it is no longer the immediate launch blocker because the user requires three-platform live publishing first.
+GA4 ingestion is now a verified canonical runtime capability. Future analytics work concerns operational scheduling, additional conversion sources and feedback-learning integration rather than proving base GA4 ingestion.
 
-Target GA4 signals for later Data Center import:
+Future additional GA4 signals for Data Center expansion:
 
 ```text
 content_id

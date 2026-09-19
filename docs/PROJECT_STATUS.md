@@ -32,11 +32,13 @@ These labels describe implementation and verified contracts where applicable; co
 
 ## Current breakpoints
 
-### BREAKPOINT A — GA4 attribution runtime
+### Completed milestone — GA4 attribution runtime
 
-`D10_GA4_STATUS=PARTIAL`.
+`G1_D10_REAL_GA4_RUNTIME=CLOSED`.
+`D10_GA4_STATUS=CLOSED`.
+`GA4_ATTRIBUTION_LIVE_E2E=PASS`.
 
-The `customEvent:content_id` and `customEvent:src` dimensions are registered, but post-registration attributable data has not been proven through the real GA4 Data API into the OS Data Center and Intelligence path. Do not call this CLOSED or PASS.
+Standard Reporting proved `content_id=short12`, `src=yt_short12`, and `binance_referral_click=1`, followed by canonical `ga4.sync`, real Data API ingestion into an isolated database, Data Center visibility, Intelligence feedback analysis, and idempotent replay. Binance registration, deposit, trading and revenue conversion remain deferred.
 
 ### Completed milestone — real AI content brain
 
