@@ -18,6 +18,7 @@ from intelligence.production_spec import build_production_spec
 from intelligence.novelty import evaluate_content_plan_novelty
 from intelligence.content_plan_service import approve_plan, materialize_plan
 from intelligence.feedback_bridge import get_feedback_snapshot
+from intelligence.policy import evaluate_policy, get_current_policy_decision, list_policy_history, list_review_queue
 
 
 router = APIRouter()
@@ -132,11 +133,28 @@ def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationReques
 @router.get('/intelligence/content-plans')
 def content_plans(): return list_plans()
 
+@router.get('/intelligence/content-plans/policy/review-queue')
+def policy_review_queue(): return {'items': list_review_queue()}
+
 @router.get('/intelligence/content-plans/{plan_id}')
 def content_plan(plan_id: int):
     value=get_plan(plan_id)
     if not value: raise HTTPException(status_code=404, detail='plan not found')
     return value
+
+@router.post('/intelligence/content-plans/{plan_id}/policy/evaluate')
+def evaluate_content_plan_policy(plan_id: int):
+    try: return evaluate_policy(plan_id)
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+@router.get('/intelligence/content-plans/{plan_id}/policy')
+def content_plan_policy(plan_id: int):
+    try:
+        p=get_plan(plan_id)
+        if not p: raise KeyError('plan not found')
+        current=get_current_policy_decision(plan_id)
+        return {'plan_id':plan_id,'current_revision':p['revision'],'current_decision':current,'policy_status': 'UNEVALUATED' if not list_policy_history(plan_id) else ('STALE_REVIEW_REQUIRED' if current is None else current['decision'])}
+    except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @router.patch('/intelligence/content-plans/{plan_id}')
 def edit_content_plan(plan_id: int, changes: dict): return update_plan(plan_id, changes)

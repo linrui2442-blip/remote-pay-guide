@@ -183,7 +183,7 @@ def validate_content_plan(plan):
     for f in ('content_id','topic','hook','script','cta','title'):
         if not getattr(plan, f, '').strip(): raise ValueError(f'{f} is required')
     forbidden=('seed phrase','private key','trading recommendation','price prediction','investment advice')
-    text=' '.join((plan.hook,plan.script,plan.cta,plan.description)).lower()
+    text=' '.join((plan.topic,plan.angle,plan.hook,plan.script,plan.cta,plan.title,plan.description,plan.visual_direction,plan.production_notes)).lower()
     if not validate_safe_educational_crypto_text(text): raise ValueError('unsafe content constraint')
     if not isinstance(plan.production_spec, dict): raise ValueError('production_spec must be a dict')
     return plan
