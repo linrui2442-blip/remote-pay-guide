@@ -30,6 +30,19 @@ G2 real AI content brain is closed: the OpenAI-compatible TextProvider, runtime 
 
 These labels describe implementation and verified contracts where applicable; code presence is not automatically a real external-runtime guarantee.
 
+### Completed milestone — Autonomous Policy Engine
+
+`G3_AUTONOMOUS_POLICY_ENGINE=CLOSED`.
+
+The policy engine persists revision-bound, policy-version-bound raw `PolicyDecision` rows with source fingerprints, immutable history, concurrency/idempotency protection and `AUTO` / `REVIEW` / `BLOCK` outcomes. It combines canonical safety and novelty evidence, duplicate risk derived from novelty, account/platform health, business evidence, generation assurance, human override and clear audit, strict request contracts, autonomy enablement, kill switch, review queue and effective authorization.
+
+`POLICY_VERSION=g3-v2`
+`POLICY_STAGE=content_plan`
+
+For the ContentPlan stage, required gates are `safety`, `novelty`, `duplicate_risk`, `account_health`, `platform_health`, `business` and `ai_confidence` (whose canonical meaning is generation assurance, not model probability). `frequency`, `quality` and `cost` are explicitly `NOT_APPLICABLE`, not fake `PASS`: they are deferred respectively to G5 publishing policy, the G4-D asset quality gate and G4 production/provider cost policy.
+
+G3 produces authorization only. Even when raw `AUTO` and effective continuation are allowed, G3 does not approve, materialize, create or run a ProductionTask, render, create a VideoAsset or PublishTask, or publish. Those downstream consumers begin in G4/G5.
+
 ## Current breakpoints
 
 ### Completed milestone — GA4 attribution runtime
@@ -50,7 +63,11 @@ Standard Reporting proved `content_id=short12`, `src=yt_short12`, and `binance_r
 
 `AUTONOMOUS_ORCHESTRATION=PARTIAL`.
 
-Many automatic primitives exist, but the policy-driven data → decision → production → publish → feedback loop is not closed. The current canonical flow still requires human actions.
+The G3 policy and authorization layer is complete. The full autonomous loop is not yet closed because G4 autonomous production, G5 autonomous publishing and the later feedback-learning stages remain unfinished. The current human-gated path remains the safe development, validation, fallback, review, recovery and override mode.
+
+`NEXT_MILESTONE=G4 Autonomous Production`
+`G4_STATUS=NOT_STARTED`
+`G5_STATUS=NOT_STARTED`
 
 ## Official roadmap
 

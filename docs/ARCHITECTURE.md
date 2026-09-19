@@ -22,6 +22,16 @@ Data ingestion → Data Center → Intelligence / AI Brain → ContentPlan
 → Novelty / Safety / Quality / Business Policy → AUTO / REVIEW / BLOCK
 ```
 
+The implemented policy layer is stage-aware:
+
+```text
+ContentPlan Policy Stage → Effective Authorization
+→ future G4 Production → future G5 Publishing
+→ attribution → learning
+```
+
+At the ContentPlan stage, `safety`, `novelty`, `duplicate_risk`, `account_health`, `platform_health`, `business` and generation assurance are required. `frequency`, `quality` and `cost` are `NOT_APPLICABLE` (not `PASS`) until their formal G5 or G4 gates exist.
+
 The implemented safe path is:
 
 ```text
@@ -33,9 +43,9 @@ Manual and autonomous modes share one lifecycle. The difference is who initiates
 
 ## Target policy decisions
 
-`AUTO` proceeds only when novelty, AI confidence, quality, duplicate risk, account/platform health, frequency, performance, business, cost and safety constraints pass. `REVIEW` enters a human queue for low confidence, borderline novelty, unusual strategy/CTA, account warnings or policy uncertainty. `BLOCK` stops for duplicates, invalid assets, broken lifecycle, unsafe accounts/content, missing credentials, rate risk or inconsistent state. This is target architecture, not an implementation claim.
+`G3 Autonomous Policy Engine` is implemented and verified with persisted raw `AUTO` / `REVIEW` / `BLOCK` decisions, revision and policy-version binding, source fingerprints, history, concurrency/idempotency, evidence collection, human override, autonomy controls and effective authorization. At the ContentPlan stage, the legacy gate name `ai_confidence` means `generation assurance`, not model self-reported confidence or probability. Deferred gates are explicitly `NOT_APPLICABLE`: publishing frequency/cadence/rate/account controls belong to G5; production/provider cost policy and the asset quality gate belong to G4.
 
-For `AUTO`, the canonical continuation is approve → materialize → run → render → asset quality gate → schedule → publish → attribution → learning. `REVIEW` and `BLOCK` have no downstream execution until explicitly authorized.
+G3 is an authorization layer only. Raw or effective `AUTO` does not approve, materialize, run, render, create assets or publish. Automatic downstream consumption begins in G4/G5. `REVIEW` and `BLOCK` have no downstream execution until explicitly authorized.
 
 ## Canonical runtime components
 
@@ -44,7 +54,7 @@ For `AUTO`, the canonical continuation is approve → materialize → run → re
 - `os/database/os.db`: runtime state, never disposable test output.
 - GitHub artifact → GitHub Pages → VideoAsset → official provider adapters: formal media/publishing path.
 
-The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; policy-driven AUTO/REVIEW/BLOCK orchestration remains future G3 work.
+The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization is implemented and verified, while automatic downstream consumption remains future G4/G5 work.
 
 ## Compatibility and legacy
 
