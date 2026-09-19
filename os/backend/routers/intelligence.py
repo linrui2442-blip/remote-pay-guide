@@ -1,7 +1,8 @@
 import os
 from fastapi import APIRouter, HTTPException
 from ai.providers.text import TextProviderError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, Extra
+from typing import Literal
 
 from intelligence.feedback_bridge import (
     get_content_feedback_history,
@@ -33,6 +34,15 @@ class AccountFeedbackRefreshRequest(BaseModel):
 class ContentPlanGenerationRequest(BaseModel):
     human_brief: str | None = None
     human_constraints: dict | None = None
+
+class OverridePolicyRequest(BaseModel):
+    override_decision: Literal['AUTO','REVIEW','BLOCK']
+    reason: str = Field(min_length=1, max_length=500)
+    class Config: extra = Extra.forbid
+
+class ClearPolicyOverrideRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    class Config: extra = Extra.forbid
 
 
 @router.post('/intelligence/analyze/{video_id}')
@@ -163,13 +173,13 @@ def content_plan_policy_effective(plan_id: int):
     except KeyError as exc: raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @router.post('/intelligence/content-plans/{plan_id}/policy/override')
-def override_content_plan_policy(plan_id: int, request: dict):
-    try: return set_policy_override(plan_id, request.get('override_decision'), request.get('reason'))
+def override_content_plan_policy(plan_id: int, request: OverridePolicyRequest):
+    try: return set_policy_override(plan_id, request.override_decision, request.reason)
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 @router.post('/intelligence/content-plans/{plan_id}/policy/override/clear')
-def clear_content_plan_policy_override(plan_id: int, request: dict):
-    try: return clear_policy_override(plan_id, request.get('reason'))
+def clear_content_plan_policy_override(plan_id: int, request: ClearPolicyOverrideRequest):
+    try: return clear_policy_override(plan_id, request.reason)
     except ValueError as exc: raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 @router.patch('/intelligence/content-plans/{plan_id}')

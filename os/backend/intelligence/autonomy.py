@@ -57,6 +57,9 @@ def _conn():
             cleared_at TEXT
         )"""
     )
+    columns={row[1] for row in conn.execute('PRAGMA table_info(intelligence_policy_overrides)').fetchall()}
+    for name in ('clear_reason','cleared_by'):
+        if name not in columns: conn.execute(f'ALTER TABLE intelligence_policy_overrides ADD COLUMN {name} TEXT')
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_policy_override_current "
         "ON intelligence_policy_overrides(content_plan_id, content_plan_revision) "
@@ -178,11 +181,13 @@ def clear_policy_override(plan_id, reason, *, actor=None):
     raw = policy.get_current_policy_decision(plan_id)
     if not raw:
         raise ValueError("current policy decision required")
+    current=get_current_override(plan_id)
+    if not current: raise ValueError('current override not found')
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute(
-            "UPDATE intelligence_policy_overrides SET cleared_at=?, superseded_at=? WHERE content_plan_id=? AND content_plan_revision=? AND superseded_at IS NULL AND cleared_at IS NULL",
-            (_now(), _now(), plan_id, raw["content_plan_revision"]),
+            "UPDATE intelligence_policy_overrides SET cleared_at=?, clear_reason=?, cleared_by=?, superseded_at=? WHERE content_plan_id=? AND content_plan_revision=? AND policy_decision_id=? AND superseded_at IS NULL AND cleared_at IS NULL",
+            (_now(), _sanitize_reason(reason), _ACTOR, _now(), plan_id, raw["content_plan_revision"], raw["id"]),
         )
         conn.commit()
     return get_effective_authorization(plan_id)
