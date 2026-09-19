@@ -225,13 +225,15 @@ def update_plan(plan_id, changes):
     p.generation_evidence = evidence
     with _conn() as c: c.execute('UPDATE intelligence_content_plans SET payload_json=?,revision=revision+1,status=\'preview\',approved_revision=NULL,updated_at=? WHERE id=?',(json.dumps(p.to_dict(),ensure_ascii=False),datetime.now(timezone.utc).isoformat(),plan_id)); c.commit()
     return get_plan(plan_id)
-def set_plan_status(plan_id,status):
+def set_plan_status(plan_id,status,expected_revision=None):
     row=get_plan(plan_id)
     if not row: raise KeyError('plan not found')
+    if expected_revision is not None and row['revision'] != expected_revision: raise ValueError('revision status conflict')
     allowed={'preview':{'approved','superseded'},'approved':{'materialized','superseded'},'materialized':set(),'superseded':set()}
     if status not in allowed.get(row['status'],set()): raise ValueError('invalid plan status transition')
     with _conn() as c:
-        if status=='approved': c.execute('UPDATE intelligence_content_plans SET status=?,approved_revision=revision,updated_at=? WHERE id=?',(status,datetime.now(timezone.utc).isoformat(),plan_id))
-        else: c.execute('UPDATE intelligence_content_plans SET status=?,updated_at=? WHERE id=?',(status,datetime.now(timezone.utc).isoformat(),plan_id))
+        if status=='approved': cur=c.execute('UPDATE intelligence_content_plans SET status=?,approved_revision=revision,updated_at=? WHERE id=? AND status=? AND revision=?',(status,datetime.now(timezone.utc).isoformat(),plan_id,row['status'],row['revision']))
+        else: cur=c.execute('UPDATE intelligence_content_plans SET status=?,updated_at=? WHERE id=? AND status=? AND revision=?',(status,datetime.now(timezone.utc).isoformat(),plan_id,row['status'],row['revision']))
         c.commit()
+        if cur.rowcount != 1: raise ValueError('concurrent plan status conflict')
     return get_plan(plan_id)
