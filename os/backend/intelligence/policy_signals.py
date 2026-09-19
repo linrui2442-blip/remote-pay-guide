@@ -5,6 +5,14 @@ from accounts.manager import get_account
 from data.sync_state import get_sync_state
 from data.platform_capabilities import get_platform_capability
 
+CONTENT_PLAN_STAGE = 'content_plan'
+DEFERRED_GATES = {
+    'frequency': 'DEFERRED_TO_PUBLISH_POLICY',
+    'quality': 'DEFERRED_TO_ASSET_QUALITY_GATE',
+    'cost': 'DEFERRED_TO_PRODUCTION_POLICY',
+}
+REQUIRED_GATES = ('safety','novelty','duplicate_risk','account_health','platform_health','business','ai_confidence')
+
 def _business(snapshot):
     if not snapshot: return 'UNKNOWN','SOURCE_SNAPSHOT_MISSING'
     f=snapshot.get('feedback') or {}
@@ -47,5 +55,23 @@ def collect_policy_signals(plan_record):
         else: signals['platform_health']='UNKNOWN'
         signals['business'], business_reason=_business(snapshot); evidence['business']={'reason_code':business_reason,'performance_score':(snapshot.get('feedback') or {}).get('performance_score',snapshot.get('performance_score',0)),'intent_events':(snapshot.get('feedback') or {}).get('intent_events',0),'referral_clicks':(snapshot.get('feedback') or {}).get('referral_clicks',0),'conversions':(snapshot.get('feedback') or {}).get('conversions',0),'conversion_value':(snapshot.get('feedback') or {}).get('conversion_value',0)}
         evidence['sync_health']={'content_status':state.get('content_status') if state else None,'analytics_status':state.get('analytics_status') if state else None,'last_success_at':state.get('last_success_at') if state else None,'last_error_at':state.get('last_error_at') if state else None}
-    for key in ('frequency','quality','cost','ai_confidence'): signals[key]='UNKNOWN'
+    for key, reason in DEFERRED_GATES.items():
+        signals[key] = 'NOT_APPLICABLE'
+    provider = str(plan.get('generation_provider') or 'unknown').lower()
+    generation = plan.get('generation_evidence') or {}
+    evidence['generation_assurance'] = {
+        'semantic': 'generation_assurance_not_model_probability',
+        'provider': provider,
+        'evidence': {k: v for k, v in generation.items() if k not in {'api_key','authorization','base_url'}},
+    }
+    trusted = generation.get('source') == 'content_plan_provider' and generation.get('schema_version') == 1
+    if trusted and generation.get('current_revision_origin') == 'human_edit' and generation.get('canonical_validation_passed') is True:
+        signals['ai_confidence'] = 'PASS'; evidence['ai_confidence'] = {'reason_code':'HUMAN_EDITED_REVISION_VALIDATED','semantic':'generation_assurance_not_model_probability'}
+    elif trusted and provider == 'llm' and all(generation.get(k) is True for k in ('provider_response_received','json_parsed','schema_validated','safety_validated','constraints_validated')):
+        signals['ai_confidence'] = 'PASS'; evidence['ai_confidence'] = {'reason_code':'LLM_GENERATION_ASSURANCE_PASS','semantic':'generation_assurance_not_model_probability'}
+    elif trusted and provider == 'deterministic' and generation.get('provider') == 'deterministic' and generation.get('content_plan_constructed') is True and generation.get('canonical_validation_passed') is True:
+        signals['ai_confidence'] = 'PASS'; evidence['ai_confidence'] = {'reason_code':'DETERMINISTIC_GENERATION_ASSURANCE_PASS','semantic':'generation_assurance_not_model_probability'}
+    else:
+        signals['ai_confidence'] = 'UNKNOWN'; evidence['ai_confidence'] = {'reason_code':'GENERATION_ASSURANCE_UNKNOWN','semantic':'generation_assurance_not_model_probability'}
+    evidence['gate_applicability'] = {'stage': CONTENT_PLAN_STAGE, 'required': list(REQUIRED_GATES), 'deferred': dict(DEFERRED_GATES)}
     return {'signals':signals,'evidence':evidence}

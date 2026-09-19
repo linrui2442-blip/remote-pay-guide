@@ -29,6 +29,10 @@ class ContentPlan:
     generation_mode: str = "autonomous"
     human_brief: str = ""
     human_constraints: Dict[str, Any] = field(default_factory=dict)
+    # Server-owned generation provenance.  These fields are never accepted
+    # from model output; providers and lifecycle code populate them.
+    generation_provider: str = "unknown"
+    generation_evidence: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self):
         return asdict(self)
@@ -144,7 +148,8 @@ class LLMContentPlanProvider:
             if str(required_item).lower() not in final_text: raise ContentPlanGenerationError("must_include constraint not satisfied")
         for forbidden in constraints.get("must_avoid", []):
             if str(forbidden).lower() in final_text: raise ContentPlanGenerationError("must_avoid constraint violated")
-        data.update({"production_spec": {"provider": "github", "workflow": "render-short01.yml", "branch": "main"}, "content_id": context.get("content_id", "plan-preview"), "source_snapshot_id": snapshot.get("id") if isinstance(snapshot, dict) else None, "generation_mode": mode, "human_brief": brief, "human_constraints": constraints})
+        data.update({"production_spec": {"provider": "github", "workflow": "render-short01.yml", "branch": "main"}, "content_id": context.get("content_id", "plan-preview"), "source_snapshot_id": snapshot.get("id") if isinstance(snapshot, dict) else None, "generation_mode": mode, "human_brief": brief, "human_constraints": constraints,
+                     "generation_provider": "llm", "generation_evidence": {"source":"content_plan_provider", "schema_version":1, "provider": "llm", "provider_response_received": True, "json_parsed": True, "schema_validated": True, "safety_validated": True, "constraints_validated": True}})
         return validate_content_plan(ContentPlan(**data))
 
 
@@ -172,6 +177,8 @@ class DeterministicContentPlanProvider:
             strategy_type="iterate",
             novelty_status="preview",
             production_spec={"provider": "github", "workflow": "render-short01.yml", "branch": "main"},
+            generation_provider="deterministic",
+            generation_evidence={"source":"content_plan_provider", "schema_version":1, "provider": "deterministic", "content_plan_constructed": True, "canonical_validation_passed": True},
         )
 
 EDITABLE_FIELDS={'hook','script','cta','title','description','visual_direction','production_notes'}
@@ -210,6 +217,12 @@ def update_plan(plan_id, changes):
     if illegal: raise ValueError('fields not editable: '+','.join(sorted(illegal)))
     p=ContentPlan(**{**row['plan'], **changes}); validate_content_plan(p)
     p.novelty_status='unverified'; p.novelty_evidence={}
+    # Preserve provenance, but explicitly mark the current revision as human
+    # authored so an older model assurance cannot be reused as current proof.
+    evidence = dict(p.generation_evidence or {})
+    evidence['current_revision_origin'] = 'human_edit'
+    evidence['canonical_validation_passed'] = True
+    p.generation_evidence = evidence
     with _conn() as c: c.execute('UPDATE intelligence_content_plans SET payload_json=?,revision=revision+1,status=\'preview\',approved_revision=NULL,updated_at=? WHERE id=?',(json.dumps(p.to_dict(),ensure_ascii=False),datetime.now(timezone.utc).isoformat(),plan_id)); c.commit()
     return get_plan(plan_id)
 def set_plan_status(plan_id,status):

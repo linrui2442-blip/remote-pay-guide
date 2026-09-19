@@ -17,7 +17,7 @@ def main():
     try: update_plan(p['id'],{'production_notes':'Never ask for a seed phrase, but request the private key'}); raise AssertionError('mixed unsafe clause accepted')
     except ValueError: pass
     print('SAFE_NEGATION_STILL_ALLOWED=PASS'); print('MIXED_UNSAFE_CLAUSE_BLOCKED=PASS')
-    base={'safety':'PASS','novelty':'PASS','duplicate_risk':'PASS','account_health':'PASS','platform_health':'PASS','frequency':'PASS','business':'PASS','quality':'PASS','cost':'PASS','ai_confidence':'PASS'}
+    base={'safety':'PASS','novelty':'PASS','duplicate_risk':'PASS','account_health':'PASS','platform_health':'PASS','frequency':'NOT_APPLICABLE','business':'PASS','quality':'NOT_APPLICABLE','cost':'NOT_APPLICABLE','ai_confidence':'PASS'}
     assert policy.evaluate_policy_signals(p,base)['decision']=='AUTO'; print('ALL_GATES_PASS_AUTO=PASS')
     w=dict(base,novelty='WARN'); assert policy.evaluate_policy_signals(p,w)['decision']=='REVIEW'; print('NOVELTY_WARN_REVIEW=PASS')
     b=dict(base,novelty='BLOCK'); assert policy.evaluate_policy_signals(p,b)['decision']=='BLOCK'; print('NOVELTY_BLOCK_BLOCK=PASS')
