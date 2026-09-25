@@ -131,9 +131,18 @@ def main():
     duplicate_plan, duplicate_task = _prepared("claim-duplicate")
     with sqlite3.connect(DB) as db:
         db.execute("DROP INDEX IF EXISTS uq_runtime_jobs_task_id")
-        db.execute("INSERT INTO runtime_jobs(task_id,job_type,provider,status,input,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", (duplicate_task.id, "github_runtime", "github", "created", "{}", "now", "now")); db.commit()
-    try: claim_authorized_production_execution(duplicate_plan); raise AssertionError("duplicate jobs accepted")
-    except ValueError: pass
+        for _ in range(2):
+            db.execute("INSERT INTO runtime_jobs(task_id,job_type,provider,status,input,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", (duplicate_task.id, "github_runtime", "github", "created", "{}", "now", "now"))
+        db.commit()
+    duplicate_count = len(get_jobs_for_task(duplicate_task.id))
+    assert duplicate_count >= 2
+    try:
+        claim_authorized_production_execution(duplicate_plan)
+    except ValueError as exc:
+        assert "multiple RuntimeJobs" in str(exc)
+    else:
+        raise AssertionError("duplicate jobs accepted")
+    assert len(get_jobs_for_task(duplicate_task.id)) == duplicate_count
     print("MULTIPLE_RUNTIME_JOBS_FAIL_CLOSED=PASS")
 
     # Transaction rollback before job insert leaves the task claimable.
