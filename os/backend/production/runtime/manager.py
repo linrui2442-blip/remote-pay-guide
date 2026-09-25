@@ -46,6 +46,9 @@ def init_runtime_table():
         created_at TEXT,
         updated_at TEXT
     )""")
+    duplicates = conn.execute("SELECT task_id, COUNT(*) AS n FROM runtime_jobs WHERE task_id IS NOT NULL GROUP BY task_id HAVING COUNT(*) > 1").fetchall()
+    if not duplicates:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_runtime_jobs_task_id ON runtime_jobs(task_id) WHERE task_id IS NOT NULL")
     conn.commit()
     conn.close()
 
@@ -100,6 +103,14 @@ def get_latest_job_for_task(task_id):
     ).fetchone()
     conn.close()
     return _serialize(row)
+
+
+def get_jobs_for_task(task_id):
+    init_runtime_table()
+    conn = _connect()
+    rows = conn.execute("SELECT * FROM runtime_jobs WHERE task_id=? ORDER BY id", (task_id,)).fetchall()
+    conn.close()
+    return [_serialize(row) for row in rows]
 
 
 def update_job_status(job_id, status):

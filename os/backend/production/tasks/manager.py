@@ -183,13 +183,15 @@ def get_task_by_idempotency_key(key):
     init_tasks_table(); conn=_connect(); row=conn.execute('SELECT * FROM production_tasks WHERE idempotency_key=?',(key,)).fetchone(); conn.close(); return _row_to_task(row) if row else None
 
 
-def update_task_status(task_id: int, status: str):
+def update_task_status(task_id: int, status: str, expected_status=None):
     init_tasks_table()
     conn = _connect()
-    conn.execute(
-        "UPDATE production_tasks SET status=?, updated_at=? WHERE id=?",
-        (status, datetime.utcnow().isoformat(), task_id),
-    )
+    if expected_status is None:
+        cursor = conn.execute("UPDATE production_tasks SET status=?, updated_at=? WHERE id=?", (status, datetime.utcnow().isoformat(), task_id))
+    else:
+        cursor = conn.execute("UPDATE production_tasks SET status=?, updated_at=? WHERE id=? AND status=?", (status, datetime.utcnow().isoformat(), task_id, expected_status))
     conn.commit()
     conn.close()
+    if cursor.rowcount != 1:
+        raise ValueError("ProductionTask status compare-and-swap conflict")
     return get_task(task_id)

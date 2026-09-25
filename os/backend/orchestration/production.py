@@ -8,6 +8,10 @@ from intelligence import autonomy
 from intelligence.content_brain import get_plan
 from intelligence.content_plan_service import approve_plan, materialize_plan
 from production.routing import resolve_route
+from production.tasks.manager import get_task_by_idempotency_key
+from production.tasks.execution import get_execution_readiness
+from production.tasks.scheduler import claim_runtime_job
+from intelligence.content_plan_service import _validate_materialized_task
 
 
 def _authorization_or_fail(plan_id, plan):
@@ -61,4 +65,32 @@ def prepare_authorized_production(plan_id):
         "content_plan": latest,
         "production_task": task,
         "execution": "not_started",
+    }
+
+
+def claim_authorized_production_execution(plan_id):
+    """Fresh-auth, durable handoff to exactly one RuntimeJob; never runs a provider."""
+    plan = get_plan(plan_id)
+    if not plan:
+        raise KeyError("plan not found")
+    if plan.get("status") != "materialized":
+        raise ValueError("production plan must be materialized before execution claim")
+    revision = plan.get("revision")
+    key = f"content-plan:{plan_id}:revision:{revision}"
+    task = get_task_by_idempotency_key(key)
+    if not task:
+        raise ValueError("canonical ProductionTask is missing")
+    if not task.parameters.get("production_routing"):
+        raise ValueError("legacy task requires review before autonomous execution")
+    _validate_materialized_task(task, plan_id, revision, key)
+    auth = _authorization_or_fail(plan_id, plan)
+    job = claim_runtime_job(task)
+    return {
+        "content_plan": get_plan(plan_id),
+        "authorization": auth,
+        "production_task": task,
+        "runtime_job": job,
+        "provider": task.provider,
+        "claim_status": "claimed",
+        "execution_readiness": get_execution_readiness(task),
     }
