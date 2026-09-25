@@ -250,6 +250,15 @@ def update_result(result_id, *, status=None, output=None, error=None, bind_asset
         return None
 
     next_status = status if status is not None else current.get("status")
+    current_status = current.get("status")
+    allowed = {
+        "submitted": {"submitted", "running", "completed", "failed"},
+        "running": {"running", "completed", "failed"},
+        "completed": {"completed"},
+        "failed": {"failed"},
+    }
+    if current_status in allowed and next_status not in allowed[current_status]:
+        raise ValueError(f"Invalid ProductionResult status transition: {current_status} -> {next_status}")
     next_output = output if output is not None else current.get("output") or {}
     next_error = error if error is not None else current.get("error")
 

@@ -220,5 +220,11 @@ def refresh_authorized_github_runtime(plan_id, *, provider=None, client=None):
     if not result:
         return execute_authorized_claimed_github_runtime(plan_id, provider=provider, client=client)
     worker = ProductionRuntimeWorker()
-    refreshed = worker.poll(job, provider_override=provider or get_provider("github"))
+    try:
+        refreshed = worker.poll(job, provider_override=provider or get_provider("github"))
+    except Exception as exc:
+        current = get_result_by_job(job["id"])
+        if current and current.get("status") == "running":
+            return {"authorization": auth, "production_task": task, "runtime_job": get_job(job["id"]), "production_result": current, "status": "running", "recovery_error": "promotion or provider completion is pending recovery"}
+        raise
     return {"authorization": auth, "production_task": task, "runtime_job": get_job(job["id"]), "production_result": refreshed.get("production_result"), "status": refreshed.get("status")}

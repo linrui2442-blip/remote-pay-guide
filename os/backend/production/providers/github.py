@@ -137,9 +137,16 @@ class GitHubProductionProvider:
         output.update({"artifact_id": artifact.get("id"), "artifact_name": artifact.get("name"), "artifact_size": artifact.get("size_in_bytes"), "artifact_expired": artifact.get("expired")})
         promotion_intent = output.get("promotion_intent")
         if promotion_intent and not output.get("promotion_run_id"):
-            raise RuntimeError("promotion intent exists without recoverable promotion run; review required")
+            runs = self.client.list_workflow_runs("promote-video-asset.yml", "main", event="workflow_dispatch").get("workflow_runs", [])
+            pre_ids = {int(v) for v in promotion_intent.get("pre_run_ids", [])}
+            matches = [r for r in runs if r.get("id") is not None and int(r["id"]) not in pre_ids and r.get("status") == "completed" and r.get("conclusion") == "success"]
+            if len(matches) != 1:
+                raise RuntimeError("promotion intent exists without uniquely recoverable promotion run; review required")
+            recovered = matches[0]
+            output.update({"promotion_run_id": recovered["id"], "promotion_run_url": recovered.get("html_url"), "promotion_run_status": recovered.get("status"), "promotion_run_conclusion": recovered.get("conclusion"), "storage_type": "github_pages", "asset_url": promotion_intent.get("asset_url") or f"https://{self.client.owner}.github.io/{self.client.repo}/media/{promotion_intent['asset_filename']}", "asset_filename": promotion_intent["asset_filename"], "asset_ready": True})
+            return {"status": "completed", "provider": "github", "output": output}
         if not promotion_intent:
-            promotion_intent = {"source_run_id": run_id, "artifact_name": artifact["name"], "asset_filename": task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", "asset_path": task_payload.get("asset_path") or ""}
+            promotion_intent = {"source_run_id": run_id, "artifact_name": artifact["name"], "asset_filename": task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", "asset_path": task_payload.get("asset_path") or "", "pre_run_ids": [int(r.get("id")) for r in self.client.list_workflow_runs("promote-video-asset.yml", "main", event="workflow_dispatch").get("workflow_runs", []) if r.get("id") is not None]}
             output["promotion_intent"] = promotion_intent
             from production.results.manager import update_result
             if production_result.get("id") is not None:
