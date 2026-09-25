@@ -36,6 +36,8 @@ def init_results_table():
     migrations = {
         "video_id": "TEXT",
         "asset_status": "TEXT",
+        "promotion_state": "TEXT",
+        "promotion_metadata": "TEXT",
     }
     for name, field_type in migrations.items():
         if name not in columns:
@@ -238,6 +240,32 @@ def claim_result_for_completion(result_id):
     conn.commit()
     conn.close()
     return cursor.rowcount == 1
+
+def claim_promotion_execution(result_id, intent):
+    """Atomically claim the promotion side effect before any external POST."""
+    init_results_table()
+    conn = _connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "UPDATE production_results SET promotion_state='intent', promotion_metadata=?, updated_at=? "
+            "WHERE id=? AND (promotion_state IS NULL OR promotion_state='')",
+            (json.dumps(intent or {}, ensure_ascii=False), datetime.utcnow().isoformat(), result_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def update_promotion_state(result_id, state, metadata=None):
+    init_results_table()
+    conn = _connect()
+    conn.execute("UPDATE production_results SET promotion_state=?, promotion_metadata=?, updated_at=? WHERE id=?", (state, json.dumps(metadata or {}, ensure_ascii=False), datetime.utcnow().isoformat(), result_id))
+    conn.commit(); conn.close()
+    return get_result(result_id)
 
 def claim_failed_result_for_recovery(result_id):
     init_results_table(); conn=_connect(); cur=conn.execute("UPDATE production_results SET status='running', updated_at=? WHERE id=? AND status='failed'",(datetime.utcnow().isoformat(),result_id)); conn.commit(); conn.close(); return cur.rowcount==1

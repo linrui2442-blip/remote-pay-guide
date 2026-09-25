@@ -136,23 +136,33 @@ class GitHubProductionProvider:
         artifact = self.monitor.discover_artifact(run_id, expected_name=expected)
         output.update({"artifact_id": artifact.get("id"), "artifact_name": artifact.get("name"), "artifact_size": artifact.get("size_in_bytes"), "artifact_expired": artifact.get("expired")})
         promotion_intent = output.get("promotion_intent")
+        if not promotion_intent and production_result.get("id"):
+            from production.results.manager import get_result
+            durable = get_result(production_result["id"])
+            if durable and durable.get("promotion_metadata"):
+                try:
+                    promotion_intent = json.loads(durable["promotion_metadata"])
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    promotion_intent = None
         if promotion_intent and not output.get("promotion_run_id"):
             runs = self.client.list_workflow_runs("promote-video-asset.yml", "main", event="workflow_dispatch").get("workflow_runs", [])
             pre_ids = {int(v) for v in promotion_intent.get("pre_run_ids", [])}
-            matches = [r for r in runs if r.get("id") is not None and int(r["id"]) not in pre_ids and r.get("status") == "completed" and r.get("conclusion") == "success"]
+            matches = [r for r in runs if r.get("id") is not None and int(r["id"]) not in pre_ids]
             if len(matches) != 1:
                 raise RuntimeError("promotion intent exists without uniquely recoverable promotion run; review required")
             recovered = matches[0]
             output.update({"promotion_run_id": recovered["id"], "promotion_run_url": recovered.get("html_url"), "promotion_run_status": recovered.get("status"), "promotion_run_conclusion": recovered.get("conclusion"), "storage_type": "github_pages", "asset_url": promotion_intent.get("asset_url") or f"https://{self.client.owner}.github.io/{self.client.repo}/media/{promotion_intent['asset_filename']}", "asset_filename": promotion_intent["asset_filename"], "asset_ready": True})
+            if recovered.get("status") == "completed" and recovered.get("conclusion") != "success":
+                return {"status": "failed", "provider": "github", "output": output, "error": f"promotion workflow run {recovered['id']} concluded with {recovered.get('conclusion') or 'unknown'}"}
             return {"status": "completed", "provider": "github", "output": output}
         if not promotion_intent:
-            promotion_intent = {"source_run_id": run_id, "artifact_name": artifact["name"], "asset_filename": task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", "asset_path": task_payload.get("asset_path") or "", "pre_run_ids": [int(r.get("id")) for r in self.client.list_workflow_runs("promote-video-asset.yml", "main", event="workflow_dispatch").get("workflow_runs", []) if r.get("id") is not None]}
+            promotion_intent = {"source_run_id": run_id, "artifact_name": artifact["name"], "asset_filename": task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", "asset_path": task_payload.get("asset_path") or "final-output.mp4", "pre_run_ids": [int(r.get("id")) for r in self.client.list_workflow_runs("promote-video-asset.yml", "main", event="workflow_dispatch").get("workflow_runs", []) if r.get("id") is not None]}
             output["promotion_intent"] = promotion_intent
             from production.results.manager import update_result
             if production_result.get("id") is not None:
                 update_result(production_result["id"], status="running", output=output, bind_asset=False)
         from assets.github_pages import promote_artifact_to_pages
-        promotion = promote_artifact_to_pages(source_run_id=run_id, artifact_name=artifact["name"], asset_filename=task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", asset_path=task_payload.get("asset_path") or "", client=self.client, monitor=self.monitor, verify_url=False)
+        promotion = promote_artifact_to_pages(source_run_id=run_id, artifact_name=artifact["name"], asset_filename=task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", asset_path=task_payload.get("asset_path") or "final-output.mp4", client=self.client, monitor=self.monitor, verify_url=False)
         output.update(promotion)
         return {"status": "completed", "provider": "github", "output": output}
 
