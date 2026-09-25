@@ -55,7 +55,7 @@ class GitHubProductionProvider:
                 return {}
         return {}
 
-    def run(self, job):
+    def submit_job(self, job):
         payload = self._payload(job)
         workflow = payload.get("workflow") or job.get("workflow")
         branch = payload.get("branch") or job.get("branch") or "main"
@@ -119,6 +119,38 @@ class GitHubProductionProvider:
                 "github_run_conclusion": run.get("conclusion"),
             },
         }
+
+    def poll_job(self, job, production_result):
+        output = dict(production_result.get("output") or {})
+        run_id = output.get("github_run_id")
+        if not run_id:
+            return {"status": "failed", "provider": "github", "error": "missing github_run_id"}
+        run = self.client.get_workflow_run(run_id)
+        output.update({"github_run_id": run_id, "github_run_url": run.get("html_url") or output.get("github_run_url"), "github_run_status": run.get("status"), "github_run_conclusion": run.get("conclusion")})
+        if run.get("status") != "completed":
+            return {"status": "running", "provider": "github", "output": output}
+        if run.get("conclusion") != "success":
+            return {"status": "failed", "provider": "github", "output": output, "error": f"GitHub workflow run {run_id} concluded with {run.get('conclusion') or 'unknown'}"}
+        task_payload = self._payload(job).get("parameters") or {}
+        expected = task_payload.get("artifact_name")
+        artifact = self.monitor.discover_artifact(run_id, expected_name=expected)
+        output.update({"artifact_id": artifact.get("id"), "artifact_name": artifact.get("name"), "artifact_size": artifact.get("size_in_bytes"), "artifact_expired": artifact.get("expired")})
+        promotion_intent = output.get("promotion_intent")
+        if promotion_intent and not output.get("promotion_run_id"):
+            raise RuntimeError("promotion intent exists without recoverable promotion run; review required")
+        if not promotion_intent:
+            promotion_intent = {"source_run_id": run_id, "artifact_name": artifact["name"], "asset_filename": task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", "asset_path": task_payload.get("asset_path") or ""}
+            output["promotion_intent"] = promotion_intent
+            from production.results.manager import update_result
+            if production_result.get("id") is not None:
+                update_result(production_result["id"], status="running", output=output, bind_asset=False)
+        from assets.github_pages import promote_artifact_to_pages
+        promotion = promote_artifact_to_pages(source_run_id=run_id, artifact_name=artifact["name"], asset_filename=task_payload.get("asset_filename") or f"task{job.get('task_id')}.mp4", asset_path=task_payload.get("asset_path") or "", client=self.client, monitor=self.monitor, verify_url=False)
+        output.update(promotion)
+        return {"status": "completed", "provider": "github", "output": output}
+
+    def run(self, job):
+        return self.submit_job(job)
 
     def get_status(self):
         return {"provider": "github", "status": "ready"}

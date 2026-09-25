@@ -40,6 +40,9 @@ def init_results_table():
     for name, field_type in migrations.items():
         if name not in columns:
             cursor.execute(f"ALTER TABLE production_results ADD COLUMN {name} {field_type}")
+    duplicates = cursor.execute("SELECT runtime_job_id FROM production_results WHERE runtime_job_id IS NOT NULL GROUP BY runtime_job_id HAVING COUNT(*) > 1").fetchall()
+    if not duplicates:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_production_results_runtime_job ON production_results(runtime_job_id) WHERE runtime_job_id IS NOT NULL")
     conn.commit()
     conn.close()
 
@@ -126,6 +129,13 @@ def create_result(data):
         video_id = str(data.get("runtime_job_id"))
 
     conn = _connect()
+    existing = conn.execute("SELECT * FROM production_results WHERE runtime_job_id=?", (data["runtime_job_id"],)).fetchone()
+    if existing:
+        if existing["provider"] != data["provider"]:
+            conn.close()
+            raise ValueError("ProductionResult provider binding mismatch")
+        conn.close()
+        return _serialize(existing)
     cursor = conn.execute(
         """
         INSERT INTO production_results
@@ -159,6 +169,35 @@ def create_result(data):
     if result and result.get("status") in {"completed", "failed"}:
         _sync_terminal_status(result, result["status"])
     return get_result(result_id)
+
+
+def create_or_get_result_for_job(data):
+    """Race-safe canonical result creation for one RuntimeJob."""
+    init_results_table()
+    conn = _connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        duplicate_count = conn.execute("SELECT COUNT(*) FROM production_results WHERE runtime_job_id=?", (data["runtime_job_id"],)).fetchone()[0]
+        if duplicate_count > 1:
+            raise ValueError("multiple ProductionResults for RuntimeJob")
+        row = conn.execute("SELECT * FROM production_results WHERE runtime_job_id=?", (data["runtime_job_id"],)).fetchone()
+        if row:
+            if row["provider"] != data["provider"]:
+                raise ValueError("ProductionResult provider binding mismatch")
+            conn.commit()
+            return _serialize(row)
+        now = datetime.utcnow().isoformat()
+        output = data.get("output") or {}
+        video_id = data.get("video_id") or (output.get("video_id") or output.get("content_id") if isinstance(output, dict) else None)
+        cur = conn.execute("INSERT INTO production_results (runtime_job_id,video_id,provider,asset_id,asset_status,status,output,error,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)", (data["runtime_job_id"], video_id, data["provider"], data.get("asset_id"), data.get("asset_status"), data.get("status", "created"), json.dumps(output, ensure_ascii=False), data.get("error"), now, now))
+        row = conn.execute("SELECT * FROM production_results WHERE id=?", (cur.lastrowid,)).fetchone()
+        conn.commit()
+        return _serialize(row)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def get_results():
@@ -204,7 +243,7 @@ def claim_failed_result_for_recovery(result_id):
     init_results_table(); conn=_connect(); cur=conn.execute("UPDATE production_results SET status='running', updated_at=? WHERE id=? AND status='failed'",(datetime.utcnow().isoformat(),result_id)); conn.commit(); conn.close(); return cur.rowcount==1
 
 
-def update_result(result_id, *, status=None, output=None, error=None):
+def update_result(result_id, *, status=None, output=None, error=None, bind_asset=True):
     init_results_table()
     current = get_result(result_id)
     if not current:
@@ -233,7 +272,7 @@ def update_result(result_id, *, status=None, output=None, error=None):
     conn.close()
 
     result = get_result(result_id)
-    if result and next_status == "completed" and not result.get("asset_id"):
+    if result and next_status == "completed" and bind_asset and not result.get("asset_id"):
         binding = _bind_asset(result)
         if not binding.get("asset_id"):
             _fail_asset_binding(result_id, binding)

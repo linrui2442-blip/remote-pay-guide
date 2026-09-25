@@ -122,7 +122,7 @@ class ProductionRuntimeWorker:
                 'error': error,
             }
 
-    def poll(self, job):
+    def poll(self, job, provider_override=None):
         """Refresh one already-active remote Production job.
 
         Polling updates the existing ProductionResult in place. It never creates
@@ -148,7 +148,7 @@ class ProductionRuntimeWorker:
                 'already_terminal': True,
             }
 
-        provider = get_provider(job.get('provider'))
+        provider = provider_override or get_provider(job.get('provider'))
         if provider is None:
             raise ValueError('provider not found')
         if not hasattr(provider, 'poll_job'):
@@ -162,11 +162,13 @@ class ProductionRuntimeWorker:
         error = result.get('error')
 
         update_job_result(job['id'], output, None if result_status == 'completed' else error)
+        defer_asset = bool((output or {}).get("g4b_no_asset_binding"))
         production_result = update_result(
             production_result['id'],
             status=result_status,
             output=output,
             error='' if result_status == 'completed' else error,
+            bind_asset=not defer_asset,
         )
 
         result_status = production_result.get('status', result_status)

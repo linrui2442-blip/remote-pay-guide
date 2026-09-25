@@ -95,3 +95,13 @@ def claim_authorized_production_execution(plan_id):
         "claim_status": "claimed",
         "execution_readiness": get_execution_readiness(task),
     }
+
+
+def execute_authorized_claimed_github_runtime(plan_id, **kwargs):
+    from production.runtime.orchestrator import execute_authorized_claimed_github_runtime as _execute
+    return _execute(plan_id, **kwargs)
+
+
+def refresh_authorized_github_runtime(plan_id, **kwargs):
+    from production.runtime.orchestrator import refresh_authorized_github_runtime as _refresh
+    return _refresh(plan_id, **kwargs)

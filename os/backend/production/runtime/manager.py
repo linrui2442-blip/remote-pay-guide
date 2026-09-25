@@ -46,6 +46,10 @@ def init_runtime_table():
         created_at TEXT,
         updated_at TEXT
     )""")
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(runtime_jobs)").fetchall()}
+    for name, field_type in {"execution_state": "TEXT", "execution_metadata": "TEXT"}.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE runtime_jobs ADD COLUMN {name} {field_type}")
     duplicates = conn.execute("SELECT task_id, COUNT(*) AS n FROM runtime_jobs WHERE task_id IS NOT NULL GROUP BY task_id HAVING COUNT(*) > 1").fetchall()
     if not duplicates:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_runtime_jobs_task_id ON runtime_jobs(task_id) WHERE task_id IS NOT NULL")
@@ -134,6 +138,34 @@ def update_job_result(job_id, output=None, error=None):
         "UPDATE runtime_jobs SET output=?,error=?,updated_at=? WHERE id=?",
         (output_value, error, datetime.utcnow().isoformat(), job_id),
     )
+    conn.commit()
+    conn.close()
+    return get_job(job_id)
+
+
+def claim_provider_execution(job_id, intent):
+    """Durably claim the provider boundary before any network side effect."""
+    init_runtime_table()
+    now = datetime.utcnow().isoformat()
+    payload = json.dumps(intent or {}, ensure_ascii=False)
+    conn = _connect()
+    cursor = conn.execute(
+        "UPDATE runtime_jobs SET execution_state='dispatch_intent', execution_metadata=?, updated_at=? "
+        "WHERE id=? AND (execution_state IS NULL OR execution_state='') AND status='created'",
+        (payload, now, job_id),
+    )
+    conn.commit()
+    conn.close()
+    return cursor.rowcount == 1
+
+
+def update_execution_metadata(job_id, metadata, state=None):
+    init_runtime_table()
+    conn = _connect()
+    if state is None:
+        conn.execute("UPDATE runtime_jobs SET execution_metadata=?, updated_at=? WHERE id=?", (json.dumps(metadata or {}, ensure_ascii=False), datetime.utcnow().isoformat(), job_id))
+    else:
+        conn.execute("UPDATE runtime_jobs SET execution_state=?, execution_metadata=?, updated_at=? WHERE id=?", (state, json.dumps(metadata or {}, ensure_ascii=False), datetime.utcnow().isoformat(), job_id))
     conn.commit()
     conn.close()
     return get_job(job_id)
