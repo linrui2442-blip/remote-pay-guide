@@ -59,14 +59,42 @@ Standard Reporting proved `content_id=short12`, `src=yt_short12`, and `binance_r
 
 `REAL_AI_CONTENTPLAN_LIVE_E2E=PASS`. The deterministic provider remains a development/fallback implementation; the real text-AI provider and canonical directed ContentPlan preview path are verified.
 
+### Completed milestone — G4-A Unified Production Orchestration
+
+`G4A_UNIFIED_PRODUCTION_ORCHESTRATION=CLOSED`.
+`G4_STATUS=IN_PROGRESS`.
+
+G4-A consumes current `g3-v2` effective authorization: the plan revision
+must match, effective policy must be `AUTO`, autonomy must be enabled and the
+kill switch must be off. Provider routing is server-owned (`g4-a-v1`) and
+supports `github` and `ai_gateway`; client or model output cannot select an
+endpoint or credential. One current ContentPlan revision materializes exactly
+one canonical ProductionTask with idempotency key
+`content-plan:{plan_id}:revision:{revision}`. The execution claim performs a
+fresh authorization recheck and durably claims exactly one RuntimeJob using a
+SQLite transaction, database-level duplicate protection and fail-closed
+handling for legacy duplicate history.
+
+G4-A stops before provider execution, GitHub workflow dispatch, AI Gateway
+HTTP, ProductionResult, VideoAsset, PublishTask and publishing. Manual mode
+remains supported and shares the canonical lifecycle primitives. G4-B must
+consume an existing claimed GitHub RuntimeJob rather than re-route,
+re-materialize, schedule a second task or create a second RuntimeJob. G4-C
+will reuse the same ContentPlan, routing, ProductionTask and RuntimeJob
+foundation for real AI production; G4-D remains the unified asset quality
+gate.
+
+`G4B_GITHUB_PRODUCTION_LINE=NOT_STARTED`
+`G4C_REAL_AI_PRODUCTION_LINE=NOT_STARTED`
+`G4D_UNIFIED_ASSET_QUALITY_GATE=NOT_STARTED`
+
 ### BREAKPOINT C — autonomous orchestration
 
 `AUTONOMOUS_ORCHESTRATION=PARTIAL`.
 
 The G3 policy and authorization layer is complete. The full autonomous loop is not yet closed because G4 autonomous production, G5 autonomous publishing and the later feedback-learning stages remain unfinished. The current human-gated path remains the safe development, validation, fallback, review, recovery and override mode.
 
-`NEXT_MILESTONE=G4 Autonomous Production`
-`G4_STATUS=NOT_STARTED`
+`NEXT_MILESTONE=G4-B GitHub Production Line`
 `G5_STATUS=NOT_STARTED`
 
 ## Official roadmap

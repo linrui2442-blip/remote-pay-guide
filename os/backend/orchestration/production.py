@@ -1,8 +1,9 @@
-"""Canonical G4-A authorized preparation boundary.
+"""Canonical G4-A authorized preparation and durable execution-claim boundary.
 
-This module deliberately stops after ContentPlan materialization. It never
-creates runtime jobs, dispatches providers, creates results/assets, or
-publishes anything.
+The preparation path may approve/materialize exactly one ProductionTask and
+the execution-claim path may durably claim exactly one RuntimeJob. G4-A
+deliberately stops before provider execution and never creates
+ProductionResults, VideoAssets, PublishTasks, or publishes content.
 """
 from intelligence import autonomy
 from intelligence.content_brain import get_plan
