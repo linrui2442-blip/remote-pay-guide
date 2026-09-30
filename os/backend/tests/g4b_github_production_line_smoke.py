@@ -47,6 +47,9 @@ class FakeGitHubClient:
         return {"status": "started", "workflow": workflow, "branch": branch, "inputs": inputs or {}}
 
     def get_workflow_run(self, run_id):
+        for saved in self.runs:
+            if saved['id'] == run_id and saved.get('workflow') == 'promote-video-asset.yml':
+                return dict(saved)
         run = dict(self.runs[0])
         run.update({"status": self.state["status"], "conclusion": self.state["conclusion"]})
         return run
@@ -67,7 +70,8 @@ def _fake_promotion(**kwargs):
     if PROMOTION_MODE == "crash_after_post":
         client.runs.append({"id": 900 + PROMOTION_COUNT, "workflow": "promote-video-asset.yml", "html_url": "https://example.invalid/promotion", "status": "completed", "conclusion": "success", "created_at": "2999-01-01T00:00:00+00:00"})
         raise RuntimeError("simulated promotion crash after dispatch")
-    return {"storage_type": "github_pages", "asset_url": "https://example.invalid/media/test.mp4", "url": "https://example.invalid/media/test.mp4", "asset_filename": kwargs["asset_filename"], "asset_ready": True, "promotion_run_id": 500}
+    client.runs.append({'id':500,'workflow':'promote-video-asset.yml','status':'completed','conclusion':'success'})
+    return {'promotion_run_id':500,'promotion_run_status':'completed','promotion_run_conclusion':'success'}
 
 
 def main():

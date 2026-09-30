@@ -74,6 +74,9 @@ def promote_artifact_to_pages(
     poll_interval=2,
     run_attempts=180,
     verify_url=True,
+    pre_dispatch_run_ids=None,
+    submitted_at=None,
+    dispatch_only=False,
 ):
     client = client or GitHubClient()
     monitor = monitor or GitHubRunMonitor(client)
@@ -81,8 +84,8 @@ def promote_artifact_to_pages(
     if not ASSET_FILE_RE.fullmatch(asset_filename or ""):
         raise ValueError("asset_filename must be a simple unique .mp4 filename")
 
-    pre_ids = monitor.snapshot_run_ids(PROMOTION_WORKFLOW, "main")
-    submitted_at = _utc_now()
+    pre_ids = monitor.snapshot_run_ids(PROMOTION_WORKFLOW, "main") if pre_dispatch_run_ids is None else pre_dispatch_run_ids
+    submitted_at = submitted_at or _utc_now()
     client.trigger_workflow(
         workflow=PROMOTION_WORKFLOW,
         branch="main",
@@ -101,6 +104,8 @@ def promote_artifact_to_pages(
         max_attempts=discover_attempts,
         poll_interval=poll_interval,
     )
+    if dispatch_only:
+        return {'promotion_run_id': run['id'], 'promotion_run_url': run.get('html_url'), 'promotion_run_status': run.get('status'), 'promotion_run_conclusion': run.get('conclusion')}
     terminal = monitor.wait_for_terminal(
         run["id"],
         max_attempts=run_attempts,
@@ -128,3 +133,87 @@ def promote_artifact_to_pages(
         "asset_filename": asset_filename,
         "asset_ready": True,
     }
+
+
+def poll_claimed_promotion(*, result_id, job, source_run_id, artifact, parameters, client, monitor, promoter=None):
+    """Shared durable one-POST boundary. Recovery never submits a workflow."""
+    import json
+    from production.results.manager import get_result, claim_promotion_execution, update_promotion_state
+    current = get_result(result_id)
+    if not current or current['runtime_job_id'] != job['id'] or current['provider'] != 'github':
+        raise ValueError('Promotion result linkage mismatch')
+    if current['status'] in {'completed', 'failed'}:
+        return {'status': current['status'], 'output': current['output'], 'error': current.get('error')}
+    winner = False
+    if current.get('promotion_state') is None:
+        if (current.get('output') or {}).get('promotion_intent'):
+            raise ValueError('Legacy promotion intent requires review; no new dispatch')
+        intent = dict(production_result_id=result_id, runtime_job_id=job['id'], source_run_id=source_run_id,
+            artifact_id=artifact.get('id'), artifact_name=artifact['name'], asset_path=parameters.get('asset_path') or 'final-output.mp4',
+            asset_filename=parameters.get('asset_filename') or f"task{job['task_id']}.mp4",
+            workflow=PROMOTION_WORKFLOW, branch='main', provider='github',
+            pre_dispatch_run_ids=sorted(monitor.snapshot_run_ids(PROMOTION_WORKFLOW, 'main')), promotion_started_at=_utc_now())
+        if not ASSET_FILE_RE.fullmatch(intent['asset_filename']):
+            raise ValueError('Invalid promotion filename')
+        winner = claim_promotion_execution(result_id, intent)
+        current = get_result(result_id)
+    intent = json.loads(current.get('promotion_metadata') or '{}')
+    if not intent or intent.get('production_result_id') != result_id or intent.get('runtime_job_id') != job['id']:
+        raise ValueError('Missing durable promotion correlation envelope')
+    if winner:
+        # The claim transaction is committed; fresh authorization is checked
+        # immediately before POST, including changes made while finding artifacts.
+        if parameters.get('production_routing'):
+            from intelligence.content_brain import get_plan
+            from orchestration.production import _authorization_or_fail
+            plan_id = parameters['content_plan_id']
+            plan = get_plan(plan_id)
+            _authorization_or_fail(plan_id, plan)
+            if plan['revision'] != parameters['content_plan_revision']:
+                raise ValueError('Stale production revision')
+        try:
+            promoted = (promoter or promote_artifact_to_pages)(source_run_id=intent['source_run_id'], artifact_name=intent['artifact_name'],
+                asset_filename=intent['asset_filename'], asset_path=intent['asset_path'], client=client, monitor=monitor,
+                pre_dispatch_run_ids=intent['pre_dispatch_run_ids'], submitted_at=intent['promotion_started_at'],
+                dispatch_only=True, verify_url=False)
+            try:
+                update_promotion_state(result_id, 'submitted', promoted)
+            except ValueError:
+                observed = get_result(result_id)
+                bound = json.loads(observed['promotion_metadata'])
+                if observed['promotion_state'] not in {'running','completed','failed'} or bound.get('promotion_run_id') != promoted.get('promotion_run_id'):
+                    raise
+        except Exception:
+            # Keep the full immutable envelope even when POST outcome is unknown.
+            latest = get_result(result_id)
+            if latest['promotion_state'] not in {'completed','failed'}:
+                update_promotion_state(result_id, latest['promotion_state'], {'recovery_required': True})
+            raise
+        current = get_result(result_id)
+        intent = json.loads(current['promotion_metadata'])
+    if current['promotion_state'] in {'completed','failed'}:
+        run = {'id': intent['promotion_run_id'], 'status': 'completed', 'conclusion': intent['promotion_run_conclusion'], 'html_url': intent.get('promotion_run_url')}
+    elif intent.get('promotion_run_id'):
+        run = client.get_workflow_run(intent['promotion_run_id'])
+    else:
+        run = monitor.discover_run(intent['workflow'], intent['branch'], intent['pre_dispatch_run_ids'], intent['promotion_started_at'], max_attempts=1, poll_interval=0)
+    evidence = {'promotion_run_id': run['id'], 'promotion_run_url': run.get('html_url'), 'promotion_run_status': run.get('status'), 'promotion_run_conclusion': run.get('conclusion')}
+    state = 'running' if run.get('status') != 'completed' else ('completed' if run.get('conclusion') == 'success' else 'failed')
+    latest = get_result(result_id)
+    if latest['promotion_state'] not in {'completed','failed'}:
+        try:
+            update_promotion_state(result_id, state, evidence)
+        except ValueError:
+            if get_result(result_id)['promotion_state'] not in {'completed','failed'}:
+                raise
+    authoritative = get_result(result_id)
+    state = authoritative['promotion_state']
+    saved = json.loads(authoritative['promotion_metadata'])
+    output = {}
+    for key in evidence:
+        output[key] = saved.get(key)
+    output.update(asset_path=intent['asset_path'], asset_filename=intent['asset_filename'], asset_ready=False)
+    if state == 'completed':
+        output.update(storage_type='github_pages', asset_url=_public_url(client, intent['asset_filename']), asset_ready=True)
+    return {'status': state if state in {'completed','failed'} else 'running', 'output': output,
+        'error': 'Promotion workflow failed' if state == 'failed' else None}

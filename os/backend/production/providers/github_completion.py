@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 
-from assets.github_pages import promote_artifact_to_pages
+from assets.github_pages import promote_artifact_to_pages, poll_claimed_promotion, _verify_public_url
 from integrations.github.client import GitHubClient
 from production.providers.github_monitor import FAILURE_CONCLUSIONS, GitHubRunMonitor
-from production.results.manager import claim_result_for_completion, claim_promotion_execution, update_promotion_state, get_result, update_result
+from production.results.manager import claim_result_for_completion, get_result, update_result
 from production.tasks.manager import get_task
 
 
@@ -22,6 +21,13 @@ def complete_github_execution(result_id, job, client=None):
     if not result:
         raise ValueError(f"Production Result {result_id} not found")
 
+    if result.get('status') in {'completed', 'failed'}:
+        return result
+    from production.runtime.manager import get_job
+    persisted_job = get_job((job or {}).get('id'))
+    if not persisted_job or persisted_job['id'] != result['runtime_job_id'] or persisted_job['task_id'] != job.get('task_id') or persisted_job['provider'] != 'github':
+        raise ValueError('Manual completion requires the linked RuntimeJob')
+
     output = dict(result.get("output") or {})
     run_id = output.get("github_run_id")
     if not run_id:
@@ -34,7 +40,7 @@ def complete_github_execution(result_id, job, client=None):
 
     if result.get("status") in {"completed", "failed"}:
         return result
-    if not claim_result_for_completion(result_id):
+    if not claim_result_for_completion(result_id) and not result.get('promotion_state'):
         return get_result(result_id)
 
     task = get_task(job.get("task_id")) if job else None
@@ -42,7 +48,12 @@ def complete_github_execution(result_id, job, client=None):
     poll_interval = max(1, int(parameters.get("github_poll_interval", 10)))
     max_attempts = max(1, int(parameters.get("github_poll_attempts", 720)))
 
-    update_result(result_id, status="running", output={**output, "github_run_status": "running"})
+    current = get_result(result_id)
+    if current['status'] in {'completed','failed'}:
+        return current
+    if task and task.status == 'scheduled':
+        from production.tasks.scheduler import transition_task
+        transition_task(task, 'running')
 
     try:
         terminal = monitor.wait_for_terminal(
@@ -79,33 +90,23 @@ def complete_github_execution(result_id, job, client=None):
             }
         )
 
-        asset_id = output.get("asset_id") or f"asset_{uuid.uuid4().hex[:8]}"
+        asset_id = output.get("asset_id") or f"asset_github_result_{result_id}"
         asset_filename = parameters.get("asset_filename") or f"task{job.get('task_id')}-{asset_id}.mp4"
         asset_path = parameters.get("asset_path") or "final-output.mp4"
-        intent = {"production_result_id": result_id, "runtime_job_id": job.get("id"), "source_run_id": run_id, "artifact_id": artifact.get("id"), "artifact_name": artifact.get("name"), "asset_path": asset_path, "asset_filename": asset_filename, "workflow": "promote-video-asset.yml", "branch": "main", "provider": "github", "pre_dispatch_run_ids": []}
-        if not claim_promotion_execution(result_id, intent):
-            current = get_result(result_id)
-            if current and current.get("promotion_state") in {"completed", "failed"}:
-                return current
-            raise RuntimeError("promotion execution already claimed; recovery required")
-
-        update_promotion_state(result_id, "submitted", intent)
-        promotion = promote_artifact_to_pages(
-            source_run_id=run_id,
-            artifact_name=artifact["name"],
-            asset_filename=asset_filename,
-            asset_path=asset_path,
-            client=client,
-            monitor=monitor,
-            poll_interval=max(1, int(parameters.get("promotion_poll_interval", 5))),
-            run_attempts=max(1, int(parameters.get("promotion_poll_attempts", 180))),
-            verify_url=True,
-        )
-        output.update(promotion)
+        parameters.update(asset_path=asset_path, asset_filename=asset_filename)
+        promotion = poll_claimed_promotion(result_id=result_id, job=job, source_run_id=run_id,
+            artifact=artifact, parameters=parameters, client=client, monitor=monitor, promoter=promote_artifact_to_pages)
+        if promotion['status'] == 'running' and promotion['output'].get('promotion_run_id'):
+            monitor.wait_for_terminal(promotion['output']['promotion_run_id'],
+                max_attempts=max(1, int(parameters.get('promotion_poll_attempts', 180))),
+                poll_interval=max(1, int(parameters.get('promotion_poll_interval', 5))))
+            promotion = poll_claimed_promotion(result_id=result_id, job=job, source_run_id=run_id,
+                artifact=artifact, parameters=parameters, client=client, monitor=monitor, promoter=promote_artifact_to_pages)
+        output.update(promotion['output'])
         output["asset_id"] = asset_id
-        update_promotion_state(result_id, "completed", {**intent, **promotion})
-
-        return update_result(result_id, status="completed", output=output, error=None)
+        if promotion['status'] == 'completed':
+            _verify_public_url(output['asset_url'])
+        return update_result(result_id, status=promotion['status'], output=output, error=promotion.get('error'))
     except Exception as exc:
         output.setdefault("github_run_id", run_id)
         try:
@@ -114,7 +115,6 @@ def complete_github_execution(result_id, job, client=None):
                 # A failure after intent/POST is recoverable state, not a
                 # license to issue another POST. Keep the result running so a
                 # restart can correlate the exact remote run and finalize it.
-                update_promotion_state(result_id, current.get("promotion_state"), {"error": str(exc), "promotion_recovery_required": True})
                 return get_result(result_id)
         except Exception:
             pass

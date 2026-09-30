@@ -248,8 +248,8 @@ def claim_promotion_execution(result_id, intent):
     try:
         conn.execute("BEGIN IMMEDIATE")
         cur = conn.execute(
-            "UPDATE production_results SET promotion_state='intent', promotion_metadata=?, updated_at=? "
-            "WHERE id=? AND (promotion_state IS NULL OR promotion_state='')",
+            "UPDATE production_results SET status='running', promotion_state='intent', promotion_metadata=?, updated_at=? "
+            "WHERE id=? AND promotion_state IS NULL AND status IN ('submitted','running') AND provider='github'",
             (json.dumps(intent or {}, ensure_ascii=False), datetime.utcnow().isoformat(), result_id),
         )
         conn.commit()
@@ -263,8 +263,25 @@ def claim_promotion_execution(result_id, intent):
 def update_promotion_state(result_id, state, metadata=None):
     init_results_table()
     conn = _connect()
-    conn.execute("UPDATE production_results SET promotion_state=?, promotion_metadata=?, updated_at=? WHERE id=?", (state, json.dumps(metadata or {}, ensure_ascii=False), datetime.utcnow().isoformat(), result_id))
-    conn.commit(); conn.close()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('SELECT promotion_state,promotion_metadata FROM production_results WHERE id=?', (result_id,)).fetchone()
+        allowed = {'intent': {'intent','submitted','running','completed','failed'}, 'submitted': {'submitted','running','completed','failed'}, 'running': {'running','completed','failed'}, 'completed': {'completed'}, 'failed': {'failed'}}
+        if not row or state not in allowed.get(row['promotion_state'], set()):
+            raise ValueError('Invalid promotion state transition')
+        current = json.loads(row['promotion_metadata'] or '{}')
+        for key, value in (metadata or {}).items():
+            if key in current and key not in {'promotion_run_status','promotion_run_conclusion','promotion_run_url','recovery_required'} and current[key] != value:
+                raise ValueError('Promotion correlation metadata is immutable')
+        if row['promotion_state'] not in {'completed','failed'}:
+            current.update(metadata or {})
+            conn.execute('UPDATE production_results SET promotion_state=?,promotion_metadata=?,updated_at=? WHERE id=? AND promotion_state=?', (state,json.dumps(current),datetime.utcnow().isoformat(),result_id,row['promotion_state']))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     return get_result(result_id)
 
 def claim_failed_result_for_recovery(result_id):
@@ -291,11 +308,11 @@ def update_result(result_id, *, status=None, output=None, error=None, bind_asset
     next_error = error if error is not None else current.get("error")
 
     conn = _connect()
-    conn.execute(
+    cursor = conn.execute(
         """
         UPDATE production_results
         SET status=?, output=?, error=?, updated_at=?
-        WHERE id=?
+        WHERE id=? AND status=?
         """,
         (
             next_status,
@@ -303,10 +320,14 @@ def update_result(result_id, *, status=None, output=None, error=None, bind_asset
             next_error,
             datetime.utcnow().isoformat(),
             result_id,
+            current_status,
         ),
     )
     conn.commit()
     conn.close()
+
+    if cursor.rowcount == 0:
+        return get_result(result_id)
 
     result = get_result(result_id)
     if result and next_status == "completed" and bind_asset and not result.get("asset_id"):
