@@ -48,7 +48,7 @@ class ProductionRuntimePoller:
                 failures.append({
                     'runtime_job_id': job.get('id'),
                     'provider': job.get('provider'),
-                    'error': str(exc),
+                    'error': 'PROVIDER_POLL_FAILED',
                 })
 
         self.last_poll_at = datetime.now(timezone.utc).isoformat()
@@ -67,7 +67,7 @@ class ProductionRuntimePoller:
             try:
                 self.poll_once()
             except Exception as exc:
-                self.last_error = str(exc)
+                self.last_error = 'RUNTIME_POLL_FAILED'
             self._stop_event.wait(self.interval_seconds)
 
     def start(self):

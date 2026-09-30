@@ -194,7 +194,21 @@ Plans remain preview; neither ProductionTask nor PublishTask is created.
 Offline certification includes 20 rounds of four callers, failure/replay,
 identity/maturity/evidence assertions, G5 through G2, r57, r44 and r16 regressions.
 
-`NEXT_MILESTONE=G7 offline reliability seal`
+`G7_OFFLINE_CERTIFIED=PASS`
+
+G7 adds a read-only `/operations/health` projection over existing tables and
+delegates local evidence recovery to G5/G6. Stale RuntimeJobs/ProductionResults
+and quality REVIEW are visible for authorized recovery, never blindly restarted.
+Duplicate history remains intact. Provider live/credential readiness is
+explicitly NOT_CHECKED by this non-network view, not inferred from configuration.
+The runtime poller exposes bounded reason codes rather than provider exception
+strings. Tests cover schema bootstrap, stale/restart readback, read-only health
+concurrency, secret projection, kill switch, backup integrity and duplicates;
+existing r47/r54/r55/r56, scheduler r29/r30/r31 and G5 recovery regressions pass.
+The legacy r56 mixed-state fixture now uses a fresh job to respect canonical
+one-result-per-job semantics; its rejection assertions remain unchanged.
+
+`NEXT_MILESTONE=G8/G9 offline preparation`
 
 G4-C provider live proof may proceed when configured and separately authorized.
 G5 offline work is complete and pushed; each controlled platform proof needs

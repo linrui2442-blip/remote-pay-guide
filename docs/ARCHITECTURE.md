@@ -52,6 +52,14 @@ never approval, production or publishing. Analytics refresh remains in existing
 integrations and is not implicitly invoked by the cycle. Observational strategy
 language must not assert causal effects from cohort outcomes.
 
+G7 operational health is a read-only projection of canonical tables, not a
+second queue or scheduler. Stale entities are review items identified by their
+existing IDs. Local reconciliation delegates to existing publish/feedback
+methods; production/provider recovery still requires the original verified
+evidence and authorization boundary. It never retries an ambiguous POST.
+Missing tables/configuration/readiness are reported rather than treated as
+healthy. See README for isolated startup, backup/restore and incident procedures.
+
 G4-B consumes an existing claimed RuntimeJob. Durable execution and promotion
 claims precede external POSTs; asynchronous polling, deterministic artifact
 discovery, crash/recovery/concurrency protection and terminal result replay

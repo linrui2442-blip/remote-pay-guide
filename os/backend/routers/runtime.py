@@ -8,6 +8,12 @@ router = APIRouter()
 worker = ProductionRuntimeWorker()
 
 
+@router.get('/operations/health')
+def operational_health():
+    from production.runtime.health import runtime_health
+    return runtime_health()
+
+
 @router.post('/production/runtime/jobs')
 def create_runtime_job(data: dict):
     return create_job(data)

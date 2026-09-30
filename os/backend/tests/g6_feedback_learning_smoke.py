@@ -59,6 +59,9 @@ def main():
                 if table in tables:
                     assert conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] == 0
         conn.close()
+        previous = cycle()
+        save_metric(AnalyticsMetric(video_id='platform-id', content_id='short-test', platform='youtube', account_id=account['id'], source='offline', views=98765, period_start='2026-09-25', period_end='2026-09-26'))
+        assert cycle() == previous, 'out-of-window analytics changed cycle identity'
         save_metric(AnalyticsMetric(video_id='platform-id', content_id='short-test', platform='youtube', account_id=account['id'], source='offline', views=999, period_start='2026-09-01', period_end='2026-09-20'))
         with patch.object(provider, 'generate_content_plan', side_effect=RuntimeError('offline injected failure')) as generate:
             try:

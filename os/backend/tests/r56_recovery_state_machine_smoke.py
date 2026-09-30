@@ -47,12 +47,16 @@ assert get_result(bad['id'])['status'] == 'running'
 print('INVALID_LINKAGE_REJECTION=PASS')
 
 # Ambiguous mixed lifecycle state must fail loudly.
+# A fresh job is required: canonical create_result now reuses the existing
+# terminal result for a job instead of constructing a contradictory second one.
+mixed_task = create_task(ProductionTask(source='legacy', objective='mixed', provider='github', template='t', branch='main', status='created'))
+mixed_job = create_job({'task_id': mixed_task.id, 'job_type': 'video', 'provider': 'github'})
 conn = sqlite3.connect(os.environ['OS_DATABASE_PATH'])
-conn.execute("UPDATE runtime_jobs SET status='failed' WHERE id=?", (job['id'],)); conn.execute("UPDATE production_tasks SET status='failed' WHERE id=?", (task.id,)); conn.commit(); conn.close()
-mixed = create_result({'runtime_job_id': job['id'], 'provider': 'github', 'video_id': 'mixed', 'status': 'failed', 'output': {}})
+conn.execute("UPDATE runtime_jobs SET status='failed' WHERE id=?", (mixed_job['id'],)); conn.execute("UPDATE production_tasks SET status='failed' WHERE id=?", (mixed_task.id,)); conn.commit(); conn.close()
+mixed = create_result({'runtime_job_id': mixed_job['id'], 'provider': 'github', 'video_id': 'mixed', 'status': 'failed', 'output': {}})
 assert claim_failed_result_for_recovery(mixed['id'])
 conn = sqlite3.connect(os.environ['OS_DATABASE_PATH'])
-conn.execute("UPDATE runtime_jobs SET status='completed' WHERE id=?", (job['id'],)); conn.commit(); conn.close()
+conn.execute("UPDATE runtime_jobs SET status='completed' WHERE id=?", (mixed_job['id'],)); conn.commit(); conn.close()
 try:
     complete_recovered_result(mixed['id'], output=out)
 except ValueError:

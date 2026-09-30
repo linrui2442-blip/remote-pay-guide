@@ -95,6 +95,11 @@ def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=N
     # Funnel identity is also account/platform and time-window scoped.
     funnels = {cid: get_content_funnel(cid, start_date, end_date, platform=platform, account_id=account_id)
                for cid in sorted({r['content_id'] for r in rows})}
+    # Legacy funnel traffic is lifetime/latest and not window/account scoped.
+    # Window traffic is already in Data Center rows; never fingerprint lifetime
+    # traffic or let another account's metrics alter this observation.
+    funnels = {cid: {k: value[k] for k in ('intent', 'conversion')}
+               for cid, value in funnels.items()}
     evidence = {'window': [start_date, end_date], 'content_ids': sorted(funnels),
                 'account_id': account_id, 'platform': platform, 'sample_size': len(funnels),
                 'metric_source': 'persisted_data_center', 'metrics': evidence_rows,
