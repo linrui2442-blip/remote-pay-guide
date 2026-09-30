@@ -229,6 +229,10 @@ def execute_publish_task(task_id, *, queue=None, worker_factory=PublishWorker):
     if not stored:
         raise PublishContractError("publish task not found")
 
+    if stored.get('autonomous_policy_version'):
+        from publish.execution import execute_autonomous_publish_task
+        return execute_autonomous_publish_task(task_id)
+
     status = str(stored.get("status") or "").lower()
     if status == "publishing":
         if not recover_stale_publishing_task(task_id):

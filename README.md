@@ -24,9 +24,14 @@ This is SAFE / MANUAL MODE for development, validation, fallback, review and ove
 
 Read [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for the single current-state truth source and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for canonical and target architecture.
 
-Current main: `2e44080e3489dbd5940655cadffdde806c65cf15` (P3 CLOSED).
+Source code is implementation truth; `PROJECT_STATUS.md` is current-state truth;
+`ARCHITECTURE.md` is target/canonical architecture truth. Milestone completion,
+runtime evidence and next gates belong in those documents, not a duplicated
+README commit/status snapshot.
 
-Current breakpoints: D10 GA4 runtime attribution (`PARTIAL`), the real AI Content Brain (`NOT_CLOSED`), and complete autonomous orchestration (`PARTIAL`).
+The v1 launch platforms are YouTube Shorts, Instagram Reels and Facebook Reels.
+TikTok is not a v1 launch requirement. Manual mode remains a safety, validation,
+fallback and override path, not the final product target.
 
 ## Runtime and development
 

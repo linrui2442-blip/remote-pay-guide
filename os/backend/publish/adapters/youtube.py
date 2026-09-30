@@ -98,16 +98,23 @@ class YouTubeAdapter:
         description="",
         tags=None,
         privacy_status="private",
+        before_write=None,
+        operation_callback=None,
     ):
         try:
             credentials = self._credentials_for_account(account_id)
-            self.api_client.initialize(credentials)
-            return self.api_client.upload_video(
+            # Autonomous callers may run different accounts concurrently.
+            # Never share a mutable authorized session between those calls.
+            client = YouTubeAPIClient() if before_write else self.api_client
+            client.initialize(credentials)
+            hooks = {} if before_write is None else {'before_write': before_write, 'operation_callback': operation_callback}
+            return client.upload_video(
                 video_path=video_path,
                 title=title or video_asset.get("video_id") or video_asset.get("asset_id") or "Remote Pay Guide",
                 description=description or "",
                 tags=tags or [],
                 privacy_status=privacy_status or "private",
+                **hooks,
             )
         except Exception as error:
             return {

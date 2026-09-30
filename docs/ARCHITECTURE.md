@@ -117,7 +117,53 @@ G3 is an authorization layer only. Raw or effective `AUTO` does not approve, mat
 - `os/database/os.db`: runtime state, never disposable test output.
 - GitHub artifact → GitHub Pages → VideoAsset → official provider adapters: formal media/publishing path.
 
-The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. G4-C execution and G4-D asset quality are offline-certified but still await their respective live proofs. G5 publishing is not started.
+The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. G4-C execution and G4-D asset quality are offline-certified but still await their respective live proofs. G5 publishing is offline-certified, not live-closed.
+
+## G5 publishing stage
+
+G5 reuses `PublishTask`, Publish Center, registry, worker, scheduler, Accounts /
+OAuth and the official YouTube, Instagram and Facebook adapters. No V2 queue,
+alternative asset type or parallel publishing domain is introduced. TikTok is
+not a v1 launch requirement; Postiz is not a canonical dependency.
+
+`publish.policy.prepare_autonomous_publish_task` evaluates `g5-v1` and only
+AUTO materializes a task. Policy evidence and a frozen payload/source
+fingerprint live on that task. Required signals include G4-D PASS and exact
+asset binding, account/platform/scopes/expiry readiness, the shared autonomy
+controls, duplicate history, schedule and cadence. Unknown signals are REVIEW;
+hard failures are BLOCK. The deterministic cadence is one-hour minimum and
+three-per-UTC-day maximum per platform/account, counting reservations and
+ambiguous execution conservatively. Future schedules require reevaluation;
+the existing scheduler queues due pending tasks only.
+
+Existing orchestrator/worker entrypoints recognize autonomous tasks and route
+them through `publish.execution.execute_autonomous_publish_task`. Manual
+legacy tasks retain their existing contract. Clean histories receive active
+identity uniqueness plus a cross-status autonomous identity index. Legacy
+duplicates are never deleted or silently selected. An immutable owner claim,
+`publish_write_intents` (unique task/stage) and `publish_operation_events`
+provide execution evidence, not new lifecycle entities.
+
+Each provider write is preceded by a committed intent and a fresh policy /
+control check. SQLite transactions end before network calls. YouTube reuses
+its resumable upload transport and the shared secure G4-D downloader; its
+session identity is persisted as a hash rather than a bearer URL. Instagram
+retains container then media identity; Facebook retains start/upload/publish
+state. Autonomous HTTP redirects are disabled and upload destinations are
+restricted to the provider's expected HTTPS hosts. Provider errors are reduced
+to safe reason codes; successful completion emits the existing OS event.
+
+`reconcile_autonomous_publish_task` never resumes a write. A fresh owner is
+left alone; after interruption, durable successful media evidence can finish
+the local task and event atomically. Missing/ambiguous response evidence stays
+REVIEW. Neither unknown outcomes nor expired claims authorize a second upload.
+Terminal replay has zero provider writes. This deliberately does not assert
+remote exactly-once semantics; YouTube may retry resumable chunks within the
+same session under its existing protocol.
+
+Offline tests use external TEMP databases, socket tripwires and fake provider
+transports. G4-D live media proof and separate G5 platform live proofs are still
+authorization gates; offline certification does not close those milestones.
 
 ## Compatibility and legacy
 

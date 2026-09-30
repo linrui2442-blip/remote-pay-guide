@@ -9,6 +9,7 @@ class PublishWorker:
     def __init__(self, queue, asset_resolver=None):
         self.queue = queue
         self.asset_resolver = asset_resolver or AssetResolver()
+        self.autonomous_asset_resolver = asset_resolver
 
     def _resolve_asset(self, task):
         asset_id = task.get("asset_id")
@@ -102,6 +103,13 @@ class PublishWorker:
         for task_id in self.queue.get_pending_tasks():
             task = get_publish_task(task_id)
             if not task:
+                continue
+
+            if task.get('autonomous_policy_version'):
+                from publish.execution import execute_autonomous_publish_task
+                execute_autonomous_publish_task(task_id, asset_resolver=self.autonomous_asset_resolver)
+                self.queue.remove_task(task_id)
+                processed += 1
                 continue
 
             adapter = get_adapter(task.get("platform"))

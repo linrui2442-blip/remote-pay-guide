@@ -30,9 +30,9 @@ class InstagramAdapter:
         self.status = "ready"
         return self.get_status()
 
-    def publish_video(self, video_asset, account_id=None, *, caption="", provider_operation_id=None, provider_operation_status=None, operation_callback=None):
+    def publish_video(self, video_asset, account_id=None, *, caption="", provider_operation_id=None, provider_operation_status=None, operation_callback=None, before_write=None):
         if self.live_publish_enabled:
-            return self.publish_reel_via_graph(video_asset, account_id, caption, provider_operation_id=provider_operation_id, provider_operation_status=provider_operation_status, operation_callback=operation_callback)
+            return self.publish_reel_via_graph(video_asset, account_id, caption, provider_operation_id=provider_operation_id, provider_operation_status=provider_operation_status, operation_callback=operation_callback, before_write=before_write)
         # Keep the legacy adapter method available for compatibility tests, but
         # Publish Center orchestration must never treat this as a live publish.
         return {
@@ -91,7 +91,7 @@ class InstagramAdapter:
                 missing.append("invalid_token_expiry")
         return {"ready": not missing, "account_found": bool(account), "binding_found": bool(binding), "token_found": bool(token), "publish_scope_granted": not missing_scopes, "missing_scopes": missing_scopes, "reason": None if not missing else "Instagram publish readiness failed closed: " + ", ".join(missing)}
 
-    def publish_reel_via_graph(self, video_asset, account_id, caption="", transport=None, *, provider_operation_id=None, provider_operation_status=None, operation_callback=None, sleep_fn=None, max_attempts=5, poll_interval_seconds=2):
+    def publish_reel_via_graph(self, video_asset, account_id, caption="", transport=None, *, provider_operation_id=None, provider_operation_status=None, operation_callback=None, sleep_fn=None, max_attempts=5, poll_interval_seconds=2, before_write=None):
         """Documented two-step Reels flow; transport is injectable for tests."""
         readiness = self.get_account_readiness(account_id)
         if not readiness["ready"]:
@@ -105,6 +105,7 @@ class InstagramAdapter:
         page_token = resolve_page_access_token(account_id, page_id, token.get("access_token"), http)
         headers = {"Authorization": f"Bearer {page_token}"}
         sensitive = [token.get("access_token"), page_token]
+        safety = {'allow_redirects': False} if before_write else {}
         if provider_operation_id:
             creation_id = provider_operation_id
             if str(provider_operation_status or "").upper() == "PUBLISHED":
@@ -112,7 +113,9 @@ class InstagramAdapter:
             created_new = False
         else:
             try:
-                container = http.post(f"{base}/media", params={"media_type": "REELS", "video_url": url, "caption": caption or ""}, headers=headers, timeout=30)
+                if before_write:
+                    before_write('instagram_container')
+                container = http.post(f"{base}/media", params={"media_type": "REELS", "video_url": url, "caption": caption or ""}, headers=headers, timeout=30, **safety)
                 container.raise_for_status()
             except Exception as exc:
                 raise RuntimeError(self._safe_error(exc, sensitive)) from None
@@ -126,7 +129,7 @@ class InstagramAdapter:
         state = None
         for attempt in range(max(1, int(max_attempts))):
             try:
-                state_response = http.get(f"https://graph.facebook.com/{self.api_version}/{creation_id}", params={"fields": "status_code,status"}, headers=headers, timeout=30)
+                state_response = http.get(f"https://graph.facebook.com/{self.api_version}/{creation_id}", params={"fields": "status_code,status"}, headers=headers, timeout=30, **safety)
                 state_response.raise_for_status()
                 state_payload = state_response.json()
             except Exception as exc:
@@ -147,7 +150,9 @@ class InstagramAdapter:
         if state != "FINISHED":
             raise RuntimeError("Instagram media container polling timed out")
         try:
-            published = http.post(f"{base}/media_publish", params={"creation_id": creation_id}, headers=headers, timeout=30)
+            if before_write:
+                before_write('instagram_publish')
+            published = http.post(f"{base}/media_publish", params={"creation_id": creation_id}, headers=headers, timeout=30, **safety)
             published.raise_for_status()
         except Exception as exc:
             raise RuntimeError(self._safe_error(exc, sensitive)) from None
@@ -155,7 +160,7 @@ class InstagramAdapter:
         if not media_id:
             raise RuntimeError("Instagram publish response did not include a media id")
         if operation_callback:
-            operation_callback(creation_id, "PUBLISHED")
+            operation_callback(media_id if before_write else creation_id, "PUBLISHED")
         return {"platform": "instagram", "status": "published", "video_id": media_id, "url": None, "provider_operation_id": creation_id, "provider_operation_status": "PUBLISHED"}
 
     def get_status(self):

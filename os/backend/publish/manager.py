@@ -9,7 +9,7 @@ DB_PATH = database_path()
 
 def _connect():
     database_path().parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(database_path())
+    conn = sqlite3.connect(database_path(), timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -17,6 +17,7 @@ def _connect():
 def _init_db():
     conn = _connect()
     cursor = conn.cursor()
+    cursor.execute('BEGIN IMMEDIATE')
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS publish_tasks (
@@ -59,6 +60,10 @@ def _init_db():
         "provider_operation_id": "TEXT",
         "provider_operation_status": "TEXT",
         "provider_operation_updated_at": "TEXT",
+        "autonomous_policy_version": "TEXT",
+        "policy_evidence": "TEXT",
+        "execution_claim": "TEXT",
+        "execution_started_at": "TEXT",
     }
     for name, field_type in migrations.items():
         if name not in columns:
@@ -70,6 +75,28 @@ def _init_db():
         "UPDATE publish_tasks SET privacy_status='private' "
         "WHERE privacy_status IS NULL OR privacy_status=''"
     )
+    # Preserve legacy duplicates, never silently pick one or delete history.
+    duplicates = cursor.execute("""SELECT asset_id,platform,account_id FROM publish_tasks
+        WHERE asset_id IS NOT NULL AND account_id IS NOT NULL
+        AND status IN ('pending','publishing','published','review','blocked')
+        GROUP BY asset_id,platform,account_id HAVING COUNT(*)>1""").fetchall()
+    if not duplicates:
+        cursor.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_publish_active_identity
+            ON publish_tasks(asset_id,platform,account_id)
+            WHERE asset_id IS NOT NULL AND account_id IS NOT NULL
+            AND status IN ('pending','publishing','published','review','blocked')""")
+    autonomous_duplicates = cursor.execute('''SELECT asset_id,platform,account_id FROM publish_tasks
+        WHERE autonomous_policy_version IS NOT NULL GROUP BY asset_id,platform,account_id HAVING COUNT(*)>1''').fetchall()
+    if not autonomous_duplicates:
+        cursor.execute('''CREATE UNIQUE INDEX IF NOT EXISTS uq_publish_autonomous_identity
+            ON publish_tasks(asset_id,platform,account_id) WHERE autonomous_policy_version IS NOT NULL''')
+    cursor.execute("""CREATE TABLE IF NOT EXISTS publish_write_intents (
+        task_id INTEGER NOT NULL, stage TEXT NOT NULL, claim TEXT NOT NULL,
+        created_at TEXT NOT NULL, PRIMARY KEY(task_id,stage))""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS publish_operation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL,
+        operation_id TEXT NOT NULL, operation_status TEXT NOT NULL,
+        claim TEXT NOT NULL, created_at TEXT NOT NULL)""")
     conn.commit()
     conn.close()
 
@@ -99,6 +126,10 @@ def _task_value(task, name, default=None):
 
 
 def create_publish_task(task):
+    # Keep the legacy API but share canonical identity protection. In
+    # particular a failed/review autonomous task cannot be cloned manually.
+    if _task_value(task, 'asset_id'):
+        return create_or_get_publish_task(task)['task']
     _init_db()
     now = datetime.utcnow().isoformat()
     conn = _connect()
@@ -137,7 +168,7 @@ def create_publish_task(task):
 def create_or_get_publish_task(task, *, active_statuses=None):
     """Atomically create one task for a platform/account/canonical asset identity."""
     _init_db()
-    active_statuses = tuple(active_statuses or ("pending", "publishing", "published"))
+    active_statuses = tuple(active_statuses or ("pending", "publishing", "published", "review", "blocked"))
     platform = _task_value(task, "platform")
     account_id = _task_value(task, "account_id")
     asset_id = _task_value(task, "asset_id")
@@ -146,6 +177,14 @@ def create_or_get_publish_task(task, *, active_statuses=None):
     conn = _connect()
     try:
         conn.execute("BEGIN IMMEDIATE")
+        if asset_id:
+            history = conn.execute('SELECT * FROM publish_tasks WHERE asset_id=? AND platform=? AND account_id=?',
+                                   (asset_id, platform, account_id)).fetchall()
+            if len(history) > 1:
+                raise ValueError('Duplicate publish history; review required')
+            if history and history[0]['autonomous_policy_version']:
+                conn.commit()
+                return {"created": False, "task": _serialize(history[0])}
         placeholders = ",".join("?" for _ in active_statuses)
         if asset_id:
             existing = conn.execute(
@@ -245,7 +284,7 @@ def claim_publish_task(task_id):
     conn = _connect()
     cursor = conn.execute(
         "UPDATE publish_tasks SET status='publishing', updated_at=? "
-        "WHERE id=? AND status IN ('pending','failed')",
+        "WHERE id=? AND status IN ('pending','failed') AND autonomous_policy_version IS NULL",
         (datetime.utcnow().isoformat(), task_id),
     )
     conn.commit(); conn.close()
@@ -261,6 +300,7 @@ def recover_stale_publishing_task(task_id, *, lease_seconds=300):
     cursor = conn.execute(
         """UPDATE publish_tasks SET status='failed', updated_at=?, error_message=?
            WHERE id=? AND status='publishing' AND provider_operation_id IS NOT NULL
+           AND autonomous_policy_version IS NULL
            AND updated_at IS NOT NULL AND updated_at < ?""",
         (now, "stale publishing lease recovered for provider reconciliation", task_id, cutoff.replace(tzinfo=None).isoformat()),
     )

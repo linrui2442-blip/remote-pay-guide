@@ -129,6 +129,46 @@ shortcut. G4-D creates no PublishTask. Neither G4-C nor G4-D is CLOSED: G4-C
 awaits provider configuration/live proof and G4-D awaits separately authorized
 real read-only remote media proof. Production DB remains unchanged.
 
+### Offline-certified milestone — G5 Autonomous Publishing
+
+`G5_OFFLINE_CERTIFIED=PASS`
+`G5_STATUS=OFFLINE_CERTIFIED_AWAITING_REVIEW_PUSH_AND_AUTHORIZED_LIVE_PROOFS`
+`G5_REAL_PLATFORM_PUBLISH_PROOF=NOT_RUN`
+
+`publish.policy.prepare_autonomous_publish_task()` applies server-owned
+`g5-v1` policy to the existing VideoAsset/PublishTask lifecycle. Only AUTO can
+create an autonomous task. It requires current G4-D PASS/binding, a ready
+account and official adapter, valid scoped non-expired credentials, autonomy
+enabled and kill switch off. Unknown required signals require REVIEW; hard
+failures BLOCK. Source and task fingerprints prevent stale authorization use.
+Cadence is deterministic per platform/account: at least one hour between
+reservations/execution activity and at most three per UTC day. Future windows
+require reevaluation when due; this is not AI scheduling.
+
+The existing Publish Center orchestrator/worker delegates marked tasks to the
+durable G5 executor. It commits an immutable execution owner before network
+work and a unique intent before each provider write stage, with fresh control
+checks. Canonical task uniqueness is database-enforced on clean histories;
+legacy duplicates are preserved and rejected. No transaction spans network I/O.
+Operation events retain YouTube session fingerprints and final video identity,
+Instagram container/media identity and Facebook start/upload/publish identity.
+URLs containing session credentials are not copied into the operation ledger.
+
+An interrupted owner is never reassigned for another upload. Durable successful
+response evidence can finalize an interrupted task locally; ambiguous remote
+outcomes remain REVIEW without automatic re-POST. This is local write-owner /
+stage-intent protection, not a claim of remote exactly-once delivery. Existing
+YouTube resumable chunk retry semantics remain within the same upload session.
+Manual publishing remains a compatibility path, not a second lifecycle.
+
+Offline evidence covers actual adapters with fake transports, all three
+provider paths, policy/failure matrices, source/payload drift, crash windows,
+terminal replay, 20 four-caller concurrency rounds, database unique indexes,
+legacy duplicate preservation, scheduler windows and secret-safe evidence.
+Existing G4-D/C/B/A, G3, G2 and publish regressions pass. No real platform,
+media, AI, GA4 or GitHub workflow call was made; production DB is unchanged.
+G5 is not CLOSED. Platform live proofs require separate explicit authorization.
+
 ### BREAKPOINT C — autonomous orchestration
 
 `AUTONOMOUS_ORCHESTRATION=PARTIAL`.
@@ -138,7 +178,10 @@ The G3 policy and authorization layer is complete. The full autonomous loop is n
 `NEXT_MILESTONE=G4-D real read-only asset proof`
 
 G4-C provider live proof may proceed when configured and separately authorized.
-`G5_STATUS=NOT_STARTED`
+G5 offline work is complete; review and a separately authorized push precede
+individual controlled platform proofs. G4-D live proof preparation exists
+outside the repository and has not been run. G4-C configuration does not block
+the GitHub-based v1 path. G6–G9 have not been started in this milestone.
 
 ## Official roadmap
 

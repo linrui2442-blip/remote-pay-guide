@@ -1,7 +1,9 @@
 import mimetypes
+import hashlib
 import os
 import random
 import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -71,7 +73,7 @@ class YouTubeAPIClient:
     def _failure(self, error, stage, retries=0, status=None):
         return {"platform": "youtube", "status": "failed", "error": "YouTube resumable upload failed: " + _safe_upload_error(error, stage=stage, status=status, retries=retries)}
 
-    def upload_video(self, video_path, title, description, tags=None, privacy_status="private"):
+    def upload_video(self, video_path, title, description, tags=None, privacy_status="private", *, before_write=None, operation_callback=None):
         if not self.session:
             return {"platform": "youtube", "status": "failed", "error": "YouTube API client is not configured"}
         try:
@@ -82,13 +84,27 @@ class YouTubeAPIClient:
             if tags:
                 snippet["tags"] = list(tags)
             try:
-                init = self.session.post(UPLOAD_URL, params={"uploadType": "resumable", "part": "snippet,status"}, json={"snippet": snippet, "status": {"privacyStatus": privacy_status or "private"}}, headers={"Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Length": str(total), "X-Upload-Content-Type": mime}, timeout=30)
+                if before_write:
+                    before_write('youtube_initialize')
+                safety = {'allow_redirects': False} if before_write else {}
+                init = self.session.post(UPLOAD_URL, params={"uploadType": "resumable", "part": "snippet,status"}, json={"snippet": snippet, "status": {"privacyStatus": privacy_status or "private"}}, headers={"Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Length": str(total), "X-Upload-Content-Type": mime}, timeout=30, **safety)
                 init.raise_for_status()
             except requests.RequestException as error:
                 return self._failure(error, "initialize")
             session_url = init.headers.get("Location")
             if not session_url:
                 return self._failure(RuntimeError(), "initialize")
+            if before_write:
+                parsed = urlsplit(session_url)
+                if (parsed.scheme != 'https' or parsed.hostname not in {'www.googleapis.com', 'upload.googleapis.com'}
+                        or parsed.port not in (None, 443) or parsed.username or parsed.password
+                        or '\\' in session_url or any(ord(c) <= 32 for c in session_url)):
+                    return self._failure(RuntimeError(), 'session_destination')
+            if operation_callback:
+                # The session URL is a bearer capability. Persist identity only,
+                # never expose it through PublishTask APIs/logs. Restart => REVIEW.
+                operation_callback(hashlib.sha256(session_url.encode()).hexdigest(), 'SESSION_CREATED')
+            write_number = 0
             offset = retries = 0
             with open(video_path, "rb") as media:
                 while offset < total:
@@ -96,7 +112,10 @@ class YouTubeAPIClient:
                     chunk = media.read(CHUNK_SIZE)
                     end = offset + len(chunk) - 1
                     try:
-                        result = self.session.put(session_url, data=chunk, headers={"Content-Length": str(len(chunk)), "Content-Range": f"bytes {offset}-{end}/{total}", "Content-Type": mime}, timeout=60)
+                        if before_write:
+                            before_write(f'youtube_chunk_{write_number}')
+                            write_number += 1
+                        result = self.session.put(session_url, data=chunk, headers={"Content-Length": str(len(chunk)), "Content-Range": f"bytes {offset}-{end}/{total}", "Content-Type": mime}, timeout=60, **safety)
                         if result.status_code == 308:
                             offset = self._next_offset(result, end + 1)
                             retries = 0
@@ -107,6 +126,8 @@ class YouTubeAPIClient:
                         video_id = (result.json() or {}).get("id")
                         if not video_id:
                             return {"platform": "youtube", "status": "failed", "error": "YouTube upload completed without a video id"}
+                        if operation_callback:
+                            operation_callback(video_id, 'PUBLISHED')
                         return {"platform": "youtube", "status": "published", "video_id": video_id, "url": f"https://www.youtube.com/watch?v={video_id}"}
                     except requests.HTTPError as error:
                         status = getattr(error.response, "status_code", None)
@@ -114,13 +135,15 @@ class YouTubeAPIClient:
                             return self._failure(error, "upload_chunk", retries, status)
                     except (requests.Timeout, requests.ConnectionError) as error:
                         try:
-                            probe = self.session.put(session_url, data=b"", headers={"Content-Length": "0", "Content-Range": f"bytes */{total}"}, timeout=30)
+                            probe = self.session.put(session_url, data=b"", headers={"Content-Length": "0", "Content-Range": f"bytes */{total}"}, timeout=30, **safety)
                             if probe.status_code in EXPIRED_SESSION_STATUS_CODES:
                                 return {"platform": "youtube", "status": "failed", "error": f"YouTube resumable upload failed: stage=resume_probe; category=upload_session_expired; retries={retries}; status={probe.status_code}"}
                             if probe.status_code in {200, 201}:
                                 probe_id = (probe.json() or {}).get("id")
                                 if not probe_id:
                                     return {"platform": "youtube", "status": "failed", "error": "YouTube upload completed without a video id"}
+                                if operation_callback:
+                                    operation_callback(probe_id, 'PUBLISHED')
                                 return {"platform": "youtube", "status": "published", "video_id": probe_id, "url": f"https://www.youtube.com/watch?v={probe_id}"}
                             if probe.status_code == 308:
                                 offset = self._next_offset(probe, offset)
