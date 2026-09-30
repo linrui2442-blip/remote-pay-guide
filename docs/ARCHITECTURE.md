@@ -33,7 +33,16 @@ ContentPlan Policy Stage → Effective Authorization
 → G5 publishing → attribution → learning
 ```
 
-G4-A is implemented and verified. G4-B, G4-C and G4-D remain incomplete.
+G4-A and G4-B are implemented and verified, including the G4-B real live
+GitHub render/artifact/Pages promotion proof. G4-C is in progress and owns AI
+provider execution/polling. G4-D is not started and remains the sole owner of
+the unified asset quality gate and promotion into VideoAsset.
+
+G4-B consumes an existing claimed RuntimeJob. Durable execution and promotion
+claims precede external POSTs; asynchronous polling, deterministic artifact
+discovery, crash/recovery/concurrency protection and terminal result replay
+prevent duplicate dispatch. Its verified Pages promotion stops at
+ProductionResult, without creating VideoAsset or PublishTask.
 
 G4 supports two production providers under one canonical lifecycle:
 `github` and `ai_gateway`. Both pass through ContentPlan, G3 effective
@@ -80,7 +89,7 @@ G3 is an authorization layer only. Raw or effective `AUTO` does not approve, mat
 - `os/database/os.db`: runtime state, never disposable test output.
 - GitHub artifact → GitHub Pages → VideoAsset → official provider adapters: formal media/publishing path.
 
-The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization and G4-A orchestration are implemented and verified, while provider execution, asset quality and publishing remain future G4-B/C/D and G5 work.
+The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. AI provider execution, asset quality and publishing remain G4-C, G4-D and G5 work respectively.
 
 ## Compatibility and legacy
 

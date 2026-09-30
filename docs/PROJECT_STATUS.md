@@ -84,9 +84,23 @@ will reuse the same ContentPlan, routing, ProductionTask and RuntimeJob
 foundation for real AI production; G4-D remains the unified asset quality
 gate.
 
-`G4B_GITHUB_PRODUCTION_LINE=NOT_STARTED`
-`G4C_REAL_AI_PRODUCTION_LINE=NOT_STARTED`
+### Completed milestone — G4-B GitHub Production Line
+
+`G4B_GITHUB_PRODUCTION_LINE=CLOSED`
+`G4C_REAL_AI_PRODUCTION_LINE=IN_PROGRESS`
 `G4D_UNIFIED_ASSET_QUALITY_GATE=NOT_STARTED`
+
+G4-B consumes the existing claimed RuntimeJob, persists durable GitHub
+execution intent before dispatch, and provides at-most-once render dispatch,
+async polling and deterministic artifact discovery. A durable promotion claim
+precedes its POST, protecting at-most-once promotion against concurrent callers
+and crash/recovery replay. ProductionResult terminal replay is idempotent.
+The real live E2E passed: render run `36663762855`, artifact `11075661148`
+(`remote-pay-guide-g4b-live-invoice-currency`), and promotion run `36664084889`
+all succeeded. GitHub Pages serves `media/g4b-live-invoice-currency.mp4`
+(11,786,732 bytes). This proof created no VideoAsset or PublishTask.
+G4-C owns AI execution/polling; G4-D remains responsible for unified asset
+quality and VideoAsset creation. G4-C is not yet closed.
 
 ### BREAKPOINT C — autonomous orchestration
 
@@ -94,7 +108,7 @@ gate.
 
 The G3 policy and authorization layer is complete. The full autonomous loop is not yet closed because G4 autonomous production, G5 autonomous publishing and the later feedback-learning stages remain unfinished. The current human-gated path remains the safe development, validation, fallback, review, recovery and override mode.
 
-`NEXT_MILESTONE=G4-B GitHub Production Line`
+`NEXT_MILESTONE=G4-C Real AI Production Line`
 `G5_STATUS=NOT_STARTED`
 
 ## Official roadmap
