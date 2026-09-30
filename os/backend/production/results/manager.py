@@ -163,7 +163,7 @@ def create_result(data):
     conn.close()
 
     result = get_result(result_id)
-    if result and result.get("status") == "completed":
+    if result and result.get("status") == "completed" and not (result.get("output") or {}).get("defer_asset_binding"):
         binding = _bind_asset(result)
         if not binding.get("asset_id"):
             _fail_asset_binding(result_id, binding)
@@ -208,6 +208,62 @@ def get_results():
     rows = conn.execute("SELECT * FROM production_results ORDER BY id").fetchall()
     conn.close()
     return [_serialize(row) for row in rows]
+
+
+def persist_deferred_ai_response(runtime_job_id, response, *, recovery=False):
+    """Atomically seal existing AI result/job/task; no asset creation or network.
+
+    The initial row is created by create_or_get_result_for_job. Poll races are
+    serialized here so a late active response cannot overwrite terminal output.
+    """
+    status = response.get('status')
+    if status not in {'submitted', 'running', 'completed', 'failed'}:
+        raise ValueError('invalid AI response status')
+    conn = _connect()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        rows = conn.execute('SELECT * FROM production_results WHERE runtime_job_id=?', (runtime_job_id,)).fetchall()
+        job = conn.execute('SELECT * FROM runtime_jobs WHERE id=?', (runtime_job_id,)).fetchone()
+        if len(rows) != 1 or not job or rows[0]['provider'] != 'ai_gateway' or job['provider'] != 'ai_gateway':
+            raise ValueError('AI result linkage invalid')
+        row = rows[0]
+        task = conn.execute('SELECT * FROM production_tasks WHERE id=?', (job['task_id'],)).fetchone()
+        if not task or task['provider'] != 'ai_gateway':
+            raise ValueError('AI task linkage invalid')
+        params = json.loads(task['parameters'] or '{}')
+        if row['video_id'] != params.get('content_id') or row['asset_id']:
+            raise ValueError('AI result identity or asset boundary invalid')
+        current_output = json.loads(row['output'] or '{}')
+        if row['status'] in {'completed', 'failed'} or (recovery and current_output.get('content_id')):
+            expected_status = row['status'] if row['status'] in {'completed', 'failed'} else 'running'
+            if task['status'] != expected_status or job['status'] != expected_status:
+                raise ValueError('AI result/job/task state mismatch')
+            conn.commit()
+            return _serialize(row)
+        if task['status'] not in {'scheduled', 'running'} or job['status'] not in {'created', 'running'}:
+            raise ValueError('AI lifecycle state mismatch')
+        output = {**(response.get('output') or {}), 'defer_asset_binding': True}
+        # Preserve terminal correlation and reject a remote identity switch.
+        for key in ('remote_job_id', 'job_id', 'status_url'):
+            if current_output.get(key) and output.get(key) and current_output[key] != output[key]:
+                raise ValueError('AI remote correlation changed')
+        now = datetime.utcnow().isoformat()
+        encoded = json.dumps(output, ensure_ascii=False)
+        runtime_status = status if status in {'completed', 'failed'} else 'running'
+        conn.execute('UPDATE production_results SET status=?,output=?,error=?,updated_at=? WHERE id=?',
+                     (status, encoded, response.get('error'), now, row['id']))
+        conn.execute('UPDATE runtime_jobs SET status=?,output=?,error=?,updated_at=? WHERE id=?',
+                     (runtime_status, encoded, response.get('error'), now, runtime_job_id))
+        conn.execute('UPDATE production_tasks SET status=?,updated_at=? WHERE id=?',
+                     (runtime_status, now, task['id']))
+        result = conn.execute('SELECT * FROM production_results WHERE id=?', (row['id'],)).fetchone()
+        conn.commit()
+        return _serialize(result)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def get_result(result_id):
@@ -305,6 +361,8 @@ def update_result(result_id, *, status=None, output=None, error=None, bind_asset
     if current_status in allowed and next_status not in allowed[current_status]:
         raise ValueError(f"Invalid ProductionResult status transition: {current_status} -> {next_status}")
     next_output = output if output is not None else current.get("output") or {}
+    if (current.get("output") or {}).get("defer_asset_binding"):
+        next_output = {**next_output, "defer_asset_binding": True}
     next_error = error if error is not None else current.get("error")
 
     conn = _connect()
@@ -330,7 +388,7 @@ def update_result(result_id, *, status=None, output=None, error=None, bind_asset
         return get_result(result_id)
 
     result = get_result(result_id)
-    if result and next_status == "completed" and bind_asset and not result.get("asset_id"):
+    if result and next_status == "completed" and bind_asset and not next_output.get("defer_asset_binding") and not result.get("asset_id"):
         binding = _bind_asset(result)
         if not binding.get("asset_id"):
             _fail_asset_binding(result_id, binding)

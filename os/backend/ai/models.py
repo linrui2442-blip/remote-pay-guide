@@ -8,6 +8,8 @@ class AIRequest:
     prompt: str = ""
     input: Dict[str, Any] = field(default_factory=dict)
     options: Dict[str, Any] = field(default_factory=dict)
+    request_id: str = ""
+    endpoint_fingerprint: str = ""
 
 @dataclass
 class AIResponse:

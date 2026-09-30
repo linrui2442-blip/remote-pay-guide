@@ -31,6 +31,10 @@ class AIGatewayProvider:
         return {}
 
     def _request_from_job(self, job):
+        # Only the canonical orchestrator supplies this ephemeral, validated
+        # envelope. It is never read from RuntimeJob.input/client parameters.
+        if "_authorized_ai_request" in job:
+            return AIRequest(**job["_authorized_ai_request"])
         payload = self._payload(job)
         parameters = payload.get("parameters") or {}
         if not isinstance(parameters, dict):
@@ -133,7 +137,7 @@ class AIGatewayProvider:
                 "provider": "ai_gateway",
                 "status": "running",
                 "output": previous_output,
-                "error": f"AI Gateway status poll failed: {exc}",
+                "error": "AI Gateway status poll temporarily unavailable",
                 "model": request.model,
                 "usage": {},
                 "task_type": request.task_type,

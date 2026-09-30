@@ -1,4 +1,4 @@
-from .manager import update_job_status, update_job_result
+from .manager import update_job_status, update_job_result, get_job
 from .state import JOB_QUEUED, JOB_RUNNING, JOB_COMPLETED, JOB_FAILED
 from production.providers import get_provider
 from production.results.manager import create_result, get_result_by_job, update_result
@@ -38,6 +38,15 @@ class ProductionRuntimeWorker:
                 self._sync_task(job.get('task_id'), 'running')
 
     def run(self, job):
+        # Claimed autonomous AI work must never bypass durable intent/auth.
+        import json
+        if job.get('provider') == 'ai_gateway' and job.get('id') is not None:
+            job = get_job(job['id']) or job
+        payload = job.get('input') or {}
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        if job.get('provider') == 'ai_gateway' and (payload.get('parameters') or {}).get('production_routing'):
+            raise ValueError('Use the authorized claimed AI runtime entrypoint')
         try:
             update_job_status(job['id'], JOB_QUEUED)
             update_job_status(job['id'], JOB_RUNNING)
@@ -129,6 +138,17 @@ class ProductionRuntimeWorker:
         a second result for the same Runtime Job and never re-submits the remote
         generation request.
         """
+        import json
+        if job.get('provider') == 'ai_gateway' and job.get('id') is not None:
+            job = get_job(job['id']) or job
+        metadata = job.get('execution_metadata') or {}
+        if isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        if job.get('provider') == 'ai_gateway' and metadata.get('content_plan_id'):
+            from production.runtime.orchestrator import refresh_authorized_ai_runtime
+            refreshed = refresh_authorized_ai_runtime(metadata['content_plan_id'], provider=provider_override)
+            result = refreshed['production_result']
+            return {**result, 'production_result': result}
         production_result = get_result_by_job(job['id'])
         if not production_result:
             return {
@@ -162,7 +182,9 @@ class ProductionRuntimeWorker:
         error = result.get('error')
 
         update_job_result(job['id'], output, None if result_status == 'completed' else error)
-        defer_asset = bool((output or {}).get("g4b_no_asset_binding"))
+        defer_asset = bool((production_result.get("output") or {}).get("defer_asset_binding")
+                           or (output or {}).get("defer_asset_binding")
+                           or (output or {}).get("g4b_no_asset_binding"))
         production_result = update_result(
             production_result['id'],
             status=result_status,

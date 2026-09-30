@@ -1,5 +1,7 @@
 import os
-from urllib.parse import urljoin
+import ipaddress
+import hashlib
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
 
@@ -67,14 +69,15 @@ class VideoProvider:
 
         raw_status = data.get("status") or "completed"
         status = self._normalize_status(raw_status)
-        error = str(data.get("error") or "")
+        # Remote errors/metadata are untrusted and may echo credentials.
+        error = "AI Remote Production failed" if data.get("error") else ""
         if (
             status == "failed"
             and str(raw_status or "").strip().lower()
             not in self.ACTIVE_STATUSES | self.TERMINAL_STATUSES
             and not error
         ):
-            error = f"AI Remote Production returned unsupported status: {raw_status}"
+            error = "AI Remote Production returned unsupported status"
 
         output = data.get("output")
         if output is None:
@@ -89,8 +92,9 @@ class VideoProvider:
             output = {"value": output}
 
         previous_output = previous_output if isinstance(previous_output, dict) else {}
-        merged = dict(previous_output)
-        merged.update(output)
+        allowed = {"remote_job_id", "job_id", "status_url", "poll_url", "asset_url", "video_url", "url"}
+        merged = {k: v for k, v in previous_output.items() if k in allowed}
+        merged.update({k: v for k, v in output.items() if k in allowed})
         for key in (
             "remote_job_id",
             "job_id",
@@ -103,13 +107,69 @@ class VideoProvider:
             if data.get(key) is not None:
                 merged[key] = data.get(key)
 
+        try:
+            for key in ("remote_job_id", "job_id"):
+                if key in merged:
+                    value = merged[key]
+                    if not isinstance(value, (str, int)) or len(str(value)) > 256 or self._contains_secret(str(value)):
+                        raise ValueError("invalid correlation")
+            if merged.get("status_url") or merged.get("poll_url"):
+                merged["status_url"] = self._poll_url(merged)
+                merged.pop("poll_url", None)
+            if status in self.ACTIVE_STATUSES and not merged.get("status_url"):
+                raise ValueError("active response requires poll URL")
+            if status == "completed":
+                merged["asset_url"] = self._asset_url(merged.get("asset_url") or merged.get("video_url") or merged.get("url"))
+            else:
+                merged.pop("asset_url", None)
+            merged.pop("video_url", None)
+            merged.pop("url", None)
+        except ValueError:
+            return AIResponse(status="failed", model=model, error="AI Remote Production response contract rejected")
         return AIResponse(
             status=status,
-            model=data.get("model") or model,
+            model=model,
             output=merged,
-            usage=data.get("usage") if isinstance(data.get("usage"), dict) else {},
+            usage={},
             error=error,
         )
+
+    def _contains_secret(self, value):
+        return any(secret and secret in value for secret in
+                   (self._api_key(), os.getenv("AI_TEXT_API_KEY"), os.getenv("SUB2_KEY")))
+
+    def normalized_endpoint(self):
+        value = self._endpoint()
+        parsed = urlsplit(value)
+        if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+                or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or self._contains_secret(value)):
+            raise ValueError("AI video endpoint configuration required")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        host = parsed.hostname.lower()
+        if ":" in host:
+            host = "[" + host + "]"
+        return urlunsplit((parsed.scheme, f"{host}:{port}", parsed.path or "/", "", ""))
+
+    def _asset_url(self, value):
+        if not isinstance(value, str) or self._contains_secret(value):
+            raise ValueError("invalid asset reference")
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if (parsed.scheme != "https" or not host or parsed.username or parsed.password
+                or host == "localhost" or host.endswith((".localhost", ".local", ".internal"))
+                or "." not in host or "\\" in value or any(ord(c) < 33 for c in value)):
+            raise ValueError("invalid asset reference")
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            # Reject legacy numeric host encodings as well as ordinary IP literals.
+            if host.replace(".", "").isdigit() or host.startswith("0x"):
+                raise ValueError("invalid asset host")
+        else:
+            if not address.is_global:
+                raise ValueError("non-public asset host")
+        return value
 
     def _poll_url(self, output):
         if not isinstance(output, dict):
@@ -117,8 +177,15 @@ class VideoProvider:
         value = output.get("status_url") or output.get("poll_url")
         if not value:
             return ""
-        endpoint = self._endpoint()
-        return urljoin(endpoint, str(value)) if endpoint else str(value)
+        endpoint = self.normalized_endpoint()
+        target = urljoin(endpoint, str(value))
+        parsed, origin = urlsplit(target), urlsplit(endpoint)
+        if (parsed.username or parsed.password or parsed.fragment or "\\" in target
+                or self._contains_secret(target) or any(ord(c) < 33 for c in target)
+                or (parsed.scheme, parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+                != (origin.scheme, origin.hostname, origin.port)):
+            raise ValueError("AI poll URL must be same-origin")
+        return target
 
     def initialize(self):
         endpoint = self._endpoint()
@@ -138,6 +205,11 @@ class VideoProvider:
 
     def request(self, request):
         endpoint = self._endpoint()
+        if getattr(request, 'endpoint_fingerprint', ''):
+            # Freeze the exact checked server endpoint at the network boundary.
+            endpoint = self.normalized_endpoint()
+            if hashlib.sha256(endpoint.encode()).hexdigest() != request.endpoint_fingerprint:
+                raise ValueError('AI execution endpoint drift')
         if not endpoint:
             return AIResponse(
                 status="failed",
@@ -155,27 +227,35 @@ class VideoProvider:
             "input": request.input,
             "options": request.options,
         }
+        headers = self._headers()
+        if getattr(request, "request_id", ""):
+            headers["Idempotency-Key"] = request.request_id
 
         try:
             response = self.session.post(
                 endpoint,
                 json=payload,
-                headers=self._headers(),
+                headers=headers,
                 timeout=self.timeout,
+                allow_redirects=False,
             )
+            if 300 <= getattr(response, "status_code", 200) < 400:
+                raise ValueError("redirect rejected")
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
             return AIResponse(
                 status="failed",
                 model=request.model,
-                error=f"AI Remote Production request failed: {exc}",
+                output={"ambiguous_dispatch": True},
+                error="AI Remote Production request outcome unknown",
             )
         except ValueError as exc:
             return AIResponse(
                 status="failed",
                 model=request.model,
-                error=f"AI Remote Production returned invalid JSON: {exc}",
+                output={"ambiguous_dispatch": True},
+                error="AI Remote Production returned invalid JSON or redirect",
             )
 
         result = self._normalize_payload(data, model=request.model)
@@ -194,7 +274,10 @@ class VideoProvider:
 
     def poll(self, output, *, model="auto"):
         previous_output = output if isinstance(output, dict) else {}
-        poll_url = self._poll_url(previous_output)
+        try:
+            poll_url = self._poll_url(previous_output)
+        except ValueError:
+            return AIResponse(status="failed", model=model, error="AI poll URL rejected")
         if not poll_url:
             return AIResponse(
                 status="failed",
@@ -208,7 +291,10 @@ class VideoProvider:
                 poll_url,
                 headers=self._headers(),
                 timeout=self.timeout,
+                allow_redirects=False,
             )
+            if 300 <= getattr(response, "status_code", 200) < 400:
+                return AIResponse(status="failed", model=model, error="AI poll redirect rejected")
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
@@ -218,14 +304,14 @@ class VideoProvider:
                 status="running",
                 model=model,
                 output=previous_output,
-                error=f"AI Remote Production status check failed: {exc}",
+                error="AI Remote Production status check temporarily unavailable",
             )
         except ValueError as exc:
             return AIResponse(
                 status="running",
                 model=model,
                 output=previous_output,
-                error=f"AI Remote Production status check returned invalid JSON: {exc}",
+                error="AI Remote Production status check returned invalid JSON",
             )
 
         result = self._normalize_payload(

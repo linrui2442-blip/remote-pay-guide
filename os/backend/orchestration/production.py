@@ -105,3 +105,13 @@ def execute_authorized_claimed_github_runtime(plan_id, **kwargs):
 def refresh_authorized_github_runtime(plan_id, **kwargs):
     from production.runtime.orchestrator import refresh_authorized_github_runtime as _refresh
     return _refresh(plan_id, **kwargs)
+
+
+def execute_authorized_claimed_ai_runtime(plan_id, **kwargs):
+    from production.runtime.orchestrator import execute_authorized_claimed_ai_runtime as execute
+    return execute(plan_id, **kwargs)
+
+
+def refresh_authorized_ai_runtime(plan_id, **kwargs):
+    from production.runtime.orchestrator import refresh_authorized_ai_runtime as refresh
+    return refresh(plan_id, **kwargs)
