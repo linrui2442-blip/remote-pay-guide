@@ -57,6 +57,9 @@ def _init_db():
     for name, field_type in migrations.items():
         if name not in columns:
             cursor.execute(f"ALTER TABLE video_assets ADD COLUMN {name} {field_type}")
+    duplicates = cursor.execute('SELECT production_result_id FROM video_assets WHERE production_result_id IS NOT NULL GROUP BY production_result_id HAVING COUNT(*) > 1').fetchall()
+    if not duplicates:
+        cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_video_assets_production_result ON video_assets(production_result_id) WHERE production_result_id IS NOT NULL')
     conn.commit()
     conn.close()
 
@@ -103,36 +106,44 @@ def create_video_asset(asset):
     now = datetime.utcnow().isoformat()
     metadata = json.dumps(asset.metadata or {}, ensure_ascii=False)
     conn = _connect()
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO video_assets
-        (id, asset_id, video_id, production_result_id, source_provider,
-         storage_type, asset_url, file_path, status, metadata, created_at,
-         updated_at, source, location)
-        VALUES (
-            (SELECT id FROM video_assets WHERE asset_id=?),
-            ?,?,?,?,?,?,?,?,?,?,?,?,?
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        existing = conn.execute('SELECT * FROM video_assets WHERE asset_id=?', (asset.asset_id,)).fetchone()
+        if existing and (json.loads(existing['metadata'] or '{}')).get('quality_policy_version'):
+            raise ValueError('Quality-gated assets cannot be overwritten by the legacy registry')
+        if asset.production_result_id is not None:
+            linked = conn.execute('SELECT asset_id FROM video_assets WHERE production_result_id=?', (str(asset.production_result_id),)).fetchall()
+            if len(linked) > 1 or (linked and linked[0]['asset_id'] != asset.asset_id):
+                raise ValueError('ProductionResult already has an asset or duplicate legacy history')
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='production_results'").fetchone():
+                result = conn.execute('SELECT output FROM production_results WHERE id=?', (asset.production_result_id,)).fetchone()
+                output = json.loads(result['output'] or '{}') if result else {}
+                if isinstance(output, dict) and (output.get('defer_asset_binding') or output.get('g4b_no_asset_binding')):
+                    raise ValueError('Deferred ProductionResult requires the unified quality gate')
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
+    try:
+        conn.execute(
+            """INSERT INTO video_assets
+            (asset_id,video_id,production_result_id,source_provider,storage_type,
+             asset_url,file_path,status,metadata,created_at,updated_at,source,location)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(asset_id) DO UPDATE SET
+                video_id=excluded.video_id, production_result_id=excluded.production_result_id,
+                source_provider=excluded.source_provider, storage_type=excluded.storage_type,
+                asset_url=excluded.asset_url, file_path=excluded.file_path, status=excluded.status,
+                metadata=excluded.metadata, updated_at=excluded.updated_at,
+                source=excluded.source, location=excluded.location""",
+            (asset.asset_id, asset.video_id, asset.production_result_id, asset.source_provider,
+             asset.storage_type, asset.asset_url, asset.file_path, asset.status, metadata,
+             asset.created_at or now, now, asset.source, asset.location),
         )
-        """,
-        (
-            asset.asset_id,
-            asset.asset_id,
-            asset.video_id,
-            asset.production_result_id,
-            asset.source_provider,
-            asset.storage_type,
-            asset.asset_url,
-            asset.file_path,
-            asset.status,
-            metadata,
-            asset.created_at or now,
-            now,
-            asset.source,
-            asset.location,
-        ),
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        # Closing also rolls back on uniqueness or other persistence failures.
+        conn.close()
 
     asset.created_at = asset.created_at or now
     asset.updated_at = now

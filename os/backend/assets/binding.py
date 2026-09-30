@@ -22,6 +22,9 @@ def create_asset_from_result(result):
     try:
         provider = result.get("provider")
         output = _normalize_output(result.get("output") or {})
+        if output.get('defer_asset_binding') or output.get('g4b_no_asset_binding'):
+            return {'asset_id': None, 'asset_status': 'review',
+                    'error': 'Deferred ProductionResult requires the unified quality gate'}
 
         asset_url = output.get("url") or output.get("asset_url") or output.get("video_url")
         file_path = output.get("file_path") or output.get("path")

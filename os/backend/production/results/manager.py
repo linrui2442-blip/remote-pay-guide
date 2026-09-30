@@ -163,7 +163,7 @@ def create_result(data):
     conn.close()
 
     result = get_result(result_id)
-    if result and result.get("status") == "completed" and not (result.get("output") or {}).get("defer_asset_binding"):
+    if result and result.get("status") == "completed" and not any((result.get("output") or {}).get(k) for k in ('defer_asset_binding', 'g4b_no_asset_binding')):
         binding = _bind_asset(result)
         if not binding.get("asset_id"):
             _fail_asset_binding(result_id, binding)
@@ -231,8 +231,15 @@ def persist_deferred_ai_response(runtime_job_id, response, *, recovery=False):
         if not task or task['provider'] != 'ai_gateway':
             raise ValueError('AI task linkage invalid')
         params = json.loads(task['parameters'] or '{}')
-        if row['video_id'] != params.get('content_id') or row['asset_id']:
+        if row['video_id'] != params.get('content_id'):
             raise ValueError('AI result identity or asset boundary invalid')
+        if row['asset_id']:
+            # A later G4-D PASS is a valid terminal replay, not an execution
+            # side-effect. Validate the existing quality binding without I/O.
+            from assets.quality import _binding, _quality_row
+            if row['status'] != 'completed':
+                raise ValueError('AI result asset boundary invalid')
+            _binding(conn, row, _quality_row(conn, row['id']))
         current_output = json.loads(row['output'] or '{}')
         if row['status'] in {'completed', 'failed'} or (recovery and current_output.get('content_id')):
             expected_status = row['status'] if row['status'] in {'completed', 'failed'} else 'running'
@@ -363,6 +370,8 @@ def update_result(result_id, *, status=None, output=None, error=None, bind_asset
     next_output = output if output is not None else current.get("output") or {}
     if (current.get("output") or {}).get("defer_asset_binding"):
         next_output = {**next_output, "defer_asset_binding": True}
+    if (current.get("output") or {}).get("g4b_no_asset_binding"):
+        next_output = {**next_output, "g4b_no_asset_binding": True}
     next_error = error if error is not None else current.get("error")
 
     conn = _connect()
@@ -388,7 +397,7 @@ def update_result(result_id, *, status=None, output=None, error=None, bind_asset
         return get_result(result_id)
 
     result = get_result(result_id)
-    if result and next_status == "completed" and bind_asset and not next_output.get("defer_asset_binding") and not result.get("asset_id"):
+    if result and next_status == "completed" and bind_asset and not any(next_output.get(k) for k in ('defer_asset_binding', 'g4b_no_asset_binding')) and not result.get("asset_id"):
         binding = _bind_asset(result)
         if not binding.get("asset_id"):
             _fail_asset_binding(result_id, binding)

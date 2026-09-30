@@ -88,7 +88,10 @@ gate.
 
 `G4B_GITHUB_PRODUCTION_LINE=CLOSED`
 `G4C_REAL_AI_PRODUCTION_LINE=IN_PROGRESS`
-`G4D_UNIFIED_ASSET_QUALITY_GATE=NOT_STARTED`
+`G4C_OFFLINE_CERTIFIED=PASS`
+`G4C_REAL_LIVE_E2E=PENDING_CONFIGURATION`
+`G4D_UNIFIED_ASSET_QUALITY_GATE=IN_PROGRESS`
+`G4D_OFFLINE_CERTIFIED=PASS`
 
 G4-B consumes the existing claimed RuntimeJob, persists durable GitHub
 execution intent before dispatch, and provides at-most-once render dispatch,
@@ -102,13 +105,39 @@ all succeeded. GitHub Pages serves `media/g4b-live-invoice-currency.mp4`
 G4-C owns AI execution/polling; G4-D remains responsible for unified asset
 quality and VideoAsset creation. G4-C is not yet closed.
 
+### Offline-certified milestone — G4-D Unified Asset Quality Gate
+
+The provider-neutral `g4d-v1` gate consumes completed, linked, deferred
+ProductionResults from GitHub or AI. It records one durable quality check per
+result and creates a deterministic VideoAsset only on technical `PASS`, with
+asset creation and result binding in one transaction. `REVIEW` is retryable;
+`BLOCK` and `PASS` replay without repeating inspection. Source drift and legacy
+duplicate quality/asset history fail closed without deleting history.
+
+The read-only downloader enforces HTTPS/443, public DNS/IP validation on every
+redirect, DNS-pinned TLS connections, size limits and external TEMP cleanup.
+The ffprobe gate checks video structure, duration (3–180 seconds), minimum
+360×640 dimensions and portrait aspect (0.50–0.65). Missing ffprobe or temporary
+fetch/DNS failures require review. Audio presence is evidence, not mandatory.
+This is technical validation, not perceptual quality, copyright or semantic
+moderation. Signed URL queries are not copied into quality evidence.
+
+Both providers, failure/review matrices, atomic rollback, 20 rounds of four
+concurrent callers, and legacy compatibility were verified offline. G4-C still
+stops before asset creation; deferred results cannot use legacy binding as a
+shortcut. G4-D creates no PublishTask. Neither G4-C nor G4-D is CLOSED: G4-C
+awaits provider configuration/live proof and G4-D awaits separately authorized
+real read-only remote media proof. Production DB remains unchanged.
+
 ### BREAKPOINT C — autonomous orchestration
 
 `AUTONOMOUS_ORCHESTRATION=PARTIAL`.
 
 The G3 policy and authorization layer is complete. The full autonomous loop is not yet closed because G4 autonomous production, G5 autonomous publishing and the later feedback-learning stages remain unfinished. The current human-gated path remains the safe development, validation, fallback, review, recovery and override mode.
 
-`NEXT_MILESTONE=G4-C Real AI Production Line`
+`NEXT_MILESTONE=G4-D real read-only asset proof`
+
+G4-C provider live proof may proceed when configured and separately authorized.
 `G5_STATUS=NOT_STARTED`
 
 ## Official roadmap

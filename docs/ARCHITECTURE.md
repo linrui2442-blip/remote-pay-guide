@@ -34,9 +34,11 @@ ContentPlan Policy Stage → Effective Authorization
 ```
 
 G4-A and G4-B are implemented and verified, including the G4-B real live
-GitHub render/artifact/Pages promotion proof. G4-C is in progress and owns AI
-provider execution/polling. G4-D is not started and remains the sole owner of
-the unified asset quality gate and promotion into VideoAsset.
+GitHub render/artifact/Pages promotion proof. G4-C owns AI provider execution/
+polling and is offline-certified, with real provider proof pending configuration.
+G4-D is offline-certified and remains the sole new autonomous owner of the
+unified asset quality gate and promotion into VideoAsset. Its real read-only
+media proof is still pending; neither G4-C nor G4-D is CLOSED.
 
 G4-B consumes an existing claimed RuntimeJob. Durable execution and promotion
 claims precede external POSTs; asynchronous polling, deterministic artifact
@@ -76,6 +78,32 @@ G4-A owns authorization consumption, routing, materialization and RuntimeJob
 claim. G4-B/C own provider execution and polling, G4-D owns the unified asset
 quality gate, and G5 owns publishing policy and execution.
 
+G4-D uses `assets.quality.evaluate_production_result_asset(result_id)` for both
+providers. `asset_quality_checks` persists `g4d-v1` decisions and immutable
+source fingerprints. Clean histories have partial unique indexes on the
+result identity in quality checks and VideoAssets; duplicate legacy history is
+preserved and rejected. Technical PASS, deterministic `asset-result-{id}`
+creation and ProductionResult asset binding finalize atomically. The completed
+result's remote correlation/output and historical deferral marker stay intact.
+REVIEW may retry the same check; BLOCK and PASS are terminal for that source
+and policy. There is no parallel provider-specific asset lifecycle.
+
+`assets.remote_media` is a separate read-only security boundary, not the legacy
+publish resolver. It validates HTTPS/443, credentials, hosts and all resolved
+addresses at every redirect, pins the TLS connection to a validated IP while
+verifying the original hostname, disables automatic redirects/decompression,
+limits downloads to 32 KiB–500 MiB, and cleans external temporary files.
+ffprobe runs without a shell, with protocol/format restrictions and a timeout.
+Technical v1 requires a video stream, finite 3–180 second duration, at least
+360×640 dimensions and a 0.50–0.65 aspect ratio. Audio presence is recorded but
+optional. Unavailable inspection returns REVIEW, never fabricated PASS.
+
+Quality evidence contains bounded technical fields and URL fingerprints, not
+signed URL queries or secret headers. The canonical asset retains the source
+URL, not its temporary inspection path. G4-D never queues or publishes; G5
+remains the publishing owner. ContentPlan-stage quality remains deferred to
+this later asset stage; technical certification is not semantic moderation.
+
 ## Target policy decisions
 
 `G3 Autonomous Policy Engine` is implemented and verified with persisted raw `AUTO` / `REVIEW` / `BLOCK` decisions, revision and policy-version binding, source fingerprints, history, concurrency/idempotency, evidence collection, human override, autonomy controls and effective authorization. At the ContentPlan stage, the legacy gate name `ai_confidence` means `generation assurance`, not model self-reported confidence or probability. Deferred gates are explicitly `NOT_APPLICABLE`: publishing frequency/cadence/rate/account controls belong to G5; production/provider cost policy and the asset quality gate belong to G4.
@@ -89,7 +117,7 @@ G3 is an authorization layer only. Raw or effective `AUTO` does not approve, mat
 - `os/database/os.db`: runtime state, never disposable test output.
 - GitHub artifact → GitHub Pages → VideoAsset → official provider adapters: formal media/publishing path.
 
-The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. AI provider execution, asset quality and publishing remain G4-C, G4-D and G5 work respectively.
+The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. G4-C execution and G4-D asset quality are offline-certified but still await their respective live proofs. G5 publishing is not started.
 
 ## Compatibility and legacy
 
