@@ -208,7 +208,27 @@ existing r47/r54/r55/r56, scheduler r29/r30/r31 and G5 recovery regressions pass
 The legacy r56 mixed-state fixture now uses a fresh job to respect canonical
 one-result-per-job semantics; its rejection assertions remain unchanged.
 
-`NEXT_MILESTONE=G8/G9 offline preparation`
+`G8_DRY_RUN_HARNESS_READY=PASS`
+`G8_REAL_72H_SOAK=NOT_RUN`
+`G9_OFFLINE_HARDENING_READY=PASS`
+`V1_RELEASE_STATUS=NOT_CLOSED`
+
+The G8 test harness exercises 10 accelerated learning cycles with four fresh
+processes per cycle, terminal replay after process exit, and two injected
+provider failures retained as REVIEW. Eight cycles complete; there are no
+duplicate cycles, production/publish execution or publish intents. It samples
+canonical health counters and deletes its isolated TEMP directory. This proves
+only the offline learning/recovery harness, not a live production/publishing
+soak. The existing G4/G5 fake transport regressions certify those stages separately.
+
+G9 preparation includes safe startup, configuration and authorization checklist,
+backup/restore and incident runbook in README. Isolated backend import/OpenAPI
+route checks, production-path rejection, frontend content-plan contract and
+frontend build pass. No fresh-machine installation, real service startup, live
+soak, tag or release was performed. Production DB SHA256 remains
+`67B2FCB03BCE4037184829A838AE19BE9E2A2EDA1A1F19F6E024C1222849449E`.
+
+`NEXT_GATE=Review local commits; separately authorize push and controlled live proofs`
 
 G4-C provider live proof may proceed when configured and separately authorized.
 G5 offline work is complete and pushed; each controlled platform proof needs

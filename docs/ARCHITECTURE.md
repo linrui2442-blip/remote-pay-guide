@@ -60,6 +60,13 @@ evidence and authorization boundary. It never retries an ambiguous POST.
 Missing tables/configuration/readiness are reported rather than treated as
 healthy. See README for isolated startup, backup/restore and incident procedures.
 
+G8 accelerated soak is a test-only harness invoking those same learning and
+health functions in fresh processes against one isolated DB; it is not another
+scheduler. It samples policy/quality/review/intent counters without manufacturing
+production or publishing successes. A >=72h real end-to-end soak remains a
+separate authorization and release gate. G9 offline documentation/startup
+preparation does not close any pending live gate or constitute a v1.0 release.
+
 G4-B consumes an existing claimed RuntimeJob. Durable execution and promotion
 claims precede external POSTs; asynchronous polling, deterministic artifact
 discovery, crash/recovery/concurrency protection and terminal result replay
