@@ -38,7 +38,19 @@ GitHub render/artifact/Pages promotion proof. G4-C owns AI provider execution/
 polling and is offline-certified, with real provider proof pending configuration.
 G4-D is offline-certified and remains the sole new autonomous owner of the
 unified asset quality gate and promotion into VideoAsset. Its real read-only
-media proof is still pending; neither G4-C nor G4-D is CLOSED.
+media proof is non-blocking pending after two fail-safe media-read failures;
+neither G4-C nor G4-D is CLOSED. No further automatic live retry is permitted.
+
+G6 uses `intelligence.learning.run_feedback_cycle()` to read persisted Data
+Center evidence for a mature account/platform window. It extends the existing
+FeedbackSnapshot with a generation claim and plan link, not a second lifecycle.
+Fingerprinting includes cohort/window/metric/funnel evidence. Only the claim
+winner invokes the existing provider abstraction. Interrupted generation is
+REVIEW; a persisted linked plan can resume local policy evaluation without
+calling the provider again. The endpoint is a preview plus PolicyDecision,
+never approval, production or publishing. Analytics refresh remains in existing
+integrations and is not implicitly invoked by the cycle. Observational strategy
+language must not assert causal effects from cohort outcomes.
 
 G4-B consumes an existing claimed RuntimeJob. Durable execution and promotion
 claims precede external POSTs; asynchronous polling, deterministic artifact

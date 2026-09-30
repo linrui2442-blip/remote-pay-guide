@@ -92,6 +92,8 @@ gate.
 `G4C_REAL_LIVE_E2E=PENDING_CONFIGURATION`
 `G4D_UNIFIED_ASSET_QUALITY_GATE=IN_PROGRESS`
 `G4D_OFFLINE_CERTIFIED=PASS`
+`G4D_REAL_LIVE_E2E=LIVE_BLOCKED_BY_UNRESOLVED_MEDIA_READ`
+`G4D_STATUS=NON_BLOCKING_LIVE_PENDING`
 
 G4-B consumes the existing claimed RuntimeJob, persists durable GitHub
 execution intent before dispatch, and provides at-most-once render dispatch,
@@ -125,14 +127,17 @@ moderation. Signed URL queries are not copied into quality evidence.
 Both providers, failure/review matrices, atomic rollback, 20 rounds of four
 concurrent callers, and legacy compatibility were verified offline. G4-C still
 stops before asset creation; deferred results cannot use legacy binding as a
-shortcut. G4-D creates no PublishTask. Neither G4-C nor G4-D is CLOSED: G4-C
-awaits provider configuration/live proof and G4-D awaits separately authorized
-real read-only remote media proof. Production DB remains unchanged.
+shortcut. G4-D creates no PublishTask. Neither G4-C nor G4-D is CLOSED.
+Two authorized read-only G4-D proofs failed safely with REMOTE_FETCH_UNAVAILABLE;
+the second received HTTP 200 but did not verify the full body. No deterministic
+downloader defect is established. Do not automatically retry or weaken SSRF/TLS.
+G4-C configuration and G4-D live verification are non-blocking pending gates.
+Production DB remains unchanged.
 
 ### Offline-certified milestone — G5 Autonomous Publishing
 
 `G5_OFFLINE_CERTIFIED=PASS`
-`G5_STATUS=OFFLINE_CERTIFIED_AWAITING_REVIEW_PUSH_AND_AUTHORIZED_LIVE_PROOFS`
+`G5_STATUS=OFFLINE_CERTIFIED_PUSHED_AWAITING_AUTHORIZED_LIVE_PROOFS`
 `G5_REAL_PLATFORM_PUBLISH_PROOF=NOT_RUN`
 
 `publish.policy.prepare_autonomous_publish_task()` applies server-owned
@@ -175,13 +180,26 @@ G5 is not CLOSED. Platform live proofs require separate explicit authorization.
 
 The G3 policy and authorization layer is complete. The full autonomous loop is not yet closed because G4 autonomous production, G5 autonomous publishing and the later feedback-learning stages remain unfinished. The current human-gated path remains the safe development, validation, fallback, review, recovery and override mode.
 
-`NEXT_MILESTONE=G4-D real read-only asset proof`
+`G6_OFFLINE_CERTIFIED=PASS`
+`G6_LIVE=PENDING_AUTHORIZATION`
+
+G6 reuses the existing feedback snapshot table, Data Center window aggregation,
+ContentPlan providers and canonical G3 policy. A complete analytics window at
+least two UTC dates old forms an account/platform cohort. Missing/conflicting
+identity (including legacy content_id=platform-video fallback) is excluded.
+Snapshot evidence retains the window, cohort IDs, sample size, metrics, funnel,
+observational reason codes and fingerprint. A durable snapshot claim permits
+one generation only; ambiguous generation stays REVIEW without automatic retry.
+Plans remain preview; neither ProductionTask nor PublishTask is created.
+Offline certification includes 20 rounds of four callers, failure/replay,
+identity/maturity/evidence assertions, G5 through G2, r57, r44 and r16 regressions.
+
+`NEXT_MILESTONE=G7 offline reliability seal`
 
 G4-C provider live proof may proceed when configured and separately authorized.
-G5 offline work is complete; review and a separately authorized push precede
-individual controlled platform proofs. G4-D live proof preparation exists
-outside the repository and has not been run. G4-C configuration does not block
-the GitHub-based v1 path. G6–G9 have not been started in this milestone.
+G5 offline work is complete and pushed; each controlled platform proof needs
+separate authorization. G6/G7 offline development and G8/G9 preparation may
+continue without those live gates. No v1.0 closure is implied.
 
 ## Official roadmap
 

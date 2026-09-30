@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import contextmanager
 
 from accounts.manager import get_account
 from data.growth import get_content_funnel
@@ -19,11 +20,16 @@ DB_PATH = database_path()
 DEFAULT_REFRESH_LIMIT = 50
 
 
+@contextmanager
 def _connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(database_path())
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def _ensure_table():
@@ -104,6 +110,8 @@ def _snapshot_key(row, funnel):
         'conversion_value': row.get('conversion_value'),
         'funnel': funnel,
     }
+    if row.get('learning_evidence') is not None:
+        stable['learning_evidence'] = row['learning_evidence']
     return hashlib.sha256(_json(stable).encode('utf-8')).hexdigest()
 
 
