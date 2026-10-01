@@ -201,7 +201,44 @@ def get_feedback_snapshot(snapshot_id):
     return _deserialize(row)
 
 
-def record_directed_generation_intent(snapshot_id, identity, fingerprint):
+def _directed_plan_exists(conn, identity):
+    return conn.execute('SELECT 1 FROM intelligence_content_plans WHERE plan_key=?',
+                        ('directed-request:' + identity,)).fetchone() is not None
+
+
+def effective_directed_request_state(conn, identity, record):
+    """A canonical plan wins over bookkeeping, including legacy records."""
+    if _directed_plan_exists(conn, identity):
+        return 'COMPLETED'
+    if (not isinstance(record, dict) or not isinstance(record.get('fingerprint'), str)
+            or not record['fingerprint'] or not isinstance(record.get('created_at'), str)
+            or not record['created_at']):
+        raise ValueError('DIRECTED_INTENT_CORRUPT')
+    state = record.get('state', 'UNRESOLVED_UNKNOWN')
+    if state not in ('UNRESOLVED_UNKNOWN', 'CONFIRMED_FAILED', 'CLOSED_UNKNOWN'):
+        raise ValueError('DIRECTED_INTENT_CORRUPT')
+    return state
+
+
+def get_directed_request_status(snapshot_id, identity):
+    with _connect() as conn:
+        row = conn.execute('SELECT directed_requests_json FROM intelligence_feedback_snapshots WHERE id=?',
+                           (snapshot_id,)).fetchone()
+        if row is None:
+            raise ValueError('STRICT_SNAPSHOT_REQUIRED')
+        intents = json.loads(row[0] or '{}')
+        record = intents.get(identity)
+        if record is None:
+            return {'effective_state': 'NOT_FOUND', 'can_create_new_request': False,
+                    'requires_duplicate_risk_ack': False}
+        state = effective_directed_request_state(conn, identity, record)
+        return {'effective_state': state,
+                'can_create_new_request': state in ('CONFIRMED_FAILED', 'CLOSED_UNKNOWN', 'COMPLETED'),
+                'requires_duplicate_risk_ack': state == 'CLOSED_UNKNOWN',
+                'state_conflict': state == 'COMPLETED' and record.get('state') in ('CONFIRMED_FAILED', 'CLOSED_UNKNOWN')}
+
+
+def record_directed_generation_intent(snapshot_id, identity, fingerprint, *, duplicate_risk_ack=False):
     """Durable no-retry intent on the existing source snapshot, not a job queue.
 
     A crash after this commit is ambiguous. Only an already persisted plan may
@@ -220,7 +257,17 @@ def record_directed_generation_intent(snapshot_id, identity, fingerprint):
             if intents[identity]['fingerprint'] != fingerprint:
                 raise ValueError('DIRECTED_REPLAY_CONFLICT')
             raise ValueError('DIRECTED_GENERATION_OUTCOME_PENDING_OR_UNKNOWN')
-        intents[identity] = {'fingerprint': fingerprint, 'created_at': datetime.now(timezone.utc).isoformat()}
+        for sibling_identity, record in intents.items():
+            state = effective_directed_request_state(conn, sibling_identity, record)
+            if state == 'UNRESOLVED_UNKNOWN':
+                raise ValueError('DIRECTED_RECONCILIATION_REQUIRED')
+            if state == 'COMPLETED' and record.get('state') in ('CONFIRMED_FAILED', 'CLOSED_UNKNOWN'):
+                raise ValueError('DIRECTED_INTENT_CORRUPT')
+            if state == 'CLOSED_UNKNOWN' and not duplicate_risk_ack:
+                raise ValueError('DIRECTED_DUPLICATE_RISK_ACK_REQUIRED')
+        now = datetime.now(timezone.utc).isoformat()
+        intents[identity] = {'fingerprint': fingerprint, 'created_at': now,
+                             'state': 'UNRESOLVED_UNKNOWN', 'provider_attempt_claimed_at': now}
         conn.execute('UPDATE intelligence_feedback_snapshots SET directed_requests_json=? WHERE id=?', (_json(intents), snapshot_id))
 
 

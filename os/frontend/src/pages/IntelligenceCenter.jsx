@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { generateContentPlan, prepareStrictSnapshot, updateContentPlan, evaluateContentPlanPolicy, getContentPlanEffective, getContentPlan } from "../api";
+import { generateContentPlan, getDirectedRequestStatus, prepareStrictSnapshot, updateContentPlan, evaluateContentPlanPolicy, getContentPlanEffective, getContentPlan } from "../api";
 
 const REQUEST_KEY = 'remote-pay-guide:directed-request:v1';
 const canonical = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
@@ -9,10 +9,12 @@ function restoreRequest() {
     const raw = sessionStorage.getItem(REQUEST_KEY);
     if (!raw) return null;
     const saved = JSON.parse(raw);
-    if (!saved.replay_token || !saved.payload || saved.fingerprint !== canonical(saved.payload)
-      || !['READY', 'SUBMITTING', 'UNKNOWN_OR_RETRYABLE', 'COMPLETED'].includes(saved.status)
+    if (!saved.replay_token || ((!saved.payload || saved.fingerprint !== canonical(saved.payload))
+      && !(saved.status === 'READY' && saved.payload === null && saved.prior_request))
+      || !['READY', 'SUBMITTING', 'UNKNOWN_OR_RETRYABLE', 'UNKNOWN_REQUIRES_RECONCILIATION', 'COMPLETED'].includes(saved.status)
       || (saved.status === 'COMPLETED' && !saved.plan_id)) throw Error('Invalid saved request');
-    return {...saved, status: saved.status === 'SUBMITTING' ? 'UNKNOWN_OR_RETRYABLE' : saved.status};
+    return {...saved, status: ['SUBMITTING', 'UNKNOWN_OR_RETRYABLE'].includes(saved.status)
+      ? 'UNKNOWN_REQUIRES_RECONCILIATION' : saved.status};
   } catch { return {status: 'STORAGE_BLOCKED'}; }
 }
 
@@ -39,32 +41,60 @@ export default function IntelligenceCenter({ accounts = [] }) {
     catch (e) { setMessage(e.message); } finally { setBusy(false); }
   };
   const generate = async () => {
-    if (inFlight.current || ['COMPLETED', 'STORAGE_BLOCKED'].includes(active.current?.status)) return;
+    if (inFlight.current || ['COMPLETED', 'STORAGE_BLOCKED', 'UNKNOWN_REQUIRES_RECONCILIATION'].includes(active.current?.status)) return;
     inFlight.current = true; setBusy(true); setMessage("");
     try {
       if (!snapshot?.id || !brief.trim()) throw Error('Snapshot and brief required');
       const payload = {snapshot_id: snapshot.id, human_brief: brief.trim(), human_constraints: audience.trim() ? {target_audience: audience.trim(), locked_fields: ['target_audience']} : {}};
       const fingerprint = canonical(payload);
-      if (active.current && active.current.fingerprint !== fingerprint) throw Error('Input changed. Use New Creative Request explicitly.');
-      const current = active.current || {replay_token: crypto.randomUUID(), payload, fingerprint, status: 'READY'};
+      if (active.current?.fingerprint && active.current.fingerprint !== fingerprint) throw Error('Input changed. Use New Creative Request explicitly.');
+      const current = active.current ? {...active.current, payload, fingerprint} : {replay_token: crypto.randomUUID(), payload, fingerprint, status: 'READY'};
       persist({...current, status: 'SUBMITTING'});
-      const created = await generateContentPlan(current.payload.snapshot_id, {request_id: current.replay_token, human_brief: current.payload.human_brief, human_constraints: current.payload.human_constraints});
-      persist({...current, status: 'COMPLETED', plan_id: created.plan.id});
+      const created = await generateContentPlan(current.payload.snapshot_id, {request_id: current.replay_token, human_brief: current.payload.human_brief, human_constraints: current.payload.human_constraints, duplicate_risk_ack: Boolean(current.duplicate_risk_ack)});
+      const {prior_request: _prior, ...completed} = current;
+      persist({...completed, status: 'COMPLETED', plan_id: created.plan.id});
       setPlan(created.plan); setRuntime(created.runtime); setPolicy(created.policy); setEffective(created.effective);
       setMessage(created.policy_error || "ContentPlan saved. Stopped at PolicyDecision; no task created.");
     } catch (e) {
       if (active.current?.status === 'SUBMITTING') {
-        try { persist({...active.current, status: 'UNKNOWN_OR_RETRYABLE'}); } catch { /* Persisted SUBMITTING is recovered as unknown. */ }
+        const reconciliationRequired = /DIRECTED_RECONCILIATION_REQUIRED/.test(e.message);
+        const riskAckRequired = /DIRECTED_DUPLICATE_RISK_ACK_REQUIRED/.test(e.message);
+        try {
+          if (reconciliationRequired && active.current.prior_request) persist(active.current.prior_request);
+          else if (riskAckRequired) {
+            const accepted = window.confirm('The original provider outcome remains unknown. A new request could duplicate content or cost. Confirm risk before submitting this same new request?');
+            persist({...active.current, status: 'READY', duplicate_risk_ack: accepted});
+          } else persist({...active.current, status: 'UNKNOWN_REQUIRES_RECONCILIATION'});
+        } catch { /* Preserve the durable token when storage fails. */ }
       }
       setMessage(`${e.message}. No automatic retry.`);
     } finally { inFlight.current = false; setBusy(false); }
   };
-  const newRequest = () => {
-    if (inFlight.current) return;
+  const newRequest = async () => {
+    if (inFlight.current || active.current?.status === 'STORAGE_BLOCKED') return;
+    inFlight.current = true; setBusy(true);
     try {
-      sessionStorage.removeItem(REQUEST_KEY); active.current = null; setRequest(null);
-      setPlan(null); setRuntime(null); setPolicy(null); setEffective(null); setDirty(false); setBrief(''); setAudience(''); setMessage('New creative request. A new token will be established before submission.');
-    } catch { setMessage('Storage unavailable; cannot start a new request.'); }
+      let duplicateRiskAck = false;
+      if (active.current?.replay_token && active.current?.payload?.snapshot_id) {
+        const status = await getDirectedRequestStatus(active.current.payload.snapshot_id, active.current.replay_token);
+        if (!status.can_create_new_request) {
+          setMessage('Generation outcome unknown. Reconciliation is required before another request for this snapshot.');
+          return;
+        }
+        if (status.requires_duplicate_risk_ack) {
+          duplicateRiskAck = window.confirm('The original provider outcome remains unknown. A new request could duplicate content or cost. Start a separate creative request?');
+          if (!duplicateRiskAck) return;
+        }
+      }
+      const prior = active.current;
+      const next = {replay_token: crypto.randomUUID(), payload: null, fingerprint: null, status: 'READY',
+        duplicate_risk_ack: duplicateRiskAck, prior_request: prior};
+      // Keep the prior identity in session storage until the new boundary succeeds.
+      persist(next);
+      setPlan(null); setRuntime(null); setPolicy(null); setEffective(null); setDirty(false); setBrief(''); setAudience('');
+      setMessage('New creative request prepared; no generation has been sent.');
+    } catch (e) { setMessage(e.message || 'Cannot establish a new request.'); }
+    finally { inFlight.current = false; setBusy(false); }
   };
   const restorePlan = async () => {
     if (inFlight.current) return;
@@ -94,10 +124,10 @@ export default function IntelligenceCenter({ accounts = [] }) {
       <label>你想创作什么内容？<textarea aria-label="human_brief" value={brief} onChange={e => setBrief(e.target.value)} /></label>
       <label>目标受众（可选）<input value={audience} onChange={e => setAudience(e.target.value)} /></label>
       <p>Request state: {request?.status || (snapshot && brief.trim() ? 'READY' : 'DRAFT')}</p>
-      {request?.status === 'UNKNOWN_OR_RETRYABLE' && <p>存在一个未确认结果的请求。Retry uses the saved token; no automatic retry.</p>}
-      <button disabled={busy || ['COMPLETED', 'STORAGE_BLOCKED'].includes(request?.status) || !snapshot || !brief.trim()} onClick={generate}>{request ? 'Retry same request' : 'Generate ContentPlan'}</button>
+      {request?.status === 'UNKNOWN_REQUIRES_RECONCILIATION' && <p>Generation outcome unknown. This request cannot be retried automatically. Reconciliation is required before another request for this snapshot.</p>}
+      <button disabled={busy || ['COMPLETED', 'STORAGE_BLOCKED', 'UNKNOWN_REQUIRES_RECONCILIATION'].includes(request?.status) || !snapshot || !brief.trim()} onClick={generate}>Generate ContentPlan</button>
       {request?.status === 'COMPLETED' && <button disabled={busy} onClick={restorePlan}>Restore completed plan</button>}
-      <button disabled={busy} onClick={newRequest}>New Creative Request</button>
+      <button disabled={busy || request?.status === 'STORAGE_BLOCKED'} onClick={newRequest}>New Creative Request</button>
     </div></section>
     {plan && <section className="panel"><h2>Preview / Edit · Revision {plan.revision}</h2>
       <p>Content ID: {plan.plan.content_id}</p><p>Topic (read-only): {plan.plan.topic}</p>

@@ -1,4 +1,4 @@
-import asyncio, json, os, sys, tempfile, uuid
+import asyncio, json, os, sys, tempfile, uuid, sqlite3
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'os' / 'backend'))
@@ -8,6 +8,11 @@ os.environ['OS_DATABASE_PATH'] = str(Path(tempfile.gettempdir()) / ('g2a-route-'
 from intelligence.content_brain import ContentPlan, ContentPlanGenerationError, validate_human_directive_safety
 import routers.intelligence as intelligence_router
 from main import app
+
+def ensure_snapshot_row(snapshot_id):
+    with sqlite3.connect(os.environ['OS_DATABASE_PATH']) as conn:
+        conn.execute('CREATE TABLE IF NOT EXISTS intelligence_feedback_snapshots(id INTEGER PRIMARY KEY, directed_requests_json TEXT)')
+        conn.execute('INSERT OR IGNORE INTO intelligence_feedback_snapshots(id,directed_requests_json) VALUES(?,?)', (snapshot_id, '{}'))
 
 class FakeProvider:
     supports_directed = True
@@ -23,8 +28,7 @@ def main():
     provider = FakeProvider()
     original_provider = intelligence_router.select_content_plan_provider
     original_snapshot = intelligence_router.get_feedback_snapshot
-    original_intent = intelligence_router.record_directed_generation_intent
-    intelligence_router.record_directed_generation_intent = lambda *args: None
+    ensure_snapshot_row(2)
     intelligence_router.get_feedback_snapshot = strict_snapshot_fixture
     intelligence_router.select_content_plan_provider = lambda: provider
     try:
@@ -38,7 +42,6 @@ def main():
     finally:
         intelligence_router.select_content_plan_provider = original_provider
         intelligence_router.get_feedback_snapshot = original_snapshot
-        intelligence_router.record_directed_generation_intent = original_intent
     os.environ['OS_CONTENT_PLAN_PROVIDER'] = 'llm'
     intelligence_router.get_feedback_snapshot = lambda _id: {'id': _id, 'content_id':'route-source'}
     intelligence_router.select_content_plan_provider = lambda: type('Missing',(),{'readiness':lambda self:{'provider':'llm','implementation_ready':True,'runtime_ready':False,'missing_configuration':['api_key']}})()

@@ -314,6 +314,16 @@ def save_plan(plan, source_snapshot_id=None, *, directed_request=False):
         key = 'directed-request:' + plan.content_id
     with closing(_conn()) as c:
         c.execute('BEGIN IMMEDIATE')
+        if directed_request:
+            source = c.execute('SELECT directed_requests_json FROM intelligence_feedback_snapshots WHERE id=?',
+                               (source_snapshot_id,)).fetchone()
+            if source is None:
+                raise ValueError('STRICT_SNAPSHOT_REQUIRED')
+            intent = json.loads(source[0] or '{}').get(plan.content_id)
+            if not isinstance(intent, dict) or intent.get('fingerprint') != plan.generation_evidence['request_fingerprint']:
+                raise ValueError('DIRECTED_INTENT_MISSING_OR_CONFLICT')
+            if intent.get('state', 'UNRESOLVED_UNKNOWN') != 'UNRESOLVED_UNKNOWN':
+                raise ValueError('DIRECTED_RECONCILIATION_STATE_CONFLICT')
         row=c.execute('SELECT * FROM intelligence_content_plans WHERE plan_key=?',(key,)).fetchone()
         if row:
             record = _row(row)

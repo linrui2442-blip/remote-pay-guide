@@ -1,7 +1,7 @@
 import os
 from fastapi import APIRouter, HTTPException
 from ai.providers.text import TextProviderError
-from pydantic import BaseModel, Field, Extra
+from pydantic import BaseModel, Field, Extra, StrictBool
 from typing import Literal
 from uuid import UUID
 from datetime import date
@@ -20,7 +20,7 @@ from intelligence.task_generator import generate_production_task
 from intelligence.production_spec import build_production_spec
 from intelligence.novelty import evaluate_content_plan_novelty
 from intelligence.content_plan_service import approve_plan, materialize_plan
-from intelligence.feedback_bridge import get_feedback_snapshot, record_directed_generation_intent
+from intelligence.feedback_bridge import get_feedback_snapshot, record_directed_generation_intent, get_directed_request_status
 from intelligence.policy import evaluate_policy, get_current_policy_decision, list_policy_history, list_review_queue
 from intelligence.autonomy import get_effective_authorization, set_policy_override, clear_policy_override
 from intelligence.learning import prepare_feedback_snapshot
@@ -39,6 +39,7 @@ class ContentPlanGenerationRequest(BaseModel):
     human_brief: str | None = None
     human_constraints: dict | None = None
     request_id: UUID | None = None
+    duplicate_risk_ack: StrictBool = False
     class Config: extra = Extra.forbid
 
 
@@ -176,7 +177,10 @@ def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationReques
         raise HTTPException(status_code=503, detail={'error': 'provider not configured', 'runtime_ready': False, 'missing_configuration': runtime.get('missing_configuration', [])})
     if directed:
         try:
-            record_directed_generation_intent(snapshot_id, identity, fingerprint)
+            if request.duplicate_risk_ack:
+                record_directed_generation_intent(snapshot_id, identity, fingerprint, duplicate_risk_ack=True)
+            else:
+                record_directed_generation_intent(snapshot_id, identity, fingerprint)
         except ValueError as exc:
             replay = get_directed_replay(identity, fingerprint)
             if replay:
@@ -197,6 +201,20 @@ def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationReques
         plan.generation_evidence['request_fingerprint'] = fingerprint
     saved = save_plan(plan, snapshot_id, directed_request=directed)
     return _plan_with_policy(saved, {**runtime, 'real_ai': isinstance(provider, LLMContentPlanProvider)})
+
+
+@router.get('/intelligence/feedback/{snapshot_id}/directed-request/{request_id}/status')
+def directed_request_status(snapshot_id: int, request_id: UUID):
+    """Only effective state; never expose stored evidence, actor, or intent JSON."""
+    identity, _ = directed_creation_identity(request_id, snapshot_id, '', {})
+    try:
+        status = get_directed_request_status(snapshot_id, identity)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {'request_id': str(request_id),
+            'effective_state': status['effective_state'],
+            'can_create_new_request': status['can_create_new_request'] and not status.get('state_conflict'),
+            'requires_duplicate_risk_ack': status['requires_duplicate_risk_ack']}
 
 
 def _plan_with_policy(saved, runtime):

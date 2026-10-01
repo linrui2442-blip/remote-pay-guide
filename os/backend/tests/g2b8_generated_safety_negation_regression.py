@@ -143,8 +143,11 @@ import routers.intelligence as intelligence_router
 
 original_provider = intelligence_router.select_content_plan_provider
 original_snapshot = intelligence_router.get_feedback_snapshot
-original_intent = intelligence_router.record_directed_generation_intent
-intelligence_router.record_directed_generation_intent = lambda *args: None
+import sqlite3
+from data.database_path import database_path
+with sqlite3.connect(database_path()) as conn:
+    conn.execute('CREATE TABLE IF NOT EXISTS intelligence_feedback_snapshots(id INTEGER PRIMARY KEY, directed_requests_json TEXT)')
+    conn.execute('INSERT OR IGNORE INTO intelligence_feedback_snapshots(id,directed_requests_json) VALUES(1,?)', ('{}',))
 route_provider = provider_with_script("Verify the actual receiving account. Never share your seed phrase or private key.")
 intelligence_router.select_content_plan_provider = lambda: route_provider
 intelligence_router.get_feedback_snapshot = lambda snapshot_id: {"id": snapshot_id, "content_id": "g2b8-route", "metrics_snapshot": {"learning_evidence": {"fingerprint": "offline-fixture", "window": ["2026-09-01", "2026-09-10"]}}}
@@ -157,6 +160,5 @@ try:
 finally:
     intelligence_router.select_content_plan_provider = original_provider
     intelligence_router.get_feedback_snapshot = original_snapshot
-    intelligence_router.record_directed_generation_intent = original_intent
 
 print("G2B7_FAILURE_CLASS_OFFLINE_REGRESSION=PASS")

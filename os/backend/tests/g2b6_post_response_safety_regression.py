@@ -38,11 +38,10 @@ def main():
     avoid_plan=LLMContentPlanProvider(avoid_fake).generate_content_plan({'id':1},{'human_constraints':{'angle':'payment screenshot is not proof of successful receipt','locked_fields':['angle'],'must_avoid':[sentinel]}})
     assert sentinel in raw_avoid['angle'].lower() and sentinel not in avoid_plan.angle.lower()
     print('MUST_AVOID_AFTER_LOCK_NORMALIZATION=PASS')
-    from g2a_route_contract_smoke import asgi_request, strict_snapshot_fixture
+    from g2a_route_contract_smoke import asgi_request, strict_snapshot_fixture, ensure_snapshot_row
     import routers.intelligence as route_mod
     original_provider, original_snapshot = route_mod.select_content_plan_provider, route_mod.get_feedback_snapshot
-    original_intent = route_mod.record_directed_generation_intent
-    route_mod.record_directed_generation_intent = lambda *args: None
+    ensure_snapshot_row(1)
     route_fake=FakeText(GOOD); route_mod.select_content_plan_provider=lambda: LLMContentPlanProvider(route_fake); route_mod.get_feedback_snapshot=strict_snapshot_fixture
     try:
         response=asgi_request('/intelligence/feedback/1/content-plan', {'human_brief':safe,'human_constraints':{'must_avoid':['investment advice','price prediction','trading recommendation','seed phrase','private key']}})
@@ -50,7 +49,6 @@ def main():
         print('SAFE_DIRECTED_ROUTE_WITH_PROHIBITIONS=PASS')
     finally:
         route_mod.select_content_plan_provider, route_mod.get_feedback_snapshot = original_provider, original_snapshot
-        route_mod.record_directed_generation_intent = original_intent
     print('MARKER_ONLY_PASS_COUNT=0')
     print('G2B6_REGRESSION_TEST=PASS')
 if __name__=='__main__': main()

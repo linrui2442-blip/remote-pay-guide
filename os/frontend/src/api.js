@@ -186,6 +186,7 @@ export function saveAIGatewaySettings(data) {
 export function refreshAccountIntelligence(accountId, platform) { return apiPost(`/intelligence/feedback/account/${encodeURIComponent(accountId)}/refresh`, { platform }); }
 export function getAccountIntelligence(accountId, platform) { return apiGet(`/intelligence/feedback/account/${encodeURIComponent(accountId)}?platform=${encodeURIComponent(platform)}`); }
 export function generateContentPlan(snapshotId, request = {}) { return apiPost(`/intelligence/feedback/${encodeURIComponent(snapshotId)}/content-plan`, request); }
+export function getDirectedRequestStatus(snapshotId, requestId) { return apiGet(`/intelligence/feedback/${encodeURIComponent(snapshotId)}/directed-request/${encodeURIComponent(requestId)}/status`); }
 export function prepareStrictSnapshot(request) { return apiPost('/intelligence/feedback/prepare', request); }
 export function evaluateContentPlanPolicy(id) { return apiPost(`/intelligence/content-plans/${encodeURIComponent(id)}/policy/evaluate`, {}); }
 export function getContentPlanPolicy(id) { return apiGet(`/intelligence/content-plans/${encodeURIComponent(id)}/policy`); }

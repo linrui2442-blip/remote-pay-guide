@@ -13,6 +13,7 @@ from analytics.models import AnalyticsMetric
 from intelligence import learning
 from intelligence.content_brain import LLMContentPlanProvider, DeterministicContentPlanProvider, get_plan, update_plan
 from intelligence.feedback_bridge import get_feedback_snapshot
+from intelligence import directed_reconciliation as recovery_service
 import routers.intelligence as route
 from fastapi import HTTPException
 
@@ -124,6 +125,12 @@ def main():
             assert len(fake.calls)==old_count+1
             fake.fail=False
             recover=request()
+            reject(lambda:route.generate_content_plan(sid,recover),'DIRECTED_RECONCILIATION_REQUIRED')
+            assert len(fake.calls)==old_count+1
+            with patch.object(recovery_service, 'authorize_directed_reconciliation', return_value='windows-sid-sha256:test-sentinel'):
+                recovery_service.reconcile_directed_request(sid, failed.request_id,
+                    expected_state='UNRESOLVED_UNKNOWN', target_state='CONFIRMED_FAILED',
+                    reason_code='PROVIDER_CONFIRMED_NO_RESULT', evidence_reference='audit:test-proof')
             with patch.object(route,'evaluate_policy',side_effect=RuntimeError('offline policy failure')):
                 pending=route.generate_content_plan(sid,recover)
             n=len(fake.calls); assert pending['policy_error']=='POLICY_EVALUATION_REQUIRED'
