@@ -8,15 +8,23 @@ const page = fs.readFileSync(new URL('../src/pages/IntelligenceCenter.jsx', impo
 const calls = [];
 const record = {id: 42, revision: 1, status: 'preview', plan: {content_id: 'directed-offline', topic: 'Read-only topic', hook: 'Check deposit history', novelty_status: 'PASS', generation_provider: 'llm'}};
 const originalFetch = globalThis.fetch;
+const storage = new Map();
+let uuidCount = 0, loseResponse = false, releaseRequest;
+const sessionStorage = {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)};
 globalThis.fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(options.body) : null;
   calls.push({url, method: options.method || 'GET', body});
+  if (url.endsWith('/content-plan')) {
+    assert.equal(JSON.parse([...storage.values()][0]).replay_token, body.request_id);
+    if (loseResponse) { await new Promise(resolve => {releaseRequest = resolve;}); throw Error('Response lost'); }
+  }
   let payload;
   if (url.endsWith('/feedback/prepare')) payload = {snapshot: {id: 7, content_id: 'source'}};
   else if (url.endsWith('/content-plan')) payload = {plan: record, runtime: {runtime_ready: true}, policy: {decision: 'AUTO'}, effective: {autonomous_continuation_allowed: false, control_reason_codes: ['KILL_SWITCH_ACTIVE', 'AUTONOMY_DISABLED']}};
   else if (options.method === 'PATCH') { assert.deepEqual(Object.keys(body), ['hook']); payload = {...record, revision: 2, plan: {...record.plan, ...body, novelty_status: 'unverified'}}; }
   else if (url.endsWith('/policy/evaluate')) payload = {decision: 'REVIEW'};
   else if (url.endsWith('/policy/effective')) payload = {autonomous_continuation_allowed: false};
+  else if (url.endsWith('/content-plans/42')) payload = {...record, plan: {...record.plan, title: 'Backend truth'}};
   else throw Error('UNEXPECTED_FETCH ' + url);
   return {ok: true, json: async () => payload};
 };
@@ -25,11 +33,12 @@ try {
   // Compile the actual JSX with the already installed Vite transformer. Hook
   // harness retains real component event handlers, real API wrappers and fetch.
   const states = []; let cursor = 0;
-  const useState = initial => { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], value => {states[i] = typeof value === 'function' ? value(states[i]) : value;}]; };
+  const useState = initial => { const i = cursor++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => {states[i] = typeof value === 'function' ? value(states[i]) : value;}]; };
+  const useRef = initial => { const i = cursor++; if (!(i in states)) states[i] = {current: initial}; return states[i]; };
   const React = {Fragment: 'fragment', createElement: (type, props, ...children) => ({type, props: props || {}, children: children.flat(Infinity)})};
   const stripped = page.replace(/^import .*;\r?\n/gm, '').replace('export const ', 'const ').replace('export default function ', 'function ');
   const compiled = await transformWithOxc(stripped, 'IntelligenceCenter.jsx', {jsx: {runtime: 'classic'}});
-  const context = vm.createContext({React, useState, ...api, crypto: globalThis.crypto});
+  const context = vm.createContext({React, useState, useRef, sessionStorage, ...api, crypto: {randomUUID: () => {uuidCount++; return globalThis.crypto.randomUUID();}}});
   const Component = vm.runInContext(compiled.code + '\nIntelligenceCenter;', context);
   let tree;
   const render = () => { cursor = 0; tree = Component({accounts: [{id: 1, platform: 'youtube'}]}); };
@@ -45,7 +54,28 @@ try {
   brief.props.onChange({target: {value: 'Help a freelancer verify payment.'}});
   nodes().find(n => n.type === 'input' && !n.props.type).props.onChange({target: {value: 'Freelancers'}}); render();
   assert.equal(button('Generate ContentPlan').props.disabled, false);
-  await button('Generate ContentPlan').props.onClick(); render();
+  loseResponse = true;
+  const generate = button('Generate ContentPlan').props.onClick;
+  const pending = generate();
+  await generate();
+  assert.equal(calls.filter(c => c.url.endsWith('/content-plan')).length, 1);
+  releaseRequest(); await pending; render();
+  const stored = JSON.parse([...storage.values()][0]);
+  assert.equal(stored.status, 'UNKNOWN_OR_RETRYABLE');
+  assert.equal(uuidCount, 1);
+  states.length = 0; render();
+  assert(text(tree).includes('UNKNOWN_OR_RETRYABLE'));
+  assert.equal(JSON.parse([...storage.values()][0]).replay_token, stored.replay_token);
+  nodes().find(n => n.props['aria-label'] === 'human_brief').props.onChange({target: {value: 'Different idea'}}); render();
+  await button('Retry same request').props.onClick(); render();
+  assert.equal(calls.filter(c => c.url.endsWith('/content-plan')).length, 1);
+  nodes().find(n => n.props['aria-label'] === 'human_brief').props.onChange({target: {value: '  Help a freelancer verify payment.  '}}); render();
+  loseResponse = false;
+  await button('Retry same request').props.onClick(); render();
+  const submissions = calls.filter(c => c.url.endsWith('/content-plan'));
+  assert.equal(submissions.length, 2);
+  assert.deepEqual(submissions[0].body, submissions[1].body);
+  assert.equal(uuidCount, 1);
   const sent = calls.find(c => c.url.endsWith('/content-plan'));
   assert.equal(sent.body.human_brief, 'Help a freelancer verify payment.');
   assert.equal(sent.body.human_constraints.target_audience, 'Freelancers');
@@ -63,7 +93,42 @@ try {
   assert(text(tree).includes('RAW POLICY: REVIEW'));
   assert(!calls.some(c => /materialize|\/run|publish/.test(c.url)));
   assert(!nodes().some(n => n.type === 'button' && /Approve|Create ProductionTask/.test(text(n))));
-  assert.equal(button('Generate ContentPlan').props.disabled, true);
+  assert.equal(button('Retry same request').props.disabled, true);
+  states.length = 0; render();
+  await button('Restore completed plan').props.onClick(); render();
+  assert(nodes().some(n => n.type === 'textarea' && n.props.value === 'Backend truth'));
+  assert.equal(calls.filter(c => c.url.endsWith('/content-plan')).length, 2);
+  button('New Creative Request').props.onClick(); render();
+  assert.equal(storage.size, 0);
+  assert(!text(tree).includes('directed-offline'));
+  nodes().find(n => n.props['aria-label'] === 'human_brief').props.onChange({target: {value: 'Another idea'}}); render();
+  await button('Generate ContentPlan').props.onClick(); render();
+  assert.equal(uuidCount, 2);
+  assert.notEqual(calls.filter(c => c.url.endsWith('/content-plan'))[2].body.request_id, stored.replay_token);
+  // A browser crash can leave durable SUBMITTING rather than the catch state.
+  const key = [...storage.keys()][0];
+  const saved = JSON.parse(storage.get(key));
+  storage.set(key, JSON.stringify({...saved, status: 'SUBMITTING', plan_id: undefined}));
+  states.length = 0; render();
+  assert(text(tree).includes('UNKNOWN_OR_RETRYABLE'));
+  assert.equal(calls.filter(c => c.url.endsWith('/content-plan')).length, 3);
+  assert.equal(uuidCount, 2);
+  button('New Creative Request').props.onClick(); render();
+  nodes().find(n => n.props['aria-label'] === 'human_brief').props.onChange({target: {value: 'Storage failure case'}}); render();
+  const setItem = sessionStorage.setItem;
+  sessionStorage.setItem = () => {throw Error('Storage denied');};
+  await button('Generate ContentPlan').props.onClick(); render();
+  assert.equal(calls.filter(c => c.url.endsWith('/content-plan')).length, 3);
+  sessionStorage.setItem = setItem;
+  console.log('FRONTEND_CRASH_SUBMITTING_RESTORE_NO_AUTO_RETRY=PASS');
+  console.log('FRONTEND_STORAGE_FAILURE_NO_POST=PASS');
+  console.log('FRONTEND_REPLAY_PERSIST_BEFORE_POST=PASS');
+  console.log('FRONTEND_SUBMITTING_DUPLICATE_BLOCKED=PASS');
+  console.log('FRONTEND_RESPONSE_LOST_REMOUNT_SAME_TOKEN=PASS');
+  console.log('FRONTEND_RETRY_NO_NEW_UUID=PASS');
+  console.log('FRONTEND_NORMALIZED_INPUT_AND_CHANGED_BRIEF_GUARD=PASS');
+  console.log('FRONTEND_COMPLETED_BACKEND_RECOVERY=PASS');
+  console.log('FRONTEND_EXPLICIT_NEW_REQUEST=PASS');
   assert.doesNotMatch(page, /runProductionTask|runPublishTask|materialize_feedback_task|materializeContentPlan/);
   console.log('FRONTEND_BRIEF_CONSTRAINTS_BODY=PASS');
   console.log('FRONTEND_NESTED_RESPONSE_UNPACKED=PASS');

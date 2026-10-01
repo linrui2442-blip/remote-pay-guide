@@ -191,6 +191,7 @@ export function evaluateContentPlanPolicy(id) { return apiPost(`/intelligence/co
 export function getContentPlanPolicy(id) { return apiGet(`/intelligence/content-plans/${encodeURIComponent(id)}/policy`); }
 export function getContentPlanEffective(id) { return apiGet(`/intelligence/content-plans/${encodeURIComponent(id)}/policy/effective`); }
 export function getContentPlans() { return apiGet('/intelligence/content-plans'); }
+export function getContentPlan(id) { return apiGet(`/intelligence/content-plans/${encodeURIComponent(id)}`); }
 export function updateContentPlan(planId, changes) { return fetch(`${API_BASE}/intelligence/content-plans/${encodeURIComponent(planId)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes) }).then(parseResponse); }
 export function approveContentPlan(planId) { return apiPost(`/intelligence/content-plans/${encodeURIComponent(planId)}/approve`, {}); }
 export function materializeContentPlan(planId) { return apiPost(`/intelligence/content-plans/${encodeURIComponent(planId)}/materialize`, {}); }
