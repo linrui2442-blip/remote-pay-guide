@@ -47,6 +47,91 @@ class ContentPlanProvider(Protocol):
     def generate_content_plan(self, snapshot, context) -> ContentPlan: ...
 
 
+def project_generation_snapshot(snapshot, context=None):
+    """Pure model-input projection; never changes persisted evidence or identity."""
+    source = snapshot if isinstance(snapshot, dict) else {}
+    private = {'id', 'account_id', 'content_id', 'content_ids', 'video_id', 'platform_video_id',
+               'snapshot_id', 'snapshot_key', 'fingerprint', 'learning_state', 'learning_plan_id',
+               'learning_reason', 'learning_updated_at', 'directed_requests_json',
+               'created_at', 'updated_at', 'received_at', 'metric_collected_at',
+               'feedback_json', 'strategy_json', 'metrics_json', 'funnel_json'}
+    context = context or {}
+    identifiers = set()
+    def collect(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in private and isinstance(item, str) and len(item) >= 4:
+                    identifiers.add(item)
+                if key in private and isinstance(item, list):
+                    identifiers.update(x for x in item if isinstance(x, str) and len(x) >= 4)
+                collect(item)
+        elif isinstance(value, list):
+            for item in value: collect(item)
+        elif isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except (ValueError, TypeError):
+                return
+            if isinstance(parsed, (dict, list)): collect(parsed)
+    collect(source)
+    collect({k: context.get(k) for k in ('strategy', 'history', 'production_history', 'novelty_history')})
+    def safe_text(value):
+        if not isinstance(value, str): return None
+        # Serialized metadata is not creative prose, including nested JSON strings.
+        if any(re.search(r'\b' + re.escape(key) + r'\b', value) for key in private): return None
+        if any(item in value for item in identifiers): return None
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return value
+        return None if isinstance(parsed, (dict, list, str)) else value
+    def text_fields(value, keys):
+        if not isinstance(value, dict): return {}
+        result = {}
+        for key in keys:
+            item = value.get(key)
+            if isinstance(item, list):
+                result[key] = [clean for x in item if (clean := safe_text(x)) is not None]
+            elif (clean := safe_text(item)) is not None: result[key] = clean
+        return result
+    def numbers(value, keys):
+        if not isinstance(value, dict): return {}
+        return {k: value[k] for k in keys if type(value.get(k)) in (int, float)}
+    metrics = source.get('metrics_snapshot') or {}
+    evidence = metrics.get('learning_evidence') or {}
+    metric_keys = ('views', 'impressions', 'likes', 'comments', 'shares', 'watch_time',
+                   'clicks', 'average_view_duration', 'average_view_percentage')
+    funnel = source.get('growth_funnel') or {}
+    projected_funnel = {}
+    for section, keys in [('traffic', ('landing_views',)), ('intent', ('total',)), ('conversion', ('total', 'value'))]:
+        value = funnel.get(section) or {}
+        projected_funnel[section] = numbers(value, keys)
+        if section == 'intent' and isinstance(value.get('by_type'), dict):
+            projected_funnel[section]['by_type'] = {k: v for k, v in value['by_type'].items()
+                if safe_text(k) is not None and type(v) in (int, float)}
+    strategy = source.get('strategy') or context.get('strategy') or {}
+    projected_strategy = text_fields(strategy, ('objective', 'topic_direction', 'reasoning_summary'))
+    if isinstance(strategy, str) and safe_text(strategy) is not None:
+        projected_strategy['objective'] = strategy
+    projected_strategy['parameters'] = text_fields(strategy.get('parameters') if isinstance(strategy, dict) else {}, ('strategy_type', 'recommendations', 'successful_patterns', 'weak_patterns'))
+    window = evidence.get('window') or [metrics.get('period_start'), metrics.get('period_end')]
+    return {
+        **text_fields(source, ('platform',)),
+        'window': [x for x in window if isinstance(x, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', x)],
+        **numbers(evidence, ('sample_size',)),
+        'metrics': [numbers(row, metric_keys) for row in evidence['metrics']] if isinstance(evidence.get('metrics'), list) else numbers(metrics, metric_keys),
+        'growth_funnel': projected_funnel,
+        'feedback': text_fields(source.get('feedback'), ('recommendations', 'successful_patterns', 'weak_patterns')),
+        'strategy': projected_strategy,
+        'reason_codes': text_fields(evidence, ('reason_codes',)).get('reason_codes', []),
+        # Creative history remains useful, but its server-side linkage is not.
+        'creative_history': {key: [text_fields(row, ('topic', 'hook', 'angle', 'visual_direction', 'video_terms'))
+                                  for row in context.get(key, []) if isinstance(row, dict)]
+                             for key in ('history', 'production_history', 'novelty_history')
+                             if isinstance(context.get(key), list)},
+    }
+
+
 class ContentPlanGenerationError(ValueError):
     pass
 
@@ -131,7 +216,9 @@ class LLMContentPlanProvider:
         context = dict(context or {}); brief = str(context.get("human_brief") or "").strip(); constraints = dict(context.get("human_constraints") or {})
         mode = "directed" if brief or constraints else "autonomous"
         validate_human_directive_safety(brief, constraints)
-        prompt = build_content_brain_prompt(snapshot, context.get("strategy", ""), context.get("history"), context.get("production_history"), context.get("novelty_history"))
+        model_snapshot = project_generation_snapshot(snapshot, context)
+        prompt = build_content_brain_prompt(json.dumps(model_snapshot, ensure_ascii=False), "")
+        prompt += "\nThese are observed measurements only. Zero measurements and absence of observed engagement are not causal evidence. Do not infer that the topic/category is inherently ineffective. The human brief remains the primary creative direction when provided."
         if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
         prompt += "\n\nReturn exactly one valid JSON object with string fields topic, angle, target_audience, hook, script, cta, title, description, production_notes, visual_direction, reasoning_summary, strategy_type and hashtags as list[str]. No markdown or prose outside JSON."
         from ai.models import AIRequest
