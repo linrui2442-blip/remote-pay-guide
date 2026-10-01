@@ -160,6 +160,34 @@ def _fresh_github_claim(plan_id):
     return plan, auth, task, job
 
 
+def _github_dispatch_fingerprint(task, job):
+    # Claim metadata/timestamps change; the dispatch input identity must not.
+    return _fingerprint({'task': {k: v for k, v in vars(task).items()
+                                 if k not in {'created_at', 'updated_at'}},
+                         'job': {k: job.get(k) for k in
+                                 ('id', 'task_id', 'job_type', 'provider', 'status', 'input')}})
+
+
+def _github_post_intent_recheck(plan_id, task, job, intent, fingerprint):
+    from data.database_path import database_path
+    import sqlite3
+    _, _, current_task, current_job = _fresh_github_claim(plan_id)
+    if (current_task.id != task.id or current_job['id'] != job['id']
+            or current_task.status != 'scheduled' or current_job['status'] != 'created'
+            or _github_dispatch_fingerprint(current_task, current_job) != fingerprint
+            or current_job.get('execution_state') != 'dispatch_intent'
+            or json.loads(current_job.get('execution_metadata') or '{}') != intent):
+        raise ValueError('GitHub post-intent runtime/ownership drift; review required')
+    conn = sqlite3.connect(database_path())
+    try:
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='production_results'").fetchone():
+            if conn.execute('SELECT 1 FROM production_results WHERE runtime_job_id=?', (job['id'],)).fetchone():
+                raise ValueError('GitHub post-intent result conflict; review required')
+    finally:
+        conn.close()
+    return current_job
+
+
 def execute_authorized_claimed_github_runtime(plan_id, *, provider=None, client=None, before_post=None):
     """Execute one already-claimed GitHub RuntimeJob with durable at-most-once dispatch."""
     plan, auth, task, job = _fresh_github_claim(plan_id)
@@ -193,13 +221,17 @@ def execute_authorized_claimed_github_runtime(plan_id, *, provider=None, client=
         from production.providers.github_monitor import GitHubRunMonitor
         monitor = GitHubRunMonitor(client or getattr(provider, "client", None))
         intent = {"runtime_job_id": job["id"], "workflow": task.workflow, "branch": task.branch, "dispatch_started_at": datetime.now(timezone.utc).isoformat(), "pre_dispatch_run_ids": sorted(monitor.snapshot_run_ids(task.workflow.rsplit("/",1)[-1], task.branch)), "execution_state": "dispatch_intent", "provider": "github"}
+        fingerprint = _github_dispatch_fingerprint(task, job)
         if not claim_provider_execution(job["id"], intent):
             latest = get_job(job["id"])
             raise ValueError("RuntimeJob execution already claimed")
         if before_post:
             before_post()
+        # Outside the submission exception handler: denial preserves the exact
+        # committed intent rather than overwriting it as an attempted POST.
+        dispatch_job = _github_post_intent_recheck(plan_id, task, job, intent, fingerprint)
         try:
-            submitted = provider.submit_job(get_job(job["id"]))
+            submitted = provider.submit_job(dispatch_job)
             output = submitted.get("output") or {}
             output["g4b_no_asset_binding"] = True
             metadata.update(intent)
