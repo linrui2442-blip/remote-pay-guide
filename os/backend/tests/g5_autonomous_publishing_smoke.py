@@ -149,9 +149,89 @@ def task(payload):
     return result['task']['id']
 
 
+def post_intent_checks():
+    """Inject changes after a real committed intent, not before authorization."""
+    cases = ('normal', 'kill', 'disabled', 'payload', 'source', 'owner',
+             'terminal', 'account', 'scope', 'duplicate')
+    for platform, stages in [('youtube', 2), ('instagram', 2), ('facebook', 3)]:
+        for target in range(1, stages + 1):
+            for case in cases:
+                with ExitStack() as stack:
+                    payload, transport, token, adapter, result = environment(stack, platform)
+                    tid = task(payload)
+                    connect = manager._connect
+                    seen = []
+                    owners = []
+                    fresh = []
+                    signals = policy.runtime_signals
+
+                    class Connection:
+                        def __init__(self):
+                            self.inner = connect()
+                            self.intent = False
+                        def __getattr__(self, name):
+                            return getattr(self.inner, name)
+                        def execute(self, statement, args=()):
+                            row = self.inner.execute(statement, args)
+                            if statement.startswith('INSERT INTO publish_write_intents'):
+                                self.intent = True
+                            return row
+                        def commit(self):
+                            self.inner.commit()
+                            if not self.intent:
+                                return
+                            self.intent = False
+                            assert not self.inner.in_transaction
+                            rows = sql('SELECT stage,claim FROM publish_write_intents WHERE task_id=?', (tid,))
+                            assert len(rows) == len(seen) + 1
+                            seen.append(len(rows))
+                            owners.append(manager.get_publish_task(tid)['execution_claim'])
+                            assert all(r[1] == owners[0] for r in rows)
+                            if len(seen) != target:
+                                return
+                            if case == 'kill': update_autonomy_settings(kill_switch_active=True)
+                            if case == 'disabled': update_autonomy_settings(autonomy_enabled=False)
+                            if case == 'payload': sql("UPDATE publish_tasks SET title='drift' WHERE id=?", (tid,))
+                            if case == 'source': sql("UPDATE production_results SET output='{}' WHERE id=?", (result['id'],))
+                            if case == 'owner': sql("UPDATE publish_tasks SET execution_claim='changed-owner',status='review' WHERE id=?", (tid,))
+                            if case == 'terminal': sql("UPDATE publish_tasks SET status='review' WHERE id=?", (tid,))
+                            if case == 'account': sql("UPDATE accounts SET status='disconnected' WHERE id=?", (payload['account_id'],))
+                            if case == 'scope': token['scopes'] = []
+                            if case == 'duplicate':
+                                sql("INSERT INTO publish_tasks(asset_id,platform,account_id,status) VALUES(?,?,?,'failed')",
+                                    (payload['asset_id'], platform, payload['account_id']))
+
+                    def fresh_signals(*args):
+                        if seen:
+                            fresh.append(len(seen))
+                        return signals(*args)
+
+                    stack.enter_context(patch.object(manager, '_connect', Connection))
+                    stack.enter_context(patch.object(policy, 'runtime_signals', fresh_signals))
+                    execution.execute_autonomous_publish_task(tid, asset_resolver=Resolver())
+                    stored = manager.get_publish_task(tid)
+                    expected = stages if case == 'normal' else target - 1
+                    assert len(transport.writes) == expected, (platform, target, case)
+                    assert target in fresh, (platform, target, case, 'no post-commit fresh read')
+                    assert stored['status'] == ('published' if case == 'normal' else 'review')
+                    rows = sql('SELECT claim FROM publish_write_intents WHERE task_id=?', (tid,))
+                    assert len(rows) == (stages if case == 'normal' else target)
+                    assert all(r[0] == owners[0] for r in rows)
+                    owner_after = stored['execution_claim']
+                    for _ in range(3):
+                        assert not execution.execute_autonomous_publish_task(tid, asset_resolver=Resolver())['executed']
+                    assert len(transport.writes) == expected
+                    assert manager.get_publish_task(tid)['execution_claim'] == owner_after
+                    assert sql('SELECT claim FROM publish_write_intents WHERE task_id=?', (tid,)) == rows
+                    update_autonomy_settings(autonomy_enabled=True, kill_switch_active=False)
+    print('G5_POST_INTENT_ALL_PROVIDER_STAGES=PASS')
+    print('G5_POST_INTENT_CASES=70')
+
+
 def main():
     manager._init_db()
     update_autonomy_settings(autonomy_enabled=True, kill_switch_active=False)
+    post_intent_checks()
     # Actual adapter transport contracts, canonical worker, persisted correlation.
     for platform, count in [('youtube', 2), ('instagram', 2), ('facebook', 3)]:
         with ExitStack() as stack:

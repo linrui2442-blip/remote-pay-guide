@@ -99,6 +99,25 @@ def execute_autonomous_publish_task(task_id, *, asset_resolver=None):
         finally:
             db.close()
 
+        # The intent is durable before this fresh authorization read. Preserve
+        # it on denial; an interrupted/denied stage never gets a new owner.
+        fresh_signals = policy.runtime_signals(task['platform'], task['account_id'])
+        db = manager._connect()
+        try:
+            current = manager._serialize(db.execute('SELECT * FROM publish_tasks WHERE id=?', (task_id,)).fetchone())
+            if (not current or current['execution_claim'] != owner
+                    or current['status'] != 'publishing'
+                    or current.get('autonomous_policy_version') != policy.POLICY_VERSION
+                    or policy.task_fingerprint(current) != fingerprint):
+                raise ValueError('G5_POST_INTENT_OWNER_OR_TASK_CHANGED')
+            intent = db.execute('SELECT claim FROM publish_write_intents WHERE task_id=? AND stage=?',
+                                (task_id, stage)).fetchone()
+            if not intent or intent['claim'] != owner:
+                raise ValueError('G5_POST_INTENT_OWNER_CHANGED')
+            _recheck(current, db, fresh_signals)
+        finally:
+            db.close()
+
     def correlation(operation_id, state):
         # Provider-supplied identifiers are bounded, never URLs/headers/tokens.
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', str(operation_id or '')) or not re.fullmatch(r'[A-Z0-9_]{1,80}', str(state or '')):
