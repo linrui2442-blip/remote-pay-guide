@@ -10,6 +10,7 @@ import routers.intelligence as intelligence_router
 from main import app
 
 class FakeProvider:
+    supports_directed = True
     def __init__(self): self.call_count = 0; self.prompts = []
     def readiness(self): return {'provider':'llm','implementation_ready':True,'runtime_ready':True,'missing_configuration':[]}
     def generate_content_plan(self, snapshot, context):
@@ -22,7 +23,9 @@ def main():
     provider = FakeProvider()
     original_provider = intelligence_router.select_content_plan_provider
     original_snapshot = intelligence_router.get_feedback_snapshot
-    intelligence_router.get_feedback_snapshot = lambda _id: {'id': _id, 'content_id':'route-source'}
+    original_intent = intelligence_router.record_directed_generation_intent
+    intelligence_router.record_directed_generation_intent = lambda *args: None
+    intelligence_router.get_feedback_snapshot = strict_snapshot_fixture
     intelligence_router.select_content_plan_provider = lambda: provider
     try:
         response = asgi_request('/intelligence/feedback/1/content-plan')
@@ -35,6 +38,7 @@ def main():
     finally:
         intelligence_router.select_content_plan_provider = original_provider
         intelligence_router.get_feedback_snapshot = original_snapshot
+        intelligence_router.record_directed_generation_intent = original_intent
     os.environ['OS_CONTENT_PLAN_PROVIDER'] = 'llm'
     intelligence_router.get_feedback_snapshot = lambda _id: {'id': _id, 'content_id':'route-source'}
     intelligence_router.select_content_plan_provider = lambda: type('Missing',(),{'readiness':lambda self:{'provider':'llm','implementation_ready':True,'runtime_ready':False,'missing_configuration':['api_key']}})()
@@ -48,6 +52,8 @@ def main():
     print('G2A_ROUTE_TEST=PASS')
 
 def asgi_request(path, payload=None):
+    if payload and (payload.get('human_brief') or payload.get('human_constraints')) and 'request_id' not in payload:
+        payload = {**payload, 'request_id': str(uuid.uuid4())}
     body = b'' if payload is None else json.dumps(payload).encode()
     messages = []
     async def receive():
@@ -57,4 +63,7 @@ def asgi_request(path, payload=None):
     status = next(m['status'] for m in messages if m['type']=='http.response.start')
     data = b''.join(m.get('body',b'') for m in messages if m['type']=='http.response.body')
     return {'status':status, 'json':json.loads(data.decode()) if data else {}}
+def strict_snapshot_fixture(_id):
+    return {'id': _id, 'content_id': 'route-source', 'metrics_snapshot': {'learning_evidence': {'fingerprint': 'offline-fixture', 'window': ['2026-09-01', '2026-09-10']}}}
+
 if __name__ == '__main__': main()

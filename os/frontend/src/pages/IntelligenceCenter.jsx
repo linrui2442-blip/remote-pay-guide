@@ -1,41 +1,68 @@
 import React, { useState } from "react";
-import { approveContentPlan, generateContentPlan, getAccountIntelligence, materializeContentPlan, refreshAccountIntelligence, updateContentPlan } from "../api";
+import { generateContentPlan, prepareStrictSnapshot, updateContentPlan, evaluateContentPlanPolicy, getContentPlanEffective } from "../api";
+
+export const EDITABLE_PLAN_FIELDS = ['hook', 'script', 'cta', 'title', 'description', 'visual_direction', 'production_notes'];
 
 export default function IntelligenceCenter({ accounts = [] }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
   const [platform, setPlatform] = useState("youtube");
+  const [start, setStart] = useState(""); const [end, setEnd] = useState("");
   const [snapshot, setSnapshot] = useState(null);
-  const [task, setTask] = useState(null); const [plan, setPlan] = useState(null); const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const refresh = async () => { setBusy(true); try { await refreshAccountIntelligence(accountId, platform); setSnapshot(await getAccountIntelligence(accountId, platform)); } finally { setBusy(false); } };
-  const generate = async () => { setBusy(true); try { const created = await generateContentPlan(top?.id || top?.snapshot_id || snapshot?.id); setPlan(created); setMessage("ContentPlan ready for review."); } finally { setBusy(false); } };
-  const edit = async (field, value) => { const updated = await updateContentPlan(plan.id, { [field]: value }); setPlan(updated); setMessage(`Revision ${updated.revision} saved.`); };
-  const approve = async () => { try { const approved = await approveContentPlan(plan.id); setPlan(approved); setMessage(`Approved revision ${approved.approved_revision}.`); } catch (error) { setMessage(error.message); } };
-  const materialize = async () => { try { const created = await materializeContentPlan(plan.id); setTask(created); setMessage("Task created but not executed."); } catch (error) { setMessage(error.message); } };
-  const top = Array.isArray(snapshot) ? snapshot[0] : snapshot;
-  const strategy = top?.strategy || {};
+  const [brief, setBrief] = useState(""); const [audience, setAudience] = useState("");
+  const [plan, setPlan] = useState(null); const [runtime, setRuntime] = useState(null);
+  const [policy, setPolicy] = useState(null); const [effective, setEffective] = useState(null);
+  const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  // Uncertain generation outcomes never trigger an automatic paid retry.
+  const [attempted, setAttempted] = useState(false);
+  const clearContext = () => { setSnapshot(null); };
+  const prepare = async () => {
+    setBusy(true); setMessage("");
+    try { const result = await prepareStrictSnapshot({ account_id: Number(accountId), platform, start_date: start, end_date: end }); setSnapshot(result.snapshot); }
+    catch (e) { setMessage(e.message); } finally { setBusy(false); }
+  };
+  const generate = async () => {
+    setBusy(true); setAttempted(true); setMessage("");
+    try {
+      const created = await generateContentPlan(snapshot.id, { request_id: crypto.randomUUID(), human_brief: brief, human_constraints: audience ? {target_audience: audience, locked_fields: ['target_audience']} : {} });
+      setPlan(created.plan); setRuntime(created.runtime); setPolicy(created.policy); setEffective(created.effective);
+      setMessage(created.policy_error || "ContentPlan saved. Stopped at PolicyDecision; no task created.");
+    } catch (e) { setMessage(`${e.message}. No automatic retry: inspect existing plans before a new request.`); }
+    finally { setBusy(false); }
+  };
+  const edit = async (field, value) => {
+    setBusy(true); setPolicy(null); setEffective(null);
+    try { const updated = await updateContentPlan(plan.id, { [field]: value }); setPlan(updated); setDirty(false); setMessage("Revision saved. Policy reevaluation required."); }
+    catch (e) { setMessage(e.message); } finally { setBusy(false); }
+  };
+  const evaluate = async () => {
+    setBusy(true); setPolicy(null); setEffective(null);
+    try { setPolicy(await evaluateContentPlanPolicy(plan.id)); setEffective(await getContentPlanEffective(plan.id)); }
+    catch (e) { setMessage(e.message); } finally { setBusy(false); }
+  };
   return <>
-    <div className="page-heading compact"><div><span className="eyebrow">INTELLIGENCE</span><h1>AI 智能</h1><p>从真实反馈生成建议；只有你的明确操作才会创建生产任务。</p></div></div>
+    <div className="page-heading compact"><h1>AI 智能 · Directed Content</h1><p>Strict snapshot → ContentPlan → G3。此页面不批准、不创建任务、不执行生产或发布。</p></div>
     <section className="panel"><div className="settings-form">
-      <label className="setting-field"><span>账号</span><select value={accountId} onChange={e=>setAccountId(e.target.value)}>{accounts.map(a=><option key={a.id} value={a.id}>#{a.id} {a.name || a.platform}</option>)}</select></label>
-      <label className="setting-field"><span>平台</span><select value={platform} onChange={e=>setPlatform(e.target.value)}><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select></label>
-      <button className="primary-button" disabled={!accountId || busy} onClick={refresh}>{busy ? "分析中…" : "Refresh Intelligence"}</button>
+      <label>账号<select value={accountId} onChange={e => { setAccountId(e.target.value); clearContext(); }}>{accounts.map(a => <option key={a.id} value={a.id}>#{a.id} {a.name || a.platform}</option>)}</select></label>
+      <label>平台<select value={platform} onChange={e => { setPlatform(e.target.value); clearContext(); }}><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select></label>
+      <label>Window start<input type="date" value={start} onChange={e => { setStart(e.target.value); clearContext(); }} /></label>
+      <label>Window end<input type="date" value={end} onChange={e => { setEnd(e.target.value); clearContext(); }} /></label>
+      <button disabled={busy || !accountId || !start || !end} onClick={prepare}>Prepare strict snapshot</button>
+      {snapshot && <p>Snapshot #{snapshot.id} · {snapshot.content_id}</p>}
+      <label>你想创作什么内容？<textarea aria-label="human_brief" value={brief} onChange={e => setBrief(e.target.value)} /></label>
+      <label>目标受众（可选）<input value={audience} onChange={e => setAudience(e.target.value)} /></label>
+      <button disabled={busy || attempted || !snapshot || !brief.trim()} onClick={generate}>Generate ContentPlan</button>
     </div></section>
-    {top && <section className="panel"><div className="panel-header"><div><span className="section-kicker">TOP RECOMMENDATION</span><h2>{top.content_id || top.video_id || "Recommendation"}</h2></div></div>
-      <p>Platform: {top.platform || platform} · Performance: {top.performance_score ?? 0} · Priority: {top.priority_score ?? 0}</p>
-      <p>Landing/intent: {top.intent_events ?? 0} · Referral clicks: {top.referral_clicks ?? 0} · Conversions: {top.conversions ?? 0} · Value: {top.conversion_value ?? 0}</p>
-      <h3>{strategy.objective || top.objective || "Strategy"}</h3><p>{strategy.topic_direction || top.topic_direction}</p><p>{strategy.reasoning_summary || top.reasoning_summary}</p>
-      <details><summary>Why this recommendation</summary><pre>{JSON.stringify({successful_patterns:top.successful_patterns||[], weak_patterns:top.weak_patterns||[], recommendations:top.recommendations||[]}, null, 2)}</pre></details>
-      <button className="secondary-button" onClick={generate} disabled={busy}>Generate ContentPlan</button>
+    {plan && <section className="panel"><h2>Preview / Edit · Revision {plan.revision}</h2>
+      <p>Content ID: {plan.plan.content_id}</p><p>Topic (read-only): {plan.plan.topic}</p>
+      {EDITABLE_PLAN_FIELDS.map(field => <label className="setting-field" key={field}>{field}<textarea disabled={busy} value={plan.plan[field] || ''} onChange={e => { setDirty(true); setPolicy(null); setEffective(null); setPlan({...plan, plan: {...plan.plan, [field]: e.target.value}}); }} onBlur={e => edit(field, e.target.value)} /></label>)}
+      <p>Novelty: {plan.plan.novelty_status}</p>
+      <button disabled={busy || dirty} onClick={evaluate}>Evaluate current revision policy</button>
+      <p>RAW POLICY: {policy?.decision || 'UNEVALUATED / STALE'}</p>
+      <p>EFFECTIVE AUTHORIZATION: {effective?.autonomous_continuation_allowed ? 'Allowed by controls; this page does not execute' : 'NOT EXECUTABLE'}</p>
+      <p>{effective?.control_reason_codes?.join(', ')}</p>
+      <p>Provider: {plan.plan.generation_provider} · Runtime ready: {String(runtime?.runtime_ready ?? 'replay')}</p>
     </section>}
-    {plan && <section className="panel"><div className="panel-header"><div><span className="section-kicker">CONTENT PLAN · REVISION {plan.revision}</span><h2>Preview / Edit</h2></div><span className={`status-pill ${String(plan.plan?.novelty_status || 'unverified').toLowerCase()}`}>{plan.plan?.novelty_status || 'UNVERIFIED'}</span></div>
-      {['topic','hook','script','cta','title','description','visual_direction'].map((field) => <label className="setting-field" key={field}><span>{field}</span><textarea value={plan.plan?.[field] || ''} onChange={e=>setPlan({...plan,plan:{...plan.plan,[field]:e.target.value}})} onBlur={e=>edit(field,e.target.value)} /></label>)}
-      <pre>{JSON.stringify(plan.plan?.production_spec || {}, null, 2)}</pre>
-      {plan.plan?.novelty_status === 'BLOCK' && <p role="alert">Blocked: this plan cannot be approved.</p>}
-      {plan.plan?.novelty_status === 'WARN' && <p role="alert">Warning: review novelty evidence before approving.</p>}
-      <button className="secondary-button" onClick={approve} disabled={plan.plan?.novelty_status === 'BLOCK' || plan.status === 'approved' || plan.status === 'materialized'}>Approve</button>
-      <button className="primary-button" onClick={materialize} disabled={plan.status !== 'approved'}>Create ProductionTask</button><p className="muted">Task created but not executed.</p>{message && <p role="status">{message}</p>}
-    </section>}
-    {task && <section className="panel"><h2>ProductionTask #{task.production_task?.id || task.id}</h2><pre>{JSON.stringify(task.production_task?.execution || task.execution || {}, null, 2)}</pre></section>}
+    {message && <p role="status">{message}</p>}
   </>;
 }

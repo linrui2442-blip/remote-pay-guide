@@ -56,11 +56,9 @@ def _advance(snapshot_id, state, plan_id=None, reason=None):
                      (state, plan_id, reason, datetime.now(timezone.utc).isoformat(), snapshot_id))
 
 
-def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=None, now=None):
-    """One mature evidence window/account cohort. Always stops at PolicyDecision.
+def prepare_feedback_snapshot(account_id, platform, start_date, end_date, *, now=None):
+    """Persist one strict snapshot, without a generation claim or provider call.
 
-    The provider abstraction is injected in offline tests; runtime selection is
-    canonical. Callers must authorize a configured paid provider separately.
     Maturity means a complete analytics window ending >=48h before UTC today.
     """
     start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
@@ -135,6 +133,13 @@ def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=N
         if not existing:
             raise
         snapshot = bridge.get_feedback_snapshot(existing['id'])
+    return snapshot
+
+
+def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=None, now=None):
+    """Prepare strict evidence, then retain the existing generation claim boundary."""
+    snapshot = prepare_feedback_snapshot(account_id, platform, start_date, end_date, now=now)
+    fingerprint = snapshot['metrics_snapshot']['learning_evidence']['fingerprint']
     sid = snapshot['id']
     with _db() as conn:
         won = conn.execute("UPDATE intelligence_feedback_snapshots SET learning_state='generating',learning_updated_at=? WHERE id=? AND learning_state IS NULL",
@@ -145,7 +150,7 @@ def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=N
         plan = (provider or select_content_plan_provider()).generate_content_plan(snapshot, {'strategy': snapshot['strategy'], 'content_id': 'feedback-' + fingerprint[:20]})
         plan.content_id = 'feedback-' + fingerprint[:20]
         plan.source_snapshot_id = sid
-        plan.source_content_id = row['content_id']
+        plan.source_content_id = snapshot['content_id']
         saved = save_plan(plan, sid)
         _advance(sid, 'policy_pending', saved['id'])
         evaluate_policy(saved['id'])

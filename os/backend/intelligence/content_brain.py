@@ -1,6 +1,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Protocol
-import json, sqlite3, os, re
+import json, sqlite3, os, re, hashlib
+from contextlib import closing
 from datetime import datetime, timezone
 from data.database_path import database_path
 
@@ -119,6 +120,7 @@ def parse_content_plan_response(raw):
 
 
 class LLMContentPlanProvider:
+    supports_directed = True
     def __init__(self, text_provider=None):
         from ai.providers.text import TextProvider
         self.text_provider = text_provider or TextProvider()
@@ -195,11 +197,42 @@ def validate_content_plan(plan):
     if not isinstance(plan.production_spec, dict): raise ValueError('production_spec must be a dict')
     return plan
 
-def save_plan(plan, source_snapshot_id=None):
+def directed_creation_identity(request_id, snapshot_id, brief, constraints):
+    """Snapshot-scoped UUID replay token; the server derives the content identity."""
+    from uuid import UUID
+    token = str(UUID(str(request_id)))
+    identity = 'directed-' + hashlib.sha256((f'content-plan-directed-v1:{snapshot_id}:' + token).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps({'snapshot_id': snapshot_id, 'human_brief': brief,
+        'human_constraints': constraints}, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+        allow_nan=False).encode()).hexdigest()
+    return identity, fingerprint
+
+
+def get_directed_replay(identity, fingerprint):
+    with closing(_conn()) as c:
+        row = c.execute('SELECT * FROM intelligence_content_plans WHERE plan_key=?', ('directed-request:' + identity,)).fetchone()
+    if not row:
+        return None
+    record = _row(row)
+    if record['plan'].get('generation_evidence', {}).get('request_fingerprint') != fingerprint:
+        raise ValueError('DIRECTED_REPLAY_CONFLICT')
+    return record
+
+
+def save_plan(plan, source_snapshot_id=None, *, directed_request=False):
     validate_content_plan(plan); payload=plan.to_dict(); key=f"{source_snapshot_id}:{plan.content_id}:{plan.hook}:{plan.title}"
-    with _conn() as c:
+    if directed_request:
+        if not re.fullmatch(r'directed-[0-9a-f]{64}', plan.content_id) or not plan.generation_evidence.get('request_fingerprint'):
+            raise ValueError('DIRECTED_IDENTITY_REQUIRED')
+        key = 'directed-request:' + plan.content_id
+    with closing(_conn()) as c:
+        c.execute('BEGIN IMMEDIATE')
         row=c.execute('SELECT * FROM intelligence_content_plans WHERE plan_key=?',(key,)).fetchone()
-        if row: return _row(row)
+        if row:
+            record = _row(row)
+            if directed_request and record['plan'].get('generation_evidence', {}).get('request_fingerprint') != plan.generation_evidence['request_fingerprint']:
+                raise ValueError('DIRECTED_REPLAY_CONFLICT')
+            return record
         cur=c.execute('INSERT INTO intelligence_content_plans(plan_key,source_snapshot_id,content_id,status,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(key,source_snapshot_id,plan.content_id,'preview',json.dumps(payload,ensure_ascii=False),datetime.now(timezone.utc).isoformat(),datetime.now(timezone.utc).isoformat())); c.commit(); return _row(c.execute('SELECT * FROM intelligence_content_plans WHERE id=?',(cur.lastrowid,)).fetchone())
 
 def _row(row):

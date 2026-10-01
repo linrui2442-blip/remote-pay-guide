@@ -79,6 +79,8 @@ def _deserialize(row):
     if not row:
         return None
     data = dict(row)
+    # Request-intent bookkeeping is not creative evidence or provider context.
+    data.pop('directed_requests_json', None)
     for source, target in (
         ('feedback_json', 'feedback'),
         ('strategy_json', 'strategy'),
@@ -197,6 +199,29 @@ def get_feedback_snapshot(snapshot_id):
             (int(snapshot_id),),
         ).fetchone()
     return _deserialize(row)
+
+
+def record_directed_generation_intent(snapshot_id, identity, fingerprint):
+    """Durable no-retry intent on the existing source snapshot, not a job queue.
+
+    A crash after this commit is ambiguous. Only an already persisted plan may
+    be replayed; intent alone never authorizes another paid generation call.
+    """
+    with _connect() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        columns = {r['name'] for r in conn.execute('PRAGMA table_info(intelligence_feedback_snapshots)')}
+        if 'directed_requests_json' not in columns:
+            conn.execute('ALTER TABLE intelligence_feedback_snapshots ADD COLUMN directed_requests_json TEXT')
+        row = conn.execute('SELECT directed_requests_json FROM intelligence_feedback_snapshots WHERE id=?', (snapshot_id,)).fetchone()
+        if row is None:
+            raise ValueError('STRICT_SNAPSHOT_REQUIRED')
+        intents = json.loads(row[0] or '{}')
+        if identity in intents:
+            if intents[identity]['fingerprint'] != fingerprint:
+                raise ValueError('DIRECTED_REPLAY_CONFLICT')
+            raise ValueError('DIRECTED_GENERATION_OUTCOME_PENDING_OR_UNKNOWN')
+        intents[identity] = {'fingerprint': fingerprint, 'created_at': datetime.now(timezone.utc).isoformat()}
+        conn.execute('UPDATE intelligence_feedback_snapshots SET directed_requests_json=? WHERE id=?', (_json(intents), snapshot_id))
 
 
 def get_latest_account_feedback(account_id, platform=None, limit=100):

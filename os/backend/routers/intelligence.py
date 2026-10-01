@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException
 from ai.providers.text import TextProviderError
 from pydantic import BaseModel, Field, Extra
 from typing import Literal
+from uuid import UUID
+from datetime import date
 
 from intelligence.feedback_bridge import (
     get_content_feedback_history,
@@ -18,9 +20,11 @@ from intelligence.task_generator import generate_production_task
 from intelligence.production_spec import build_production_spec
 from intelligence.novelty import evaluate_content_plan_novelty
 from intelligence.content_plan_service import approve_plan, materialize_plan
-from intelligence.feedback_bridge import get_feedback_snapshot
+from intelligence.feedback_bridge import get_feedback_snapshot, record_directed_generation_intent
 from intelligence.policy import evaluate_policy, get_current_policy_decision, list_policy_history, list_review_queue
 from intelligence.autonomy import get_effective_authorization, set_policy_override, clear_policy_override
+from intelligence.learning import prepare_feedback_snapshot
+from intelligence.content_brain import directed_creation_identity, get_directed_replay, validate_human_directive_safety
 
 
 router = APIRouter()
@@ -34,6 +38,25 @@ class AccountFeedbackRefreshRequest(BaseModel):
 class ContentPlanGenerationRequest(BaseModel):
     human_brief: str | None = None
     human_constraints: dict | None = None
+    request_id: UUID | None = None
+    class Config: extra = Extra.forbid
+
+
+class StrictSnapshotRequest(BaseModel):
+    account_id: int = Field(gt=0)
+    platform: Literal['youtube', 'instagram', 'facebook']
+    start_date: date
+    end_date: date
+    class Config: extra = Extra.forbid
+
+
+@router.post('/intelligence/feedback/prepare')
+def prepare_strict_snapshot(request: StrictSnapshotRequest):
+    try:
+        return {'snapshot': prepare_feedback_snapshot(request.account_id, request.platform,
+            request.start_date.isoformat(), request.end_date.isoformat())}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 class OverridePolicyRequest(BaseModel):
     override_decision: Literal['AUTO','REVIEW','BLOCK']
@@ -127,10 +150,38 @@ def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationReques
     context = {}
     if request:
         context = {'human_brief': request.human_brief or '', 'human_constraints': request.human_constraints or {}}
+    directed = bool(context.get('human_brief', '').strip() or context.get('human_constraints'))
+    identity = fingerprint = None
+    if directed:
+        if not request.request_id:
+            raise HTTPException(status_code=422, detail='DIRECTED_REQUEST_ID_REQUIRED')
+        evidence = (snapshot.get('metrics_snapshot') or {}).get('learning_evidence') or {}
+        if not evidence.get('fingerprint') or not evidence.get('window'):
+            raise HTTPException(status_code=422, detail='STRICT_SNAPSHOT_REQUIRED')
+        try:
+            validate_human_directive_safety(context['human_brief'], context['human_constraints'])
+            identity, fingerprint = directed_creation_identity(request.request_id, snapshot_id,
+                context['human_brief'], context['human_constraints'])
+            replay = get_directed_replay(identity, fingerprint)
+        except ValueError as exc:
+            raise HTTPException(status_code=409 if str(exc) == 'DIRECTED_REPLAY_CONFLICT' else 422, detail=str(exc)) from exc
+        if replay:
+            return _plan_with_policy(replay, {'replayed': True, 'real_ai': replay['plan'].get('generation_provider') == 'llm'})
+        context['content_id'] = identity
     provider = select_content_plan_provider()
+    if directed and not getattr(provider, 'supports_directed', False):
+        raise HTTPException(status_code=503, detail='DIRECTED_PROVIDER_NOT_READY')
     runtime = provider.readiness() if hasattr(provider, 'readiness') else {'implementation_ready': True, 'runtime_ready': True}
     if not runtime.get('runtime_ready') and os.getenv('OS_CONTENT_PLAN_PROVIDER', 'deterministic').lower() == 'llm':
         raise HTTPException(status_code=503, detail={'error': 'provider not configured', 'runtime_ready': False, 'missing_configuration': runtime.get('missing_configuration', [])})
+    if directed:
+        try:
+            record_directed_generation_intent(snapshot_id, identity, fingerprint)
+        except ValueError as exc:
+            replay = get_directed_replay(identity, fingerprint)
+            if replay:
+                return _plan_with_policy(replay, {'replayed': True})
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
         plan = provider.generate_content_plan(snapshot, context)
     except TextProviderError as exc:
@@ -139,7 +190,24 @@ def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationReques
         raise HTTPException(status_code=status, detail='external text provider failure') from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {'plan': save_plan(plan, snapshot_id), 'runtime': {**runtime, 'real_ai': isinstance(provider, LLMContentPlanProvider)}}
+    if directed:
+        plan.content_id = identity
+        plan.source_snapshot_id = snapshot_id
+        plan.source_content_id = snapshot['content_id']
+        plan.generation_evidence['request_fingerprint'] = fingerprint
+    saved = save_plan(plan, snapshot_id, directed_request=directed)
+    return _plan_with_policy(saved, {**runtime, 'real_ai': isinstance(provider, LLMContentPlanProvider)})
+
+
+def _plan_with_policy(saved, runtime):
+    # Persistence precedes policy; an error must not ask the caller to regenerate.
+    try:
+        decision = evaluate_policy(saved['id'])
+        return {'plan': get_plan(saved['id']), 'runtime': runtime, 'policy': decision,
+                'effective': get_effective_authorization(saved['id'])}
+    except Exception:
+        return {'plan': get_plan(saved['id']), 'runtime': runtime, 'policy': None,
+                'effective': None, 'policy_error': 'POLICY_EVALUATION_REQUIRED'}
 
 @router.get('/intelligence/content-plans')
 def content_plans(): return list_plans()

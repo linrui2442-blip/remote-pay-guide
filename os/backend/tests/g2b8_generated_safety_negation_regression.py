@@ -143,17 +143,20 @@ import routers.intelligence as intelligence_router
 
 original_provider = intelligence_router.select_content_plan_provider
 original_snapshot = intelligence_router.get_feedback_snapshot
+original_intent = intelligence_router.record_directed_generation_intent
+intelligence_router.record_directed_generation_intent = lambda *args: None
 route_provider = provider_with_script("Verify the actual receiving account. Never share your seed phrase or private key.")
 intelligence_router.select_content_plan_provider = lambda: route_provider
-intelligence_router.get_feedback_snapshot = lambda snapshot_id: {"id": snapshot_id, "content_id": "g2b8-route"}
+intelligence_router.get_feedback_snapshot = lambda snapshot_id: {"id": snapshot_id, "content_id": "g2b8-route", "metrics_snapshot": {"learning_evidence": {"fingerprint": "offline-fixture", "window": ["2026-09-01", "2026-09-10"]}}}
 try:
     from routers.intelligence import ContentPlanGenerationRequest, generate_content_plan
-    response = generate_content_plan(1, ContentPlanGenerationRequest(human_brief="Verify a payment safely.", human_constraints={}))
+    response = generate_content_plan(1, ContentPlanGenerationRequest(request_id="d6d66750-cfc9-48a8-b057-88b0b05dc5a1", human_brief="Verify a payment safely.", human_constraints={}))
     assert response["plan"]["status"] == "preview"
     assert response["plan"]["plan"]["generation_mode"] == "directed"
     print("SAFE_NEGATION_CANONICAL_ROUTE=PASS")
 finally:
     intelligence_router.select_content_plan_provider = original_provider
     intelligence_router.get_feedback_snapshot = original_snapshot
+    intelligence_router.record_directed_generation_intent = original_intent
 
 print("G2B7_FAILURE_CLASS_OFFLINE_REGRESSION=PASS")
