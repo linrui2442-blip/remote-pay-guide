@@ -37,7 +37,9 @@ def main(argv=None, *, confirm=input):
     if args.target_state == 'CONFIRMED_FAILED':
         print('This action asserts external evidence proves the original provider attempt produced no usable result.')
     else:
-        print('The original provider outcome remains unknown. Closing it may allow a future request that could duplicate content or cost.')
+        print('The original provider outcome remains unknown.')
+        print('Closing this request does not prove the original generation failed.')
+        print('A future new request may duplicate content or cost.')
     if confirm('Type RECONCILE to confirm [default No]: ').strip() != 'RECONCILE':
         print('DECLINED')
         return 1

@@ -2,10 +2,12 @@
 from test_database_helper import TEST_DATABASE_PATH
 
 import json
+import io
 import socket
 import sqlite3
 import sys
 import uuid
+from contextlib import redirect_stdout
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -139,10 +141,18 @@ def main():
             record_directed_generation_intent(11, ids[5], 'f5', duplicate_risk_ack=True)
             cli_args = ['11', tokens[5], 'CLOSED_UNKNOWN', 'OUTCOME_EVIDENCE_UNAVAILABLE', 'audit:cli-proof', '--duplicate-risk-ack']
             with patch.object(admin_cli, 'authorize_directed_reconciliation', return_value=actor):
-                assert admin_cli.main(cli_args, confirm=lambda _: '') == 1
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    assert admin_cli.main(cli_args, confirm=lambda _: '') == 1
+                warning = output.getvalue()
+                assert 'The original provider outcome remains unknown.' in warning
+                assert 'Closing this request does not prove the original generation failed.' in warning
+                assert 'A future new request may duplicate content or cost.' in warning
+                assert 'DECLINED' in warning
                 assert get_directed_request_status(11, ids[5])['effective_state'] == 'UNRESOLVED_UNKNOWN'
                 assert admin_cli.main(cli_args, confirm=lambda _: 'RECONCILE') == 0
                 assert get_directed_request_status(11, ids[5])['effective_state'] == 'CLOSED_UNKNOWN'
+            print('CLI_WARNING_CONTRACT=PASS')
             print('LOCAL_ADMIN_CLI_CONFIRMATION=PASS')
             class FakeProvider:
                 supports_directed=True
