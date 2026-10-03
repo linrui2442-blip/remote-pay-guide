@@ -144,9 +144,16 @@ class ContentPlanSchemaError(ContentPlanGenerationError):
     pass
 
 
-_DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "guarantee returns", "guarantees returns", "guaranteed income", "guarantee income", "guarantees income", "promise of profit", "promises of profit", "make a profit", "evade compliance requirements", "avoid compliance requirements", "bypass compliance requirements", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
+_DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "guarantee returns", "guarantees returns", "guaranteed income", "guarantee income", "guarantees income", "promise of profit", "promises of profit", "promise a profit", "promises a profit", "promise profit", "promises profit", "make a profit", "evade compliance requirements", "avoid compliance requirements", "bypass compliance requirements", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
 
 _SAFE_NEGATION_MARKERS = ("do not", "don't", "never", "avoid", "without", "should not", "must not", "don't share", "never share", "never ask", "do not ask", "not proof", "not request")
+
+
+def _is_term_negated_in_clause(lowered, index):
+    boundaries = [m.end() for m in re.finditer(r"[.!?;:,]\s*|(?:,?\s+)(?:but|however|yet|except|although|though)\b", lowered[:index])]
+    prefix = lowered[max(boundaries, default=0):index]
+    return (any(marker in prefix for marker in _SAFE_NEGATION_MARKERS)
+            or bool(re.search(r"\b(?:not|no)\s+$", prefix)))
 
 
 def validate_safe_educational_crypto_text(text):
@@ -159,11 +166,7 @@ def validate_safe_educational_crypto_text(text):
             index = lowered.find(term, start)
             if index < 0:
                 break
-            boundaries = [m.end() for m in re.finditer(r"[.!?;:,]\s*|(?:,?\s+)(?:but|however|yet|except|although|though)\b", lowered[:index])]
-            clause_start = max(boundaries, default=0)
-            prefix = lowered[clause_start:index]
-            if not (any(marker in prefix for marker in _SAFE_NEGATION_MARKERS)
-                    or re.search(r"\bnot\s+$", prefix)):
+            if not _is_term_negated_in_clause(lowered, index):
                 return False
             start = index + len(term)
     return True
@@ -198,6 +201,22 @@ def validate_generated_content_safety(data):
     text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
     if not validate_safe_educational_crypto_text(text):
         raise ContentPlanGenerationError("unsafe content constraint")
+    return True
+
+
+def validate_must_avoid_constraints(data, forbidden_items):
+    """Keep generic exclusions literal; allow only clause-negated safety warnings."""
+    fields = ("topic", "angle", "hook", "script", "cta", "title", "description")
+    for forbidden in forbidden_items:
+        term = str(forbidden).lower()
+        safety_concept = any(dangerous in term for dangerous in _DANGEROUS_DIRECTIVE_TERMS)
+        for field in fields:
+            lowered = str(data.get(field, "")).lower()
+            start = 0
+            while term and (index := lowered.find(term, start)) >= 0:
+                if not safety_concept or not _is_term_negated_in_clause(lowered, index):
+                    raise ContentPlanGenerationError("must_avoid constraint violated")
+                start = index + len(term)
     return True
 
 
@@ -241,7 +260,7 @@ class LLMContentPlanProvider:
         model_snapshot = project_generation_snapshot(snapshot, context)
         prompt = build_content_brain_prompt(json.dumps(model_snapshot, ensure_ascii=False), "")
         prompt += "\nThese are observed measurements only. Zero measurements and absence of observed engagement are not causal evidence. Do not infer that the topic/category is inherently ineffective. The human brief remains the primary creative direction when provided."
-        if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints. Every item in human_constraints.must_include is a required phrase. Each required phrase must appear explicitly, using its wording, in at least one generated topic, angle, hook, script, cta, title, or description field. A paraphrase alone does not satisfy a required phrase.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
+        if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints. Do not positively recommend, promise, instruct, or endorse anything listed in must_avoid. A clearly negated safety warning is allowed, but avoid mentioning must_avoid concepts unnecessarily. Every item in human_constraints.must_include is a required phrase. Each required phrase must appear explicitly, using its wording, in at least one generated topic, angle, hook, script, cta, title, or description field. A paraphrase alone does not satisfy a required phrase.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
         prompt += "\n\nReturn exactly one valid JSON object with string fields topic, angle, target_audience, hook, script, cta, title, description, production_notes, visual_direction, reasoning_summary, strategy_type and hashtags as list[str]. No markdown or prose outside JSON."
         from ai.models import AIRequest
         response = self.text_provider.request(AIRequest(task_type="content_plan", model=getattr(self.text_provider, "model", "auto") or "auto", prompt=prompt))
@@ -265,7 +284,6 @@ class LLMContentPlanProvider:
                 data["cta"] = cta_lock
             searched_fields = ("topic", "angle", "hook", "script", "cta", "title", "description")
             normalized_fields = tuple(_normalize_required_phrase_text(data.get(key, "")) for key in searched_fields)
-            final_text = " ".join(str(data.get(k, "")) for k in searched_fields).lower()
             failure_code = "DIRECTED_GENERATION_MUST_INCLUDE_REJECTED"
             for index, required_item in enumerate(constraints.get("must_include", [])):
                 phrase = _normalize_required_phrase_text(required_item)
@@ -274,8 +292,7 @@ class LLMContentPlanProvider:
                     error.forensic_requirement_index = index  # Zero-based, never the phrase text.
                     raise error
             failure_code = "DIRECTED_GENERATION_MUST_AVOID_REJECTED"
-            for forbidden in constraints.get("must_avoid", []):
-                if str(forbidden).lower() in final_text: raise ContentPlanGenerationError("must_avoid constraint violated")
+            validate_must_avoid_constraints(data, constraints.get("must_avoid", []))
             stage = "CONSTRAINTS_VALIDATED"
             failure_code = "DIRECTED_GENERATION_CONTENT_PLAN_VALIDATION_ERROR"
             data.update({"production_spec": {"provider": "github", "workflow": "render-short01.yml", "branch": "main"}, "content_id": context.get("content_id", "plan-preview"), "source_snapshot_id": snapshot.get("id") if isinstance(snapshot, dict) else None, "generation_mode": mode, "human_brief": brief, "human_constraints": constraints,
