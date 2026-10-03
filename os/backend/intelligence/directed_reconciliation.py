@@ -10,8 +10,29 @@ from intelligence.feedback_bridge import _connect, _directed_plan_exists, _json,
 
 
 FAILED_REASONS = frozenset({'PROVIDER_CONFIRMED_NO_RESULT', 'PRE_GENERATION_REJECTION_CONFIRMED',
-                            'UPSTREAM_CONFIRMED_NOT_EXECUTED'})
+                            'UPSTREAM_CONFIRMED_NOT_EXECUTED', 'CANONICAL_GENERATED_OUTPUT_REJECTED'})
 CLOSED_REASONS = frozenset({'OUTCOME_EVIDENCE_UNAVAILABLE'})
+# The provider returned, but canonical validation rejected its generated output
+# before a ContentPlan was persisted. This does not assert an upstream failure.
+_CANONICAL_REJECTION_PAIRS = frozenset({
+    ('DIRECTED_GENERATION_PARSE_ERROR', 'CONTENT_EXTRACTED'),
+    ('DIRECTED_GENERATION_SCHEMA_ERROR', 'JSON_PARSED'),
+    ('DIRECTED_GENERATION_SAFETY_REJECTED', 'SCHEMA_VALIDATED'),
+    ('DIRECTED_GENERATION_MUST_INCLUDE_REJECTED', 'SAFETY_VALIDATED'),
+    ('DIRECTED_GENERATION_MUST_AVOID_REJECTED', 'SAFETY_VALIDATED'),
+    ('DIRECTED_GENERATION_CONTENT_PLAN_VALIDATION_ERROR', 'CONSTRAINTS_VALIDATED'),
+})
+
+
+def _is_canonical_generated_output_rejection_evidence(record):
+    """Use only persisted server-owned evidence; never operator-supplied text."""
+    if not isinstance(record, dict) or not record.get('provider_attempt_claimed_at'):
+        return False
+    observation = record.get('generation_observation')
+    return (isinstance(observation, dict)
+            and bool(observation.get('provider_returned_at'))
+            and bool(observation.get('failure_at'))
+            and (observation.get('failure_code'), observation.get('last_stage')) in _CANONICAL_REJECTION_PAIRS)
 _EVIDENCE_REF = re.compile(r'(?:provider|audit|incident):[A-Za-z0-9._#-]{4,120}\Z')
 _SENSITIVE_REF = re.compile(r'authorization|bearer|token|secret|credential|api.?key', re.IGNORECASE)
 
@@ -81,6 +102,8 @@ def reconcile_directed_request(snapshot_id, request_id, *, expected_state, targe
             raise ValueError('DIRECTED_RECONCILIATION_STATE_CONFLICT')
         if reconciliation is not None:
             raise ValueError('DIRECTED_RECONCILIATION_STATE_CONFLICT')
+        if reason_code == 'CANONICAL_GENERATED_OUTPUT_REJECTED' and not _is_canonical_generated_output_rejection_evidence(record):
+            raise ValueError('DIRECTED_CANONICAL_REJECTION_EVIDENCE_REQUIRED')
         record['state'] = target_state
         record['reconciliation'] = {'at': datetime.now(timezone.utc).isoformat(), 'actor_id': actor_id,
                                     'reason_code': reason_code, 'evidence_reference': evidence_reference}

@@ -220,6 +220,12 @@ def effective_directed_request_state(conn, identity, record):
     return state
 
 
+def _requires_directed_duplicate_risk_ack(record, state):
+    return state == 'CLOSED_UNKNOWN' or (state == 'CONFIRMED_FAILED'
+        and isinstance(record.get('reconciliation'), dict)
+        and record['reconciliation'].get('reason_code') == 'CANONICAL_GENERATED_OUTPUT_REJECTED')
+
+
 def get_directed_request_status(snapshot_id, identity):
     with _connect() as conn:
         row = conn.execute('SELECT directed_requests_json FROM intelligence_feedback_snapshots WHERE id=?',
@@ -234,7 +240,7 @@ def get_directed_request_status(snapshot_id, identity):
         state = effective_directed_request_state(conn, identity, record)
         return {'effective_state': state,
                 'can_create_new_request': state in ('CONFIRMED_FAILED', 'CLOSED_UNKNOWN', 'COMPLETED'),
-                'requires_duplicate_risk_ack': state == 'CLOSED_UNKNOWN',
+                'requires_duplicate_risk_ack': _requires_directed_duplicate_risk_ack(record, state),
                 'state_conflict': state == 'COMPLETED' and record.get('state') in ('CONFIRMED_FAILED', 'CLOSED_UNKNOWN')}
 
 
@@ -263,7 +269,7 @@ def record_directed_generation_intent(snapshot_id, identity, fingerprint, *, dup
                 raise ValueError('DIRECTED_RECONCILIATION_REQUIRED')
             if state == 'COMPLETED' and record.get('state') in ('CONFIRMED_FAILED', 'CLOSED_UNKNOWN'):
                 raise ValueError('DIRECTED_INTENT_CORRUPT')
-            if state == 'CLOSED_UNKNOWN' and not duplicate_risk_ack:
+            if _requires_directed_duplicate_risk_ack(record, state) and not duplicate_risk_ack:
                 raise ValueError('DIRECTED_DUPLICATE_RISK_ACK_REQUIRED')
         now = datetime.now(timezone.utc).isoformat()
         intents[identity] = {'fingerprint': fingerprint, 'created_at': now,

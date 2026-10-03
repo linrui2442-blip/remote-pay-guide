@@ -34,7 +34,11 @@ def main(argv=None, *, confirm=input):
     print('target_state=' + args.target_state)
     print('reason_code=' + args.reason_code)
     print('evidence_reference=' + args.evidence_reference)
-    if args.target_state == 'CONFIRMED_FAILED':
+    if args.reason_code == 'CANONICAL_GENERATED_OUTPUT_REJECTED':
+        print('The provider returned a response; canonical generation validation rejected the output.')
+        print('No canonical ContentPlan was persisted. This does not mean the provider failed to execute or returned no result.')
+        print('A future new request may duplicate provider cost or content generation effort.')
+    elif args.target_state == 'CONFIRMED_FAILED':
         print('This action asserts external evidence proves the original provider attempt produced no usable result.')
     else:
         print('The original provider outcome remains unknown.')

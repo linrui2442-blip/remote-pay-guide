@@ -166,6 +166,10 @@ try {
   console.log('FRONTEND_COMPLETED_BACKEND_RECOVERY=PASS');
   console.log('FRONTEND_EXPLICIT_NEW_REQUEST=PASS');
   console.log('FRONTEND_CLOSED_UNKNOWN_RISK_ACK=PASS');
+  assert.equal((page.match(/A previous request may have caused provider work, cost, or generated content without a canonical ContentPlan/g) || []).length, 2);
+  assert.equal((page.match(/A new request may duplicate content or cost/g) || []).length, 2);
+  assert.doesNotMatch(page, /The original provider outcome remains unknown\. A new request could duplicate/);
+  console.log('FRONTEND_REASON_NEUTRAL_DUPLICATE_WARNING=PASS');
   assert.doesNotMatch(page, /runProductionTask|runPublishTask|materialize_feedback_task|materializeContentPlan/);
   console.log('FRONTEND_BRIEF_CONSTRAINTS_BODY=PASS');
   console.log('FRONTEND_NESTED_RESPONSE_UNPACKED=PASS');

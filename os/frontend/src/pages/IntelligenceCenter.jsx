@@ -62,7 +62,7 @@ export default function IntelligenceCenter({ accounts = [] }) {
         try {
           if (reconciliationRequired && active.current.prior_request) persist(active.current.prior_request);
           else if (riskAckRequired) {
-            const accepted = window.confirm('The original provider outcome remains unknown. A new request could duplicate content or cost. Confirm risk before submitting this same new request?');
+            const accepted = window.confirm('A previous request may have caused provider work, cost, or generated content without a canonical ContentPlan. A new request may duplicate content or cost. Confirm risk before submitting this same new request?');
             persist({...active.current, status: 'READY', duplicate_risk_ack: accepted});
           } else persist({...active.current, status: 'UNKNOWN_REQUIRES_RECONCILIATION'});
         } catch { /* Preserve the durable token when storage fails. */ }
@@ -82,7 +82,7 @@ export default function IntelligenceCenter({ accounts = [] }) {
           return;
         }
         if (status.requires_duplicate_risk_ack) {
-          duplicateRiskAck = window.confirm('The original provider outcome remains unknown. A new request could duplicate content or cost. Start a separate creative request?');
+          duplicateRiskAck = window.confirm('A previous request may have caused provider work, cost, or generated content without a canonical ContentPlan. A new request may duplicate content or cost. Start a separate creative request?');
           if (!duplicateRiskAck) return;
         }
       }
