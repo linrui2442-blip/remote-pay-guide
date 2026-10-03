@@ -144,7 +144,7 @@ class ContentPlanSchemaError(ContentPlanGenerationError):
     pass
 
 
-_DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "guarantee returns", "guarantees returns", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
+_DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "guarantee returns", "guarantees returns", "guaranteed income", "guarantee income", "guarantees income", "promise of profit", "promises of profit", "make a profit", "evade compliance requirements", "avoid compliance requirements", "bypass compliance requirements", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
 
 _SAFE_NEGATION_MARKERS = ("do not", "don't", "never", "avoid", "without", "should not", "must not", "don't share", "never share", "never ask", "do not ask", "not proof", "not request")
 
@@ -162,7 +162,8 @@ def validate_safe_educational_crypto_text(text):
             boundaries = [m.end() for m in re.finditer(r"[.!?;:,]\s*|(?:,?\s+)(?:but|however|yet|except|although|though)\b", lowered[:index])]
             clause_start = max(boundaries, default=0)
             prefix = lowered[clause_start:index]
-            if not any(marker in prefix for marker in _SAFE_NEGATION_MARKERS):
+            if not (any(marker in prefix for marker in _SAFE_NEGATION_MARKERS)
+                    or re.search(r"\bnot\s+$", prefix)):
                 return False
             start = index + len(term)
     return True
