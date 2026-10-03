@@ -102,6 +102,10 @@ def main():
             evidence = record['generation_observation']
             assert evidence['provider_returned_at'] and evidence['last_stage'] == stage
             assert evidence['failure_code'] == code and evidence['failure_at']
+            if marker == 'MUST_INCLUDE_FAILURE':
+                assert evidence['failed_requirement_index'] == 0
+            else:
+                assert 'failed_requirement_index' not in evidence
             for secret in ('SECRET_SENTINEL_API_KEY', 'SECRET_SENTINEL_PROMPT',
                            'SECRET_SENTINEL_MODEL_OUTPUT', 'SECRET_SENTINEL_HEADER'):
                 assert secret not in raw
@@ -125,6 +129,7 @@ def main():
         record, raw = observation(sid, identity)
         assert record['generation_observation']['last_stage'] == 'CONTENT_PLAN_PERSISTED'
         assert record['generation_observation']['failure_code'] is None
+        assert 'failed_requirement_index' not in record['generation_observation']
         assert record['generation_observation']['provider_returned_at']
         assert get_directed_request_status(sid, identity)['effective_state'] == 'COMPLETED'
         print('SUCCESS_PATH=PASS')

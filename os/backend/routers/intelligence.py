@@ -39,6 +39,7 @@ class AccountFeedbackRefreshRequest(BaseModel):
 
 class ContentPlanGenerationRequest(BaseModel):
     human_brief: str | None = None
+    # must_include entries are required phrases in generated content, not semantic concepts.
     human_constraints: dict | None = None
     request_id: UUID | None = None
     duplicate_risk_ack: StrictBool = False
@@ -208,7 +209,8 @@ def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationReques
             if returned:
                 try:
                     record_directed_generation_observation(snapshot_id, identity, stage=stage,
-                        failure_code=code, provider_returned=True)
+                        failure_code=code, provider_returned=True,
+                        failed_requirement_index=getattr(exc, 'forensic_requirement_index', None))
                 except Exception:
                     # A failed forensic write must never mask the generation failure.
                     pass

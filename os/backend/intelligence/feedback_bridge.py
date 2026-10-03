@@ -286,10 +286,14 @@ GENERATION_OBSERVATION_FAILURE_CODES = frozenset({
 
 
 def record_directed_generation_observation(snapshot_id, identity, *, stage, failure_code=None,
-                                           provider_returned=False):
+                                           provider_returned=False, failed_requirement_index=None):
     """Persist only finite forensic codes on an existing intent, in one short transaction."""
     if stage not in GENERATION_OBSERVATION_STAGES or (failure_code is not None and
             failure_code not in GENERATION_OBSERVATION_FAILURE_CODES):
+        raise ValueError('DIRECTED_GENERATION_OBSERVATION_INVALID')
+    if failed_requirement_index is not None and (type(failed_requirement_index) is not int
+            or failed_requirement_index < 0
+            or failure_code != 'DIRECTED_GENERATION_MUST_INCLUDE_REJECTED'):
         raise ValueError('DIRECTED_GENERATION_OBSERVATION_INVALID')
     with _connect() as conn:
         conn.execute('BEGIN IMMEDIATE')
@@ -310,6 +314,10 @@ def record_directed_generation_observation(snapshot_id, identity, *, stage, fail
         observation['last_stage'] = stage
         observation['failure_code'] = failure_code
         observation['failure_at'] = now if failure_code else None
+        # Historical records without this zero-based index remain valid.
+        observation.pop('failed_requirement_index', None)
+        if failed_requirement_index is not None:
+            observation['failed_requirement_index'] = failed_requirement_index
         record['generation_observation'] = observation
         conn.execute('UPDATE intelligence_feedback_snapshots SET directed_requests_json=? WHERE id=?',
                      (_json(intents), snapshot_id))

@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Protocol
-import json, sqlite3, os, re, hashlib
+import json, sqlite3, os, re, hashlib, unicodedata
 from contextlib import closing
 from datetime import datetime, timezone
 from data.database_path import database_path
@@ -171,6 +171,11 @@ def validate_safe_educational_crypto_text(text):
 def validate_human_directive_safety(human_brief="", human_constraints=None):
     """Reject positive unsafe instructions before any provider call."""
     constraints = dict(human_constraints or {})
+    required_phrases = constraints.get("must_include", [])
+    if (not isinstance(required_phrases, list) or
+            any(not isinstance(item, str) or not _normalize_required_phrase_text(item)
+                for item in required_phrases)):
+        raise ContentPlanGenerationError("must_include must be a list of non-empty required phrases")
     lowered = str(human_brief or "").lower()
     for term in _DANGEROUS_DIRECTIVE_TERMS:
         index = 0
@@ -181,7 +186,7 @@ def validate_human_directive_safety(human_brief="", human_constraints=None):
             if not any(marker in prefix for marker in ("do not", "don't", "never", "avoid", "without")):
                 raise ContentPlanGenerationError("unsafe human directive")
             index += len(term)
-    for item in constraints.get("must_include", []):
+    for item in required_phrases:
         if any(term in str(item).lower() for term in _DANGEROUS_DIRECTIVE_TERMS): raise ContentPlanGenerationError("unsafe human directive")
     for key in ("topic", "angle", "target_audience", "cta_direction", "locked_topic", "locked_angle", "locked_target_audience", "locked_cta_direction"):
         if any(term in str(constraints.get(key) or "").lower() for term in _DANGEROUS_DIRECTIVE_TERMS): raise ContentPlanGenerationError("unsafe human directive")
@@ -193,6 +198,14 @@ def validate_generated_content_safety(data):
     if not validate_safe_educational_crypto_text(text):
         raise ContentPlanGenerationError("unsafe content constraint")
     return True
+
+
+def _normalize_required_phrase_text(value):
+    """Normalize presentation only; must_include remains literal, not semantic."""
+    text = unicodedata.normalize("NFC", str(value))
+    text = text.translate(str.maketrans({"\u2018": "'", "\u2019": "'", "\u02bc": "'",
+                                         "\u201c": '"', "\u201d": '"'}))
+    return re.sub(r"\s+", " ", text.casefold()).strip()
 
 
 def parse_content_plan_response(raw):
@@ -227,7 +240,7 @@ class LLMContentPlanProvider:
         model_snapshot = project_generation_snapshot(snapshot, context)
         prompt = build_content_brain_prompt(json.dumps(model_snapshot, ensure_ascii=False), "")
         prompt += "\nThese are observed measurements only. Zero measurements and absence of observed engagement are not causal evidence. Do not infer that the topic/category is inherently ineffective. The human brief remains the primary creative direction when provided."
-        if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
+        if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints. Every item in human_constraints.must_include is a required phrase. Each required phrase must appear explicitly, using its wording, in at least one generated topic, angle, hook, script, cta, title, or description field. A paraphrase alone does not satisfy a required phrase.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
         prompt += "\n\nReturn exactly one valid JSON object with string fields topic, angle, target_audience, hook, script, cta, title, description, production_notes, visual_direction, reasoning_summary, strategy_type and hashtags as list[str]. No markdown or prose outside JSON."
         from ai.models import AIRequest
         response = self.text_provider.request(AIRequest(task_type="content_plan", model=getattr(self.text_provider, "model", "auto") or "auto", prompt=prompt))
@@ -249,10 +262,16 @@ class LLMContentPlanProvider:
             cta_lock = constraints.get("cta_direction") or constraints.get("locked_cta_direction")
             if cta_lock and ("cta_direction" in locks or "locked_cta_direction" in constraints):
                 data["cta"] = cta_lock
-            final_text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
+            searched_fields = ("topic", "angle", "hook", "script", "cta", "title", "description")
+            normalized_fields = tuple(_normalize_required_phrase_text(data.get(key, "")) for key in searched_fields)
+            final_text = " ".join(str(data.get(k, "")) for k in searched_fields).lower()
             failure_code = "DIRECTED_GENERATION_MUST_INCLUDE_REJECTED"
-            for required_item in constraints.get("must_include", []):
-                if str(required_item).lower() not in final_text: raise ContentPlanGenerationError("must_include constraint not satisfied")
+            for index, required_item in enumerate(constraints.get("must_include", [])):
+                phrase = _normalize_required_phrase_text(required_item)
+                if not any(phrase in field for field in normalized_fields):
+                    error = ContentPlanGenerationError("must_include constraint not satisfied")
+                    error.forensic_requirement_index = index  # Zero-based, never the phrase text.
+                    raise error
             failure_code = "DIRECTED_GENERATION_MUST_AVOID_REJECTED"
             for forbidden in constraints.get("must_avoid", []):
                 if str(forbidden).lower() in final_text: raise ContentPlanGenerationError("must_avoid constraint violated")
