@@ -117,6 +117,7 @@ class GitHubProductionProvider:
                 "github_run_url": run.get("html_url"),
                 "github_run_status": run.get("status"),
                 "github_run_conclusion": run.get("conclusion"),
+                **({"g4b_no_asset_binding": True} if parameters.get("production_routing") else {}),
             },
         }
 

@@ -323,6 +323,43 @@ def claim_promotion_execution(result_id, intent):
     finally:
         conn.close()
 
+
+def claim_human_promotion_resume(result_id, *, expected_intent):
+    """Durably consume the single human-authorized POST opportunity.
+
+    A missing run ID is not enough to permit another POST after a crash.  The
+    claim marker is committed before network I/O and can never be cleared.
+    """
+    init_results_table()
+    conn = _connect()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute(
+            "SELECT status,provider,promotion_state,promotion_metadata FROM production_results WHERE id=?",
+            (result_id,),
+        ).fetchone()
+        if not row or row['status'] != 'running' or row['provider'] != 'github' or row['promotion_state'] != 'intent':
+            conn.commit()
+            return False
+        intent = json.loads(row['promotion_metadata'] or '{}')
+        if any(intent.get(key) != value for key, value in expected_intent.items()):
+            raise ValueError('Human promotion intent linkage changed')
+        if intent.get('promotion_run_id') or intent.get('recovery_required') or intent.get('human_resume_post_claimed_at'):
+            conn.commit()
+            return False
+        intent['human_resume_post_claimed_at'] = datetime.utcnow().isoformat()
+        conn.execute(
+            'UPDATE production_results SET promotion_metadata=?,updated_at=? WHERE id=?',
+            (json.dumps(intent, ensure_ascii=False), datetime.utcnow().isoformat(), result_id),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 def update_promotion_state(result_id, state, metadata=None):
     init_results_table()
     conn = _connect()

@@ -135,16 +135,20 @@ def promote_artifact_to_pages(
     }
 
 
-def poll_claimed_promotion(*, result_id, job, source_run_id, artifact, parameters, client, monitor, promoter=None):
-    """Shared durable one-POST boundary. Recovery never submits a workflow."""
+def poll_claimed_promotion(*, result_id, job, source_run_id, artifact, parameters, client, monitor, promoter=None,
+                           human_authorized_resume=False):
+    """Shared durable one-POST boundary; only an explicit human resume may POST an old intent."""
     import json
-    from production.results.manager import get_result, claim_promotion_execution, update_promotion_state
+    from production.results.manager import (get_result, claim_promotion_execution,
+                                            claim_human_promotion_resume, update_promotion_state)
     current = get_result(result_id)
     if not current or current['runtime_job_id'] != job['id'] or current['provider'] != 'github':
         raise ValueError('Promotion result linkage mismatch')
     if current['status'] in {'completed', 'failed'}:
         return {'status': current['status'], 'output': current['output'], 'error': current.get('error')}
     winner = False
+    if human_authorized_resume and (current.get('promotion_state') is None or not parameters.get('production_routing')):
+        raise ValueError('Human promotion resume requires an existing routed intent')
     if current.get('promotion_state') is None:
         if (current.get('output') or {}).get('promotion_intent'):
             raise ValueError('Legacy promotion intent requires review; no new dispatch')
@@ -160,10 +164,34 @@ def poll_claimed_promotion(*, result_id, job, source_run_id, artifact, parameter
     intent = json.loads(current.get('promotion_metadata') or '{}')
     if not intent or intent.get('production_result_id') != result_id or intent.get('runtime_job_id') != job['id']:
         raise ValueError('Missing durable promotion correlation envelope')
+    if human_authorized_resume:
+        expected = {
+            'production_result_id': result_id,
+            'runtime_job_id': job['id'],
+            'source_run_id': source_run_id,
+            'artifact_id': artifact.get('id'),
+            'artifact_name': artifact.get('name'),
+            'asset_path': parameters.get('asset_path') or 'final-output.mp4',
+            'asset_filename': parameters.get('asset_filename') or f"task{job['task_id']}.mp4",
+            'workflow': PROMOTION_WORKFLOW,
+            'branch': 'main',
+            'provider': 'github',
+        }
+        if any(intent.get(key) != value for key, value in expected.items()):
+            raise ValueError('Human promotion resume intent does not match render artifact')
+        if current['promotion_state'] == 'intent' and not intent.get('promotion_run_id') and not intent.get('recovery_required') and not intent.get('human_resume_post_claimed_at'):
+            # A prior POST with no saved run ID is ambiguous.  Only a clean
+            # pre-dispatch snapshot may consume this one explicit manual claim.
+            observed = monitor.snapshot_run_ids(PROMOTION_WORKFLOW, 'main')
+            if observed - set(intent['pre_dispatch_run_ids']):
+                raise ValueError('Promotion dispatch outcome is ambiguous')
+            winner = claim_human_promotion_resume(result_id, expected_intent=expected)
+            current = get_result(result_id)
+            intent = json.loads(current.get('promotion_metadata') or '{}')
     if winner:
         # The claim transaction is committed; fresh authorization is checked
         # immediately before POST, including changes made while finding artifacts.
-        if parameters.get('production_routing'):
+        if parameters.get('production_routing') and not human_authorized_resume:
             from intelligence.content_brain import get_plan
             from orchestration.production import _authorization_or_fail
             plan_id = parameters['content_plan_id']

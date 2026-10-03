@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from assets.github_pages import promote_artifact_to_pages, poll_claimed_promotion, _verify_public_url
@@ -13,7 +14,7 @@ def _utc_now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def complete_github_execution(result_id, job, client=None):
+def complete_github_execution(result_id, job, client=None, *, human_authorized_resume=False):
     """Wait for one GitHub production run, promote its video asset, then finalize Result."""
     client = client or GitHubClient()
     monitor = GitHubRunMonitor(client)
@@ -45,6 +46,8 @@ def complete_github_execution(result_id, job, client=None):
 
     task = get_task(job.get("task_id")) if job else None
     parameters = dict(getattr(task, "parameters", {}) or {})
+    if parameters.get('production_routing'):
+        output['g4b_no_asset_binding'] = True
     poll_interval = max(1, int(parameters.get("github_poll_interval", 10)))
     max_attempts = max(1, int(parameters.get("github_poll_attempts", 720)))
 
@@ -95,13 +98,15 @@ def complete_github_execution(result_id, job, client=None):
         asset_path = parameters.get("asset_path") or "final-output.mp4"
         parameters.update(asset_path=asset_path, asset_filename=asset_filename)
         promotion = poll_claimed_promotion(result_id=result_id, job=job, source_run_id=run_id,
-            artifact=artifact, parameters=parameters, client=client, monitor=monitor, promoter=promote_artifact_to_pages)
+            artifact=artifact, parameters=parameters, client=client, monitor=monitor, promoter=promote_artifact_to_pages,
+            human_authorized_resume=human_authorized_resume)
         if promotion['status'] == 'running' and promotion['output'].get('promotion_run_id'):
             monitor.wait_for_terminal(promotion['output']['promotion_run_id'],
                 max_attempts=max(1, int(parameters.get('promotion_poll_attempts', 180))),
                 poll_interval=max(1, int(parameters.get('promotion_poll_interval', 5))))
             promotion = poll_claimed_promotion(result_id=result_id, job=job, source_run_id=run_id,
-                artifact=artifact, parameters=parameters, client=client, monitor=monitor, promoter=promote_artifact_to_pages)
+                artifact=artifact, parameters=parameters, client=client, monitor=monitor, promoter=promote_artifact_to_pages,
+                human_authorized_resume=human_authorized_resume)
         output.update(promotion['output'])
         output["asset_id"] = asset_id
         if promotion['status'] == 'completed':
@@ -119,3 +124,43 @@ def complete_github_execution(result_id, job, client=None):
         except Exception:
             pass
         return update_result(result_id, status="failed", output=output, error=str(exc))
+
+
+def continue_human_authorized_github_completion(result_id, *, client=None):
+    """Explicit human invocation for one already-claimed routed promotion."""
+    from production.runtime.manager import get_job
+    from intelligence.content_brain import get_plan
+
+    result = get_result(result_id)
+    if not result or result.get('provider') != 'github' or result.get('status') not in {'running', 'completed'}:
+        raise ValueError('Running or completed GitHub ProductionResult required')
+    if result.get('promotion_state') not in {'intent', 'submitted', 'running', 'completed'}:
+        raise ValueError('Recoverable promotion intent required')
+    job = get_job(result['runtime_job_id'])
+    task = get_task(job.get('task_id')) if job else None
+    if not job or job.get('provider') != 'github' or job.get('job_type') != 'github_runtime' or not task or task.provider != 'github':
+        raise ValueError('GitHub result/job/task linkage invalid')
+    parameters = task.parameters or {}
+    route = parameters.get('production_routing') or {}
+    plan_id = parameters.get('content_plan_id')
+    plan = get_plan(plan_id) if plan_id else None
+    if not plan or plan.get('status') != 'materialized' or plan.get('revision') != parameters.get('content_plan_revision'):
+        raise ValueError('Current materialized ContentPlan required')
+    from intelligence.content_plan_service import _validate_materialized_task
+    key = f"content-plan:{plan_id}:revision:{plan['revision']}"
+    _validate_materialized_task(task, plan_id, plan['revision'], key)
+    expected_status = result['status']
+    if route.get('selected_provider') != 'github' or task.status != expected_status or job.get('status') != expected_status:
+        raise ValueError('Human GitHub continuation state mismatch')
+    intent = json.loads(result.get('promotion_metadata') or '{}')
+    if (intent.get('production_result_id') != result_id or intent.get('runtime_job_id') != job['id'] or
+        intent.get('source_run_id') != (result.get('output') or {}).get('github_run_id') or
+        intent.get('workflow') != 'promote-video-asset.yml' or intent.get('branch') != 'main'):
+        raise ValueError('Persisted promotion correlation invalid')
+    if result['status'] == 'completed':
+        if result['promotion_state'] != 'completed' or not (result.get('output') or {}).get('g4b_no_asset_binding'):
+            raise ValueError('Completed result violates the G4-D asset boundary')
+        return result
+    if result.get('asset_id'):
+        raise ValueError('Unfinished promotion has an asset binding')
+    return complete_github_execution(result_id, job, client=client, human_authorized_resume=True)
