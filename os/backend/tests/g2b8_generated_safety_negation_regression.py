@@ -1,8 +1,12 @@
 import json
 import os
 import sys
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+assert os.environ.get("OS_TESTING") == "1"
+assert os.environ.get("OS_DATABASE_PATH") == str(TEST_DATABASE_PATH)
+assert_safe_test_database_path(TEST_DATABASE_PATH)
 
 from ai.models import AIRequest
 from intelligence.content_brain import (
@@ -145,6 +149,7 @@ original_provider = intelligence_router.select_content_plan_provider
 original_snapshot = intelligence_router.get_feedback_snapshot
 import sqlite3
 from data.database_path import database_path
+assert database_path().resolve() == TEST_DATABASE_PATH
 with sqlite3.connect(database_path()) as conn:
     conn.execute('CREATE TABLE IF NOT EXISTS intelligence_feedback_snapshots(id INTEGER PRIMARY KEY, directed_requests_json TEXT)')
     conn.execute('INSERT OR IGNORE INTO intelligence_feedback_snapshots(id,directed_requests_json) VALUES(1,?)', ('{}',))
@@ -156,6 +161,9 @@ try:
     response = generate_content_plan(1, ContentPlanGenerationRequest(request_id="d6d66750-cfc9-48a8-b057-88b0b05dc5a1", human_brief="Verify a payment safely.", human_constraints={}))
     assert response["plan"]["status"] == "preview"
     assert response["plan"]["plan"]["generation_mode"] == "directed"
+    with sqlite3.connect(TEST_DATABASE_PATH) as conn:
+        assert conn.execute('SELECT COUNT(*) FROM intelligence_content_plans').fetchone()[0] == 1
+    print("G2B8_TEMP_DB_ONLY=PASS")
     print("SAFE_NEGATION_CANONICAL_ROUTE=PASS")
 finally:
     intelligence_router.select_content_plan_provider = original_provider

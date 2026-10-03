@@ -1,10 +1,15 @@
 """Network-free end-to-end Publish Center contracts for Instagram."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 from datetime import datetime, timedelta, timezone
 import os
 import pytest
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 import publish.manager as pm
+
+assert_safe_test_database_path(TEST_DATABASE_PATH)
 import publish.orchestrator as orch
 import publish.worker as worker_module
 import publish.adapters.instagram as instagram_module

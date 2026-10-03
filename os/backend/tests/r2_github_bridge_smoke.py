@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
 import json
+
+assert_safe_test_database_path(TEST_DATABASE_PATH)
 
 from assets.manager import get_asset_by_asset_id
 from production.runtime.worker import ProductionRuntimeWorker
