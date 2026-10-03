@@ -136,6 +136,14 @@ class ContentPlanGenerationError(ValueError):
     pass
 
 
+class ContentPlanParseError(ContentPlanGenerationError):
+    pass
+
+
+class ContentPlanSchemaError(ContentPlanGenerationError):
+    pass
+
+
 _DANGEROUS_DIRECTIVE_TERMS = ("investment advice", "trading recommendation", "price prediction", "guaranteed returns", "guarantee returns", "guarantees returns", "seed phrase", "private key", "what coin will rise", "which token to buy", "recommend which token", "recommend which crypto token", "should buy")
 
 _SAFE_NEGATION_MARKERS = ("do not", "don't", "never", "avoid", "without", "should not", "must not", "don't share", "never share", "never ask", "do not ask", "not proof", "not request")
@@ -188,19 +196,19 @@ def validate_generated_content_safety(data):
 
 
 def parse_content_plan_response(raw):
-    if not isinstance(raw, str): raise ContentPlanGenerationError("AI response must be JSON text")
+    if not isinstance(raw, str): raise ContentPlanParseError("AI response must be JSON text")
     value = raw.strip()
     if value.startswith("```"):
         lines = value.splitlines()
-        if len(lines) < 3 or not lines[-1].strip().startswith("```"): raise ContentPlanGenerationError("invalid JSON code fence")
+        if len(lines) < 3 or not lines[-1].strip().startswith("```"): raise ContentPlanParseError("invalid JSON code fence")
         value = "\n".join(lines[1:-1]).strip()
     try: data = json.loads(value)
-    except (TypeError, ValueError) as exc: raise ContentPlanGenerationError("AI response is invalid JSON") from exc
-    if not isinstance(data, dict): raise ContentPlanGenerationError("AI response must be a JSON object")
+    except (TypeError, ValueError) as exc: raise ContentPlanParseError("AI response is invalid JSON") from exc
+    if not isinstance(data, dict): raise ContentPlanSchemaError("AI response must be a JSON object")
     required = ("topic", "angle", "target_audience", "hook", "script", "cta", "title", "description", "production_notes", "visual_direction", "reasoning_summary", "strategy_type")
     for name in required:
-        if not isinstance(data.get(name), str) or not data[name].strip(): raise ContentPlanGenerationError(f"AI field {name} must be a non-empty string")
-    if not isinstance(data.get("hashtags", []), list) or not all(isinstance(x, str) and x.strip() for x in data.get("hashtags", [])): raise ContentPlanGenerationError("AI hashtags must be a list of strings")
+        if not isinstance(data.get(name), str) or not data[name].strip(): raise ContentPlanSchemaError(f"AI field {name} must be a non-empty string")
+    if not isinstance(data.get("hashtags", []), list) or not all(isinstance(x, str) and x.strip() for x in data.get("hashtags", [])): raise ContentPlanSchemaError("AI hashtags must be a list of strings")
     return data
 
 
@@ -223,23 +231,45 @@ class LLMContentPlanProvider:
         prompt += "\n\nReturn exactly one valid JSON object with string fields topic, angle, target_audience, hook, script, cta, title, description, production_notes, visual_direction, reasoning_summary, strategy_type and hashtags as list[str]. No markdown or prose outside JSON."
         from ai.models import AIRequest
         response = self.text_provider.request(AIRequest(task_type="content_plan", model=getattr(self.text_provider, "model", "auto") or "auto", prompt=prompt))
-        data = parse_content_plan_response(response.get("output") if isinstance(response, dict) else getattr(response, "output", None))
-        validate_generated_content_safety(data)
-        locks = constraints.get("locked_fields", [])
-        for key in ("topic", "angle", "target_audience"):
-            if (key in locks or "locked_" + key in constraints) and constraints.get(key, constraints.get("locked_" + key)):
-                data[key] = constraints.get(key, constraints.get("locked_" + key))
-        cta_lock = constraints.get("cta_direction") or constraints.get("locked_cta_direction")
-        if cta_lock and ("cta_direction" in locks or "locked_cta_direction" in constraints):
-            data["cta"] = cta_lock
-        final_text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
-        for required_item in constraints.get("must_include", []):
-            if str(required_item).lower() not in final_text: raise ContentPlanGenerationError("must_include constraint not satisfied")
-        for forbidden in constraints.get("must_avoid", []):
-            if str(forbidden).lower() in final_text: raise ContentPlanGenerationError("must_avoid constraint violated")
-        data.update({"production_spec": {"provider": "github", "workflow": "render-short01.yml", "branch": "main"}, "content_id": context.get("content_id", "plan-preview"), "source_snapshot_id": snapshot.get("id") if isinstance(snapshot, dict) else None, "generation_mode": mode, "human_brief": brief, "human_constraints": constraints,
-                     "generation_provider": "llm", "generation_evidence": {"source":"content_plan_provider", "schema_version":1, "provider": "llm", "provider_response_received": True, "json_parsed": True, "schema_validated": True, "safety_validated": True, "constraints_validated": True}})
-        return validate_content_plan(ContentPlan(**data))
+        stage = "PROVIDER_RETURNED"
+        failure_code = "DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR"
+        try:
+            output = response.get("output") if isinstance(response, dict) else getattr(response, "output", None)
+            stage = "CONTENT_EXTRACTED"
+            data = parse_content_plan_response(output)
+            stage = "SCHEMA_VALIDATED"
+            failure_code = "DIRECTED_GENERATION_SAFETY_REJECTED"
+            validate_generated_content_safety(data)
+            stage = "SAFETY_VALIDATED"
+            failure_code = "DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR"
+            locks = constraints.get("locked_fields", [])
+            for key in ("topic", "angle", "target_audience"):
+                if (key in locks or "locked_" + key in constraints) and constraints.get(key, constraints.get("locked_" + key)):
+                    data[key] = constraints.get(key, constraints.get("locked_" + key))
+            cta_lock = constraints.get("cta_direction") or constraints.get("locked_cta_direction")
+            if cta_lock and ("cta_direction" in locks or "locked_cta_direction" in constraints):
+                data["cta"] = cta_lock
+            final_text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
+            failure_code = "DIRECTED_GENERATION_MUST_INCLUDE_REJECTED"
+            for required_item in constraints.get("must_include", []):
+                if str(required_item).lower() not in final_text: raise ContentPlanGenerationError("must_include constraint not satisfied")
+            failure_code = "DIRECTED_GENERATION_MUST_AVOID_REJECTED"
+            for forbidden in constraints.get("must_avoid", []):
+                if str(forbidden).lower() in final_text: raise ContentPlanGenerationError("must_avoid constraint violated")
+            stage = "CONSTRAINTS_VALIDATED"
+            failure_code = "DIRECTED_GENERATION_CONTENT_PLAN_VALIDATION_ERROR"
+            data.update({"production_spec": {"provider": "github", "workflow": "render-short01.yml", "branch": "main"}, "content_id": context.get("content_id", "plan-preview"), "source_snapshot_id": snapshot.get("id") if isinstance(snapshot, dict) else None, "generation_mode": mode, "human_brief": brief, "human_constraints": constraints,
+                         "generation_provider": "llm", "generation_evidence": {"source":"content_plan_provider", "schema_version":1, "provider": "llm", "provider_response_received": True, "json_parsed": True, "schema_validated": True, "safety_validated": True, "constraints_validated": True}})
+            return validate_content_plan(ContentPlan(**data))
+        except ValueError as exc:
+            # Only fixed taxonomy values leave this function; exception text and
+            # model output are never copied into directed-request metadata.
+            exc.forensic_stage = "JSON_PARSED" if isinstance(exc, ContentPlanSchemaError) else stage
+            exc.forensic_code = ("DIRECTED_GENERATION_PARSE_ERROR" if isinstance(exc, ContentPlanParseError)
+                                 else "DIRECTED_GENERATION_SCHEMA_ERROR" if isinstance(exc, ContentPlanSchemaError)
+                                 else failure_code)
+            exc.forensic_provider_returned = True
+            raise
 
 
 def select_content_plan_provider():

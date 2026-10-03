@@ -20,7 +20,9 @@ from intelligence.task_generator import generate_production_task
 from intelligence.production_spec import build_production_spec
 from intelligence.novelty import evaluate_content_plan_novelty
 from intelligence.content_plan_service import approve_plan, materialize_plan
-from intelligence.feedback_bridge import get_feedback_snapshot, record_directed_generation_intent, get_directed_request_status
+from intelligence.feedback_bridge import (get_feedback_snapshot, record_directed_generation_intent,
+    record_directed_generation_observation, get_directed_request_status,
+    GENERATION_OBSERVATION_STAGES, GENERATION_OBSERVATION_FAILURE_CODES)
 from intelligence.policy import evaluate_policy, get_current_policy_decision, list_policy_history, list_review_queue
 from intelligence.autonomy import get_effective_authorization, set_policy_override, clear_policy_override
 from intelligence.learning import prepare_feedback_snapshot
@@ -193,13 +195,52 @@ def generate_content_plan(snapshot_id: int, request: ContentPlanGenerationReques
         status = 504 if 'timeout' in message else 502
         raise HTTPException(status_code=status, detail='external text provider failure') from exc
     except ValueError as exc:
+        if directed:
+            returned = bool(getattr(exc, 'forensic_provider_returned', False))
+            stage = getattr(exc, 'forensic_stage', 'PROVIDER_RETURNED')
+            code = getattr(exc, 'forensic_code', 'DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR')
+            if not returned:
+                stage = 'PROVIDER_OUTCOME_UNCONFIRMED'
+            elif stage not in GENERATION_OBSERVATION_STAGES:
+                stage = 'PROVIDER_RETURNED'
+            if code not in GENERATION_OBSERVATION_FAILURE_CODES:
+                code = 'DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR'
+            if returned:
+                try:
+                    record_directed_generation_observation(snapshot_id, identity, stage=stage,
+                        failure_code=code, provider_returned=True)
+                except Exception:
+                    # A failed forensic write must never mask the generation failure.
+                    pass
+            raise HTTPException(status_code=422, detail={'code': code, 'stage': stage}) from exc
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if directed:
         plan.content_id = identity
         plan.source_snapshot_id = snapshot_id
         plan.source_content_id = snapshot['content_id']
         plan.generation_evidence['request_fingerprint'] = fingerprint
-    saved = save_plan(plan, snapshot_id, directed_request=directed)
+    if directed and isinstance(provider, LLMContentPlanProvider):
+        try:
+            record_directed_generation_observation(snapshot_id, identity, stage='CONTENT_PLAN_VALIDATED',
+                provider_returned=True)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail='DIRECTED_GENERATION_OBSERVATION_UNAVAILABLE') from exc
+    try:
+        saved = save_plan(plan, snapshot_id, directed_request=directed)
+    except ValueError:
+        if directed and isinstance(provider, LLMContentPlanProvider):
+            try:
+                record_directed_generation_observation(snapshot_id, identity,
+                    stage='CONTENT_PLAN_VALIDATED',
+                    failure_code='DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR')
+            except Exception:
+                pass
+        raise
+    if directed and isinstance(provider, LLMContentPlanProvider):
+        try:
+            record_directed_generation_observation(snapshot_id, identity, stage='CONTENT_PLAN_PERSISTED')
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail='DIRECTED_GENERATION_OBSERVATION_UNAVAILABLE') from exc
     return _plan_with_policy(saved, {**runtime, 'real_ai': isinstance(provider, LLMContentPlanProvider)})
 
 

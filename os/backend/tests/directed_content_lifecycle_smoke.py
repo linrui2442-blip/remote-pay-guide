@@ -120,7 +120,7 @@ def main():
             fake.fail=True
             for _ in range(2): reject(lambda:provider.generate_content_plan(snapshot,{}),'offline failure')
             old_count=len(fake.calls)
-            failed=request(); reject(lambda:route.generate_content_plan(sid,failed),'offline failure')
+            failed=request(); reject(lambda:route.generate_content_plan(sid,failed),'DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR')
             reject(lambda:route.generate_content_plan(sid,failed),'DIRECTED_GENERATION_OUTCOME_PENDING_OR_UNKNOWN')
             assert len(fake.calls)==old_count+1
             fake.fail=False

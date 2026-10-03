@@ -271,6 +271,50 @@ def record_directed_generation_intent(snapshot_id, identity, fingerprint, *, dup
         conn.execute('UPDATE intelligence_feedback_snapshots SET directed_requests_json=? WHERE id=?', (_json(intents), snapshot_id))
 
 
+GENERATION_OBSERVATION_STAGES = frozenset({
+    'PROVIDER_RETURNED', 'CONTENT_EXTRACTED', 'JSON_PARSED', 'SCHEMA_VALIDATED',
+    'SAFETY_VALIDATED', 'CONSTRAINTS_VALIDATED', 'CONTENT_PLAN_VALIDATED',
+    'CONTENT_PLAN_PERSISTED',
+})
+GENERATION_OBSERVATION_FAILURE_CODES = frozenset({
+    'DIRECTED_GENERATION_PARSE_ERROR', 'DIRECTED_GENERATION_SCHEMA_ERROR',
+    'DIRECTED_GENERATION_SAFETY_REJECTED', 'DIRECTED_GENERATION_MUST_INCLUDE_REJECTED',
+    'DIRECTED_GENERATION_MUST_AVOID_REJECTED',
+    'DIRECTED_GENERATION_CONTENT_PLAN_VALIDATION_ERROR',
+    'DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR',
+})
+
+
+def record_directed_generation_observation(snapshot_id, identity, *, stage, failure_code=None,
+                                           provider_returned=False):
+    """Persist only finite forensic codes on an existing intent, in one short transaction."""
+    if stage not in GENERATION_OBSERVATION_STAGES or (failure_code is not None and
+            failure_code not in GENERATION_OBSERVATION_FAILURE_CODES):
+        raise ValueError('DIRECTED_GENERATION_OBSERVATION_INVALID')
+    with _connect() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('SELECT directed_requests_json FROM intelligence_feedback_snapshots WHERE id=?',
+                           (snapshot_id,)).fetchone()
+        if row is None:
+            raise ValueError('STRICT_SNAPSHOT_REQUIRED')
+        intents = json.loads(row[0] or '{}')
+        record = intents.get(identity)
+        if not isinstance(record, dict) or not record.get('fingerprint') or not record.get('created_at'):
+            raise ValueError('DIRECTED_REQUEST_NOT_FOUND_OR_CORRUPT')
+        if record.get('state', 'UNRESOLVED_UNKNOWN') != 'UNRESOLVED_UNKNOWN':
+            raise ValueError('DIRECTED_RECONCILIATION_STATE_CONFLICT')
+        observation = dict(record.get('generation_observation') or {})
+        now = datetime.now(timezone.utc).isoformat()
+        if provider_returned and not observation.get('provider_returned_at'):
+            observation['provider_returned_at'] = now
+        observation['last_stage'] = stage
+        observation['failure_code'] = failure_code
+        observation['failure_at'] = now if failure_code else None
+        record['generation_observation'] = observation
+        conn.execute('UPDATE intelligence_feedback_snapshots SET directed_requests_json=? WHERE id=?',
+                     (_json(intents), snapshot_id))
+
+
 def get_latest_account_feedback(account_id, platform=None, limit=100):
     _ensure_table()
     normalized = _normalize_platform(platform) or None
