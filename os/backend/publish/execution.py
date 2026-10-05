@@ -85,9 +85,18 @@ def _human_finalize(conn, current, owner, source_fingerprint):
 
 _PREWRITE_STAGES = frozenset({'ASSET_DOWNLOAD', 'CREDENTIAL_BUILD',
     'AUTHORIZED_SESSION_BUILD', 'VIDEO_PATH_VALIDATION', 'INITIALIZE_INTENT'})
+_SAFE_ASSET_FAILURE_REASONS = frozenset({
+    'MISSING_ASSET_URL', 'UNSAFE_ASSET_URL', 'DNS_UNAVAILABLE', 'NON_PUBLIC_ADDRESS',
+    'REDIRECT_LIMIT_OR_MISSING_LOCATION', 'UNSAFE_REDIRECT',
+    'REMOTE_TEMPORARILY_UNAVAILABLE', 'REMOTE_HTTP_REJECTED',
+    'CONTENT_TYPE_REJECTED', 'ENCODED_BODY_REJECTED', 'INVALID_CONTENT_LENGTH',
+    'MEDIA_TOO_SMALL', 'MEDIA_TOO_LARGE', 'EXTERNAL_TEMP_REQUIRED',
+    'DOWNLOAD_TIMEOUT', 'INCOMPLETE_DOWNLOAD', 'REMOTE_FETCH_UNAVAILABLE',
+})
+_UNCLASSIFIED_ASSET_FAILURE = 'ASSET_DOWNLOAD_FAILURE_UNCLASSIFIED'
 
 
-def _human_prewrite_failure(conn, task_id, owner, stage):
+def _human_prewrite_failure(conn, task_id, owner, stage, reason=None):
     """Classify only a proven zero-write failure; preserve the original claim."""
     if stage not in _PREWRITE_STAGES:
         return False
@@ -108,6 +117,11 @@ def _human_prewrite_failure(conn, task_id, owner, stage):
     code = 'HUMAN_PREWRITE_' + stage + '_FAILED'
     evidence['human_prewrite_failure'] = {'stage': stage, 'code': code,
                                           'at': policy.now().isoformat()}
+    if stage == 'ASSET_DOWNLOAD':
+        evidence['human_prewrite_failure']['reason'] = (
+            reason if isinstance(reason, str) and reason in _SAFE_ASSET_FAILURE_REASONS
+            else _UNCLASSIFIED_ASSET_FAILURE
+        )
     conn.execute("""UPDATE publish_tasks SET status='review',error_message=?,policy_evidence=?,
         updated_at=? WHERE id=? AND execution_claim=? AND status='publishing'""",
         (code, json.dumps(evidence, separators=(',', ':')), policy.now().isoformat(), task_id, owner))
@@ -274,14 +288,23 @@ def _run_human_authorized_publish_task(task_id, *, credential_refresh_authorized
 
     prepared = None
     failure_stage = 'ASSET_DOWNLOAD'
+    asset_failure_reason = None
     downloads = ExitStack()
     try:
-        asset = get_asset_by_asset_id(task['asset_id'])
-        if asset_resolver is not None:
-            prepared = asset_resolver.prepare(asset)
-        else:
-            media = downloads.enter_context(RemoteMedia().download(asset['asset_url'], storage_type=asset['storage_type']))
-            prepared = SimpleNamespace(file_path=str(media.path), cleanup=lambda: None)
+        from assets.remote_media import MediaFailure
+        try:
+            asset = get_asset_by_asset_id(task['asset_id'])
+            if asset_resolver is not None:
+                prepared = asset_resolver.prepare(asset)
+            else:
+                media = downloads.enter_context(RemoteMedia().download(asset['asset_url'], storage_type=asset['storage_type']))
+                prepared = SimpleNamespace(file_path=str(media.path), cleanup=lambda: None)
+        except MediaFailure as error:
+            asset_failure_reason = error.reason
+            raise
+        except Exception:
+            asset_failure_reason = _UNCLASSIFIED_ASSET_FAILURE
+            raise
         adapter = get_adapter('youtube')
         failure_stage = 'CREDENTIAL_BUILD'
         result = adapter.publish_video(
@@ -301,7 +324,7 @@ def _run_human_authorized_publish_task(task_id, *, credential_refresh_authorized
             if result.get('status') == 'published' and result.get('video_id'):
                 _human_finalize(db, current, owner, source_fingerprint)
             else:
-                if not _human_prewrite_failure(db, task_id, owner, failure_stage):
+                if not _human_prewrite_failure(db, task_id, owner, failure_stage, asset_failure_reason):
                     db.execute("UPDATE publish_tasks SET status='review',error_message='HUMAN_EXTERNAL_OUTCOME_REQUIRES_REVIEW',updated_at=? WHERE id=?",
                                (policy.now().isoformat(), task_id))
             db.commit()
@@ -311,7 +334,7 @@ def _run_human_authorized_publish_task(task_id, *, credential_refresh_authorized
         db = manager._connect()
         try:
             db.execute('BEGIN IMMEDIATE')
-            if not _human_prewrite_failure(db, task_id, owner, failure_stage):
+            if not _human_prewrite_failure(db, task_id, owner, failure_stage, asset_failure_reason):
                 db.execute("""UPDATE publish_tasks SET status='review',error_message='HUMAN_EXTERNAL_OUTCOME_REQUIRES_REVIEW',
                     updated_at=? WHERE id=? AND execution_claim=? AND status='publishing'""",
                     (policy.now().isoformat(), task_id, owner))

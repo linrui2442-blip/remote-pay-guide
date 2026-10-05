@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import human_youtube_publish_recovery_smoke as base
+from assets.remote_media import MediaFailure
 from publish import execution, manager, policy
 from publish.adapters import youtube_api
 
@@ -29,7 +30,15 @@ def test_db():
 
 class BrokenResolver:
     def prepare(self, asset):
-        raise RuntimeError('sensitive URL and token must never be stored')
+        raise RuntimeError('secret-bearing arbitrary message')
+
+
+class FailureResolver:
+    def __init__(self, error):
+        self.error = error
+
+    def prepare(self, asset):
+        raise self.error
 
 
 class MissingPath:
@@ -49,7 +58,11 @@ def assert_prewrite(task_id, stage):
     evidence = json.loads(task['policy_evidence'])
     assert evidence['human_prewrite_failure']['stage'] == stage
     assert evidence['human_prewrite_failure']['code'] == task['error_message']
-    assert 'sensitive' not in json.dumps(evidence) + task['error_message']
+    if stage == 'ASSET_DOWNLOAD':
+        assert evidence['human_prewrite_failure']['reason'] == 'ASSET_DOWNLOAD_FAILURE_UNCLASSIFIED'
+    else:
+        assert 'reason' not in evidence['human_prewrite_failure']
+    assert 'secret-bearing arbitrary message' not in json.dumps(evidence) + task['error_message']
     assert counts(task_id) == (0, 0)
     assert not task['provider_operation_id'] and not task['platform_video_id']
     return task
@@ -99,6 +112,25 @@ def main():
                 assert transport.posts == transport.puts == 0
         print('FIVE_SANITIZED_PREWRITE_FAILURES=PASS')
 
+        for reason, expected in (
+            ('REMOTE_FETCH_UNAVAILABLE', 'REMOTE_FETCH_UNAVAILABLE'),
+            ('DNS_UNAVAILABLE', 'DNS_UNAVAILABLE'),
+            ('SOME_FUTURE_UNTRUSTED_TEXT', 'ASSET_DOWNLOAD_FAILURE_UNCLASSIFIED'),
+        ):
+            with ExitStack() as stack:
+                task_id, transport = base.setup_case(stack)
+                execution.execute_human_authorized_publish_task(
+                    task_id, asset_resolver=FailureResolver(MediaFailure('REVIEW', reason)))
+                task = manager.get_publish_task(task_id)
+                evidence = json.loads(task['policy_evidence'])['human_prewrite_failure']
+                assert task['status'] == 'review'
+                assert task['error_message'] == 'HUMAN_PREWRITE_ASSET_DOWNLOAD_FAILED'
+                assert evidence['stage'] == 'ASSET_DOWNLOAD' and evidence['reason'] == expected
+                if reason != expected:
+                    assert reason not in task['policy_evidence']
+                assert counts(task_id) == (0, 0) and transport.posts == 0
+        print('SAFE_MEDIA_FAILURE_ALLOWLIST=PASS')
+
         # A legacy review has no new diagnostic marker; the original claim remains the owner.
         with ExitStack() as stack:
             task_id, transport = base.setup_case(stack)
@@ -133,6 +165,15 @@ def main():
                 denied(task_id)
                 assert transport.posts == 0
         print('INTENT_OR_SESSION_RECOVERY_REJECTED=PASS')
+
+        with ExitStack() as stack:
+            task_id, transport = base.setup_case(stack)
+            execution.execute_human_authorized_publish_task(task_id, asset_resolver=BrokenResolver())
+            with test_db() as conn:
+                conn.execute("UPDATE publish_tasks SET provider_operation_id='correlated' WHERE id=?", (task_id,))
+            denied(task_id)
+            assert transport.posts == 0
+        print('PROVIDER_CORRELATION_RECOVERY_REJECTED=PASS')
 
         for field, value in (('title', 'changed'), ('privacy_status', 'public'),
                              ('asset_id', 'other-asset')):
