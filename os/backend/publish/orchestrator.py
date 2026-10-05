@@ -233,6 +233,11 @@ def execute_publish_task(task_id, *, queue=None, worker_factory=PublishWorker):
         from publish.execution import execute_autonomous_publish_task
         return execute_autonomous_publish_task(task_id)
 
+    if stored.get('platform') == 'youtube':
+        raise PublishContractError(
+            'Manual YouTube execution requires execute_human_authorized_publish_task'
+        )
+
     status = str(stored.get("status") or "").lower()
     if status == "publishing":
         if not recover_stale_publishing_task(task_id):

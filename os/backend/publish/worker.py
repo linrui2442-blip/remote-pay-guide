@@ -112,6 +112,11 @@ class PublishWorker:
                 processed += 1
                 continue
 
+            if task.get('platform') == 'youtube':
+                raise RuntimeError(
+                    'Manual YouTube execution requires execute_human_authorized_publish_task'
+                )
+
             adapter = get_adapter(task.get("platform"))
             if not adapter:
                 update_publish_status(

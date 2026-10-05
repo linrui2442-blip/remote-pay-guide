@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from accounts.manager import get_account
 from oauth.manager import get_token, update_token
 from oauth.providers.youtube import YOUTUBE_UPLOAD_SCOPE, YouTubeOAuthProvider
@@ -76,17 +78,24 @@ class YouTubeAdapter:
             "reason": reason,
         }
 
-    def _credentials_for_account(self, account_id):
+    def _credentials_for_account(self, account_id, *, credential_refresh_authorized=True):
         readiness = self.get_account_readiness(account_id)
         if not readiness["ready"]:
             raise RuntimeError(readiness["reason"])
 
         token = get_token(account_id)
         oauth_provider = YouTubeOAuthProvider()
-        valid_token, refreshed = oauth_provider.ensure_valid_token(token)
-        if refreshed:
-            update_token(account_id, valid_token)
-
+        if credential_refresh_authorized:
+            valid_token, refreshed = oauth_provider.ensure_valid_token(token)
+            if refreshed:
+                update_token(account_id, valid_token)
+        else:
+            expiry = oauth_provider._parse_expiry(token.get('expires_at'))
+            if (not token.get('access_token') or expiry is None
+                    or expiry <= datetime.now(timezone.utc) + timedelta(minutes=5)):
+                raise RuntimeError('YOUTUBE_TOKEN_REFRESH_REQUIRES_EXPLICIT_AUTHORIZATION')
+            # No implicit google-auth refresh during a human-authorized upload.
+            valid_token = {**token, 'refresh_token': None}
         return oauth_provider.build_google_credentials(valid_token)
 
     def publish_video(
@@ -100,9 +109,12 @@ class YouTubeAdapter:
         privacy_status="private",
         before_write=None,
         operation_callback=None,
+        credential_refresh_authorized=True,
     ):
         try:
-            credentials = self._credentials_for_account(account_id)
+            credentials = (self._credentials_for_account(account_id)
+                           if credential_refresh_authorized else
+                           self._credentials_for_account(account_id, credential_refresh_authorized=False))
             # Autonomous callers may run different accounts concurrently.
             # Never share a mutable authorized session between those calls.
             client = YouTubeAPIClient() if before_write else self.api_client

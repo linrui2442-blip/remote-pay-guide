@@ -105,6 +105,7 @@ class YouTubeAPIClient:
                 # never expose it through PublishTask APIs/logs. Restart => REVIEW.
                 operation_callback(hashlib.sha256(session_url.encode()).hexdigest(), 'SESSION_CREATED')
             write_number = 0
+            probe_number = 0
             offset = retries = 0
             with open(video_path, "rb") as media:
                 while offset < total:
@@ -135,6 +136,9 @@ class YouTubeAPIClient:
                             return self._failure(error, "upload_chunk", retries, status)
                     except (requests.Timeout, requests.ConnectionError) as error:
                         try:
+                            if before_write:
+                                before_write(f'youtube_resume_probe_{probe_number}')
+                                probe_number += 1
                             probe = self.session.put(session_url, data=b"", headers={"Content-Length": "0", "Content-Range": f"bytes */{total}"}, timeout=30, **safety)
                             if probe.status_code in EXPIRED_SESSION_STATUS_CODES:
                                 return {"platform": "youtube", "status": "failed", "error": f"YouTube resumable upload failed: stage=resume_probe; category=upload_session_expired; retries={retries}; status={probe.status_code}"}
