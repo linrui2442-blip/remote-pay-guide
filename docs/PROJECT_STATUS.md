@@ -90,10 +90,9 @@ gate.
 `G4C_REAL_AI_PRODUCTION_LINE=IN_PROGRESS`
 `G4C_OFFLINE_CERTIFIED=PASS`
 `G4C_REAL_LIVE_E2E=PENDING_CONFIGURATION`
-`G4D_UNIFIED_ASSET_QUALITY_GATE=IN_PROGRESS`
+`G4D_UNIFIED_ASSET_QUALITY_GATE=LIVE_PROVEN`
 `G4D_OFFLINE_CERTIFIED=PASS`
-`G4D_REAL_LIVE_E2E=LIVE_BLOCKED_BY_UNRESOLVED_MEDIA_READ`
-`G4D_STATUS=NON_BLOCKING_LIVE_PENDING`
+`G4D_REAL_LIVE_E2E=PASS`
 
 G4-B consumes the existing claimed RuntimeJob, persists durable GitHub
 execution intent before dispatch, and provides at-most-once render dispatch,
@@ -107,7 +106,7 @@ all succeeded. GitHub Pages serves `media/g4b-live-invoice-currency.mp4`
 G4-C owns AI execution/polling; G4-D remains responsible for unified asset
 quality and VideoAsset creation. G4-C is not yet closed.
 
-### Offline-certified milestone — G4-D Unified Asset Quality Gate
+### Live-proven milestone — G4-D Unified Asset Quality Gate
 
 The provider-neutral `g4d-v1` gate consumes completed, linked, deferred
 ProductionResults from GitHub or AI. It records one durable quality check per
@@ -127,18 +126,30 @@ moderation. Signed URL queries are not copied into quality evidence.
 Both providers, failure/review matrices, atomic rollback, 20 rounds of four
 concurrent callers, and legacy compatibility were verified offline. G4-C still
 stops before asset creation; deferred results cannot use legacy binding as a
-shortcut. G4-D creates no PublishTask. Neither G4-C nor G4-D is CLOSED.
-Two authorized read-only G4-D proofs failed safely with REMOTE_FETCH_UNAVAILABLE;
-the second received HTTP 200 but did not verify the full body. No deterministic
-downloader defect is established. Do not automatically retry or weaken SSRF/TLS.
-G4-C configuration and G4-D live verification are non-blocking pending gates.
-Production DB remains unchanged.
+shortcut. G4-D creates no PublishTask. Two earlier authorized read-only proofs
+failed safely with REMOTE_FETCH_UNAVAILABLE; the subsequent real proof passed:
+ProductionResult 4 → `g4d-v1` PASS → `asset-result-4` ready. Technical evidence
+was 1080×1920, 47.6 seconds, H.264 and audio present. G4-C real AI production
+remains pending configuration; the overall G4 milestone is not CLOSED.
 
 ### Offline-certified milestone — G5 Autonomous Publishing
 
 `G5_OFFLINE_CERTIFIED=PASS`
-`G5_STATUS=OFFLINE_CERTIFIED_PUSHED_AWAITING_AUTHORIZED_LIVE_PROOFS`
-`G5_REAL_PLATFORM_PUBLISH_PROOF=NOT_RUN`
+`G5_YOUTUBE_REAL_PUBLIC_PUBLISH_PROOF=PASS`
+`G5_INSTAGRAM_REAL_PUBLISH_PROOF=PENDING`
+`G5_FACEBOOK_REAL_PUBLISH_PROOF=PENDING`
+`G5_STATUS=LIVE_PARTIAL`
+
+The real YouTube proof used Task 16 and ready VideoAsset `asset-result-4`:
+one human-authorized private upload → durable `SESSION_CREATED` and `PUBLISHED`
+evidence → official private readback → explicit `full_manage` OAuth
+reauthorization granting `youtube.force-ssl` → one durable
+`youtube_privacy_public` intent → one `videos.update` PUT → `PRIVACY_PUBLIC`
+evidence → official final readback of video `PH_3lYMAoYs` as public with
+processing succeeded. There was no duplicate upload or second release PUT;
+the original upload execution claim and platform video identity were preserved.
+This proves a controlled human-authorized YouTube public publish, not autonomous
+publishing or the Instagram/Facebook live paths.
 
 `publish.policy.prepare_autonomous_publish_task()` applies server-owned
 `g5-v1` policy to the existing VideoAsset/PublishTask lifecycle. Only AUTO can
@@ -170,9 +181,11 @@ Offline evidence covers actual adapters with fake transports, all three
 provider paths, policy/failure matrices, source/payload drift, crash windows,
 terminal replay, 20 four-caller concurrency rounds, database unique indexes,
 legacy duplicate preservation, scheduler windows and secret-safe evidence.
-Existing G4-D/C/B/A, G3, G2 and publish regressions pass. No real platform,
-media, AI, GA4 or GitHub workflow call was made; production DB is unchanged.
-G5 is not CLOSED. Platform live proofs require separate explicit authorization.
+Existing G4-D/C/B/A, G3, G2 and publish regressions passed in the isolated
+offline certification; that test run made no real external calls. The later
+controlled YouTube live proof above is separate evidence. G5 is not CLOSED:
+Instagram/Facebook and full autonomous publishing still need live proof and
+separate authorization.
 
 ### BREAKPOINT C — autonomous orchestration
 
@@ -224,16 +237,17 @@ soak. The existing G4/G5 fake transport regressions certify those stages separat
 G9 preparation includes safe startup, configuration and authorization checklist,
 backup/restore and incident runbook in README. Isolated backend import/OpenAPI
 route checks, production-path rejection, frontend content-plan contract and
-frontend build pass. No fresh-machine installation, real service startup, live
-soak, tag or release was performed. Production DB SHA256 remains
-`67B2FCB03BCE4037184829A838AE19BE9E2A2EDA1A1F19F6E024C1222849449E`.
+frontend build pass. That offline preparation did not perform fresh-machine
+installation or release validation, live soak, tag or release. The current production DB SHA256 after the
+authorized YouTube public release is
+`2DBE1F51FFA5E8C8C6165F055F92F0BE35A27D2B16AA2AE64DC2EB140785741C`.
 
-`NEXT_GATE=Review local commits; separately authorize push and controlled live proofs`
+`NEXT_GATE=Push canonical status update, then separately authorize the next live gate`
 
-G4-C provider live proof may proceed when configured and separately authorized.
-G5 offline work is complete and pushed; each controlled platform proof needs
-separate authorization. G6/G7 offline development and G8/G9 preparation may
-continue without those live gates. No v1.0 closure is implied.
+Next major live gates are Instagram and Facebook publish proofs, G4-C real AI
+production, G6 feedback-learning, full autonomous end-to-end cycles, a >=72h
+real soak, and fresh-machine/release closure. Each external write requires its
+own authorization. No v1.0 closure is implied.
 
 ## Official roadmap
 

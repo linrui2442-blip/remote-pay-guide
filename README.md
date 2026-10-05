@@ -103,7 +103,8 @@ before application upgrade. A downgrade is not a destructive schema rollback.
   explicit dispatch authorization. AI configuration does not authorize paid calls.
 - Each official publishing adapter requires its own account/OAuth/resource
   binding, scopes, enabled execution setting, quality PASS and publish policy.
-  YouTube private proof, Instagram Reel and Facebook Reel require separate grants.
+  YouTube private and public live proofs have passed; Instagram Reel and
+  Facebook Reel still require separate grants.
 - GA4 uses its existing property/ADC and identity contract; do not synthesize
   events or mutate configuration to create evidence.
 - Global kill switch overrides effective authorization. Raw policy AUTO alone
@@ -122,8 +123,9 @@ A future >=72h real soak requires explicit account/content/cadence/cost limits,
 provider permissions, kill-switch operator and stop conditions. Track restart
 behavior, duplicate writes, attribution loss, review queues, DB growth and
 complete end-to-end cycles. No live soak is authorized by this runbook.
-G4-C/G4-D and three platform live gates remain visible pending items. G6 live
-analytics/AI proof, real soak, fresh-machine deployment verification and final
+G4-D real quality and YouTube public live proofs have passed. G4-C real AI
+production, Instagram/Facebook live publishing, full autonomous cycles, G6 live
+feedback learning, real soak, fresh-machine deployment verification and final
 release approval remain required. Do not declare v1.0 CLOSED or create a release
 tag from offline certification alone.
 

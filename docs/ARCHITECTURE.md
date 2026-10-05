@@ -36,10 +36,10 @@ ContentPlan Policy Stage → Effective Authorization
 G4-A and G4-B are implemented and verified, including the G4-B real live
 GitHub render/artifact/Pages promotion proof. G4-C owns AI provider execution/
 polling and is offline-certified, with real provider proof pending configuration.
-G4-D is offline-certified and remains the sole new autonomous owner of the
-unified asset quality gate and promotion into VideoAsset. Its real read-only
-media proof is non-blocking pending after two fail-safe media-read failures;
-neither G4-C nor G4-D is CLOSED. No further automatic live retry is permitted.
+G4-D is offline-certified and live-proven as the unified asset quality gate
+and promotion into VideoAsset: ProductionResult 4 passed `g4d-v1` and bound
+ready VideoAsset `asset-result-4`. G4-C real AI production is still pending
+configuration; the overall G4 milestone is not CLOSED.
 
 G6 uses `intelligence.learning.run_feedback_cycle()` to read persisted Data
 Center evidence for a mature account/platform window. It extends the existing
@@ -144,7 +144,7 @@ G3 is an authorization layer only. Raw or effective `AUTO` does not approve, mat
 - `os/database/os.db`: runtime state, never disposable test output.
 - GitHub artifact → GitHub Pages → VideoAsset → official provider adapters: formal media/publishing path.
 
-The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. G4-C execution and G4-D asset quality are offline-certified but still await their respective live proofs. G5 publishing is offline-certified, not live-closed.
+The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. G4-C execution is offline-certified and awaits real AI production proof; G4-D asset quality is live-proven. G5 has a controlled human-authorized YouTube public proof, but Instagram/Facebook and autonomous publishing proofs remain pending.
 
 ## G5 publishing stage
 
@@ -173,8 +173,11 @@ provide execution evidence, not new lifecycle entities.
 
 Each provider write is preceded by a committed intent and a fresh policy /
 control check. SQLite transactions end before network calls. YouTube reuses
-its resumable upload transport and the shared secure G4-D downloader; its
-session identity is persisted as a hash rather than a bearer URL. Instagram
+its resumable upload transport and `publish.asset_resolver.AssetResolver` for
+publishing-stage asset staging. G4-D separately uses
+`assets.remote_media.RemoteMedia` for read-only quality inspection; these are
+not the same downloader. The YouTube session identity is persisted as a hash
+rather than a bearer URL. Instagram
 retains container then media identity; Facebook retains start/upload/publish
 state. Autonomous HTTP redirects are disabled and upload destinations are
 restricted to the provider's expected HTTPS hosts. Provider errors are reduced
@@ -189,8 +192,9 @@ remote exactly-once semantics; YouTube may retry resumable chunks within the
 same session under its existing protocol.
 
 Offline tests use external TEMP databases, socket tripwires and fake provider
-transports. G4-D live media proof and separate G5 platform live proofs are still
-authorization gates; offline certification does not close those milestones.
+transports. G4-D real media proof and one controlled human-authorized YouTube
+public release have passed. Instagram/Facebook and full autonomous publishing
+remain live authorization gates; offline certification alone does not close G5.
 
 ## Compatibility and legacy
 
