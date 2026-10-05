@@ -83,9 +83,56 @@ def _human_finalize(conn, current, owner, source_fingerprint):
     _event(conn, task_id, 'published', video_id, url)
 
 
+_PREWRITE_STAGES = frozenset({'ASSET_DOWNLOAD', 'CREDENTIAL_BUILD',
+    'AUTHORIZED_SESSION_BUILD', 'VIDEO_PATH_VALIDATION', 'INITIALIZE_INTENT'})
+
+
+def _human_prewrite_failure(conn, task_id, owner, stage):
+    """Classify only a proven zero-write failure; preserve the original claim."""
+    if stage not in _PREWRITE_STAGES:
+        return False
+    row = manager._serialize(conn.execute('SELECT * FROM publish_tasks WHERE id=?', (task_id,)).fetchone())
+    if (not row or row['execution_claim'] != owner or row['status'] != 'publishing'
+            or row.get('provider_operation_id') or row.get('provider_operation_status')
+            or row.get('platform_video_id')
+            or conn.execute('SELECT 1 FROM publish_write_intents WHERE task_id=? LIMIT 1', (task_id,)).fetchone()
+            or conn.execute('SELECT 1 FROM publish_operation_events WHERE task_id=? LIMIT 1', (task_id,)).fetchone()):
+        return False
+    evidence = json.loads(row.get('policy_evidence') or '{}')
+    try:
+        if (evidence.get('human_task_fingerprint') != policy.task_fingerprint(row)
+                or evidence.get('human_source_fingerprint') != _human_identity(conn, row)):
+            return False
+    except ValueError:
+        return False
+    code = 'HUMAN_PREWRITE_' + stage + '_FAILED'
+    evidence['human_prewrite_failure'] = {'stage': stage, 'code': code,
+                                          'at': policy.now().isoformat()}
+    conn.execute("""UPDATE publish_tasks SET status='review',error_message=?,policy_evidence=?,
+        updated_at=? WHERE id=? AND execution_claim=? AND status='publishing'""",
+        (code, json.dumps(evidence, separators=(',', ':')), policy.now().isoformat(), task_id, owner))
+    return True
+
+
 def execute_human_authorized_publish_task(task_id, *, credential_refresh_authorized=False,
                                           asset_resolver=None, before_finalization=None):
     """One explicit human authorization; never reassign an interrupted owner."""
+    return _run_human_authorized_publish_task(task_id,
+        credential_refresh_authorized=credential_refresh_authorized,
+        asset_resolver=asset_resolver, before_finalization=before_finalization)
+
+
+def resume_human_authorized_prewrite_publish_task(task_id, *, credential_refresh_authorized=False,
+                                                  asset_resolver=None):
+    """Resume the same human claim only when durable proof shows zero external writes."""
+    return _run_human_authorized_publish_task(task_id,
+        credential_refresh_authorized=credential_refresh_authorized,
+        asset_resolver=asset_resolver, resume_prewrite=True)
+
+
+def _run_human_authorized_publish_task(task_id, *, credential_refresh_authorized=False,
+                                       asset_resolver=None, before_finalization=None,
+                                       resume_prewrite=False):
     from oauth.manager import get_token
     from accounts.manager import get_account
     from publish.orchestrator import get_publish_account_readiness, get_publish_execution_readiness
@@ -98,8 +145,10 @@ def execute_human_authorized_publish_task(task_id, *, credential_refresh_authori
     task = manager.get_publish_task(task_id)
     if not task or task.get('autonomous_policy_version') is not None or task['platform'] != 'youtube':
         raise ValueError('Human YouTube PublishTask required')
-    if task['execution_claim'] or task['status'] != 'pending':
+    if not resume_prewrite and (task['execution_claim'] or task['status'] != 'pending'):
         return {'task': task, 'executed': False, 'recovery': 'READ_ONLY_OR_REVIEW'}
+    if resume_prewrite and (not task['execution_claim'] or task['status'] != 'review'):
+        raise ValueError('HUMAN_PREWRITE_RECOVERY_NOT_ELIGIBLE')
     if task['privacy_status'] != 'private':
         raise ValueError('HUMAN_YOUTUBE_PRIVATE_ONLY')
     if not get_publish_execution_readiness('youtube')['publish_ready']:
@@ -119,26 +168,42 @@ def execute_human_authorized_publish_task(task_id, *, credential_refresh_authori
     if not credential_refresh_authorized and (not token or not token.get('access_token')
             or expiry is None or expiry <= policy.now() + timedelta(minutes=5)):
         raise ValueError('YOUTUBE_TOKEN_REFRESH_REQUIRES_EXPLICIT_AUTHORIZATION')
-    owner = uuid.uuid4().hex
+    owner = task['execution_claim'] if resume_prewrite else uuid.uuid4().hex
     db = manager._connect()
     try:
         db.execute('BEGIN IMMEDIATE')
         current = manager._serialize(db.execute('SELECT * FROM publish_tasks WHERE id=?', (task_id,)).fetchone())
-        if current['execution_claim'] or current['status'] != 'pending':
+        if resume_prewrite:
+            if current['execution_claim'] != owner or current['status'] != 'review':
+                raise ValueError('HUMAN_PREWRITE_RECOVERY_NOT_ELIGIBLE')
+        elif current['execution_claim'] or current['status'] != 'pending':
             return {'task': current, 'executed': False, 'recovery': 'READ_ONLY_OR_REVIEW'}
         if (current.get('autonomous_policy_version') is not None or current['platform'] != 'youtube'
                 or current['privacy_status'] != 'private' or current['account_id'] != task['account_id']):
             raise ValueError('HUMAN_TASK_CHANGED')
+        if policy.task_fingerprint(current) != policy.task_fingerprint(task):
+            raise ValueError('HUMAN_TASK_CHANGED')
         source_fingerprint = _human_identity(db, current)
         task_fingerprint = policy.task_fingerprint(current)
-        if db.execute('SELECT 1 FROM publish_write_intents WHERE task_id=? LIMIT 1', (task_id,)).fetchone():
+        if (db.execute('SELECT 1 FROM publish_write_intents WHERE task_id=? LIMIT 1', (task_id,)).fetchone()
+                or db.execute('SELECT 1 FROM publish_operation_events WHERE task_id=? LIMIT 1', (task_id,)).fetchone()
+                or current.get('provider_operation_id') or current.get('provider_operation_status')
+                or current.get('platform_video_id')):
             raise ValueError('HUMAN_EXISTING_WRITE_INTENT_REVIEW_REQUIRED')
         timestamp = policy.now().isoformat()
-        evidence = json.dumps({'human_task_fingerprint': task_fingerprint,
-                               'human_source_fingerprint': source_fingerprint})
-        updated = db.execute("""UPDATE publish_tasks SET execution_claim=?,execution_started_at=?,
-            policy_evidence=?,status='publishing',updated_at=? WHERE id=? AND status='pending' AND execution_claim IS NULL""",
-            (owner, timestamp, evidence, timestamp, task_id))
+        if resume_prewrite:
+            evidence = json.loads(current.get('policy_evidence') or '{}')
+            if (evidence.get('human_task_fingerprint') != task_fingerprint
+                    or evidence.get('human_source_fingerprint') != source_fingerprint):
+                raise ValueError('HUMAN_CLAIM_IDENTITY_DRIFT')
+            updated = db.execute("""UPDATE publish_tasks SET status='publishing',updated_at=?
+                WHERE id=? AND status='review' AND execution_claim=?""", (timestamp, task_id, owner))
+        else:
+            evidence = json.dumps({'human_task_fingerprint': task_fingerprint,
+                                   'human_source_fingerprint': source_fingerprint})
+            updated = db.execute("""UPDATE publish_tasks SET execution_claim=?,execution_started_at=?,
+                policy_evidence=?,status='publishing',updated_at=? WHERE id=? AND status='pending' AND execution_claim IS NULL""",
+                (owner, timestamp, evidence, timestamp, task_id))
         if updated.rowcount != 1:
             raise ValueError('HUMAN_CLAIM_CONFLICT')
         db.commit()
@@ -208,6 +273,7 @@ def execute_human_authorized_publish_task(task_id, *, credential_refresh_authori
             conn.close()
 
     prepared = None
+    failure_stage = 'ASSET_DOWNLOAD'
     downloads = ExitStack()
     try:
         asset = get_asset_by_asset_id(task['asset_id'])
@@ -217,6 +283,7 @@ def execute_human_authorized_publish_task(task_id, *, credential_refresh_authori
             media = downloads.enter_context(RemoteMedia().download(asset['asset_url'], storage_type=asset['storage_type']))
             prepared = SimpleNamespace(file_path=str(media.path), cleanup=lambda: None)
         adapter = get_adapter('youtube')
+        failure_stage = 'CREDENTIAL_BUILD'
         result = adapter.publish_video(
             asset, task['account_id'], video_path=prepared.file_path,
             title=task['title'] or task['video_id'], description=task['description'],
@@ -224,6 +291,7 @@ def execute_human_authorized_publish_task(task_id, *, credential_refresh_authori
             operation_callback=correlation,
             credential_refresh_authorized=credential_refresh_authorized,
         )
+        failure_stage = result.get('failure_stage') if result.get('status') != 'published' else None
         if before_finalization:
             before_finalization()
         db = manager._connect()
@@ -233,8 +301,9 @@ def execute_human_authorized_publish_task(task_id, *, credential_refresh_authori
             if result.get('status') == 'published' and result.get('video_id'):
                 _human_finalize(db, current, owner, source_fingerprint)
             else:
-                db.execute("UPDATE publish_tasks SET status='review',error_message='HUMAN_EXTERNAL_OUTCOME_REQUIRES_REVIEW',updated_at=? WHERE id=?",
-                           (policy.now().isoformat(), task_id))
+                if not _human_prewrite_failure(db, task_id, owner, failure_stage):
+                    db.execute("UPDATE publish_tasks SET status='review',error_message='HUMAN_EXTERNAL_OUTCOME_REQUIRES_REVIEW',updated_at=? WHERE id=?",
+                               (policy.now().isoformat(), task_id))
             db.commit()
         finally:
             db.close()
@@ -242,9 +311,10 @@ def execute_human_authorized_publish_task(task_id, *, credential_refresh_authori
         db = manager._connect()
         try:
             db.execute('BEGIN IMMEDIATE')
-            db.execute("""UPDATE publish_tasks SET status='review',error_message='HUMAN_EXTERNAL_OUTCOME_REQUIRES_REVIEW',
-                updated_at=? WHERE id=? AND execution_claim=? AND status='publishing'""",
-                (policy.now().isoformat(), task_id, owner))
+            if not _human_prewrite_failure(db, task_id, owner, failure_stage):
+                db.execute("""UPDATE publish_tasks SET status='review',error_message='HUMAN_EXTERNAL_OUTCOME_REQUIRES_REVIEW',
+                    updated_at=? WHERE id=? AND execution_claim=? AND status='publishing'""",
+                    (policy.now().isoformat(), task_id, owner))
             db.commit()
         finally:
             db.close()

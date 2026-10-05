@@ -111,6 +111,7 @@ class YouTubeAdapter:
         operation_callback=None,
         credential_refresh_authorized=True,
     ):
+        stage = 'CREDENTIAL_BUILD'
         try:
             credentials = (self._credentials_for_account(account_id)
                            if credential_refresh_authorized else
@@ -118,9 +119,11 @@ class YouTubeAdapter:
             # Autonomous callers may run different accounts concurrently.
             # Never share a mutable authorized session between those calls.
             client = YouTubeAPIClient() if before_write else self.api_client
+            stage = 'AUTHORIZED_SESSION_BUILD'
             client.initialize(credentials)
+            stage = 'VIDEO_PATH_VALIDATION'
             hooks = {} if before_write is None else {'before_write': before_write, 'operation_callback': operation_callback}
-            return client.upload_video(
+            result = client.upload_video(
                 video_path=video_path,
                 title=title or video_asset.get("video_id") or video_asset.get("asset_id") or "Remote Pay Guide",
                 description=description or "",
@@ -128,7 +131,11 @@ class YouTubeAdapter:
                 privacy_status=privacy_status or "private",
                 **hooks,
             )
+            return result
         except Exception as error:
+            if before_write is not None:
+                return {'platform': 'youtube', 'status': 'failed',
+                        'failure_stage': stage}
             return {
                 "platform": "youtube",
                 "status": "failed",

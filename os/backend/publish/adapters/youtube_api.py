@@ -161,6 +161,9 @@ class YouTubeAPIClient:
                     time.sleep(self._backoff_seconds(retries))
             return {"platform": "youtube", "status": "failed", "error": "YouTube upload completed without a video id"}
         except Exception:
+            if before_write is not None:
+                return {"platform": "youtube", "status": "failed",
+                        "failure_stage": "INITIALIZE_INTENT" if 'total' in locals() else "VIDEO_PATH_VALIDATION"}
             return self._failure(RuntimeError(), "initialize")
 
     def get_video_status(self, video_id):
