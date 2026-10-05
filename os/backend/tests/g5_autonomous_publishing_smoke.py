@@ -9,7 +9,6 @@ from pathlib import Path
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, redirect_stdout, redirect_stderr
-from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -285,21 +284,20 @@ def main():
             update_autonomy_settings(autonomy_enabled=True, kill_switch_active=False)
     print('G5_FAILURE_POLICY_MATRIX=PASS')
 
-    # Default autonomous YouTube resolver must be the shared secure downloader,
-    # not the legacy publish resolver. The fake media never leaves TEMP.
+    # Default autonomous YouTube staging uses the canonical publish resolver.
     with ExitStack() as stack:
         payload, transport, *_ = environment(stack, 'youtube')
         resolver = Resolver()
         calls = []
-        @contextmanager
-        def secure_download(self, url, *, storage_type):
-            calls.append((url, storage_type))
-            yield SimpleNamespace(path=Path(resolver.file))
-        stack.enter_context(patch.object(fixture.RemoteMedia, 'download', secure_download))
+        from publish.asset_resolver import AssetResolver
+        def prepare(self, asset):
+            calls.append((asset['asset_url'], asset['storage_type']))
+            return resolver.prepare(asset)
+        stack.enter_context(patch.object(AssetResolver, 'prepare', prepare))
         tid = task(payload)
         assert execute_publish_task(tid)['task']['status'] == 'published'
         assert len(calls) == 1 and calls[0][1] == 'github_pages'
-    print('G5_SHARED_SECURE_DOWNLOADER=PASS')
+    print('G5_CANONICAL_PUBLISH_RESOLVER=PASS')
 
     for platform in ('youtube', 'facebook'):
         with ExitStack() as stack:

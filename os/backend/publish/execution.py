@@ -7,9 +7,7 @@ import json
 import hashlib
 import re
 import uuid
-from contextlib import ExitStack
 from datetime import timedelta
-from types import SimpleNamespace
 
 from publish import manager, policy
 from publish.registry import get_adapter
@@ -151,7 +149,7 @@ def _run_human_authorized_publish_task(task_id, *, credential_refresh_authorized
     from accounts.manager import get_account
     from publish.orchestrator import get_publish_account_readiness, get_publish_execution_readiness
     from assets.manager import get_asset_by_asset_id
-    from assets.remote_media import RemoteMedia
+    from publish.asset_resolver import AssetResolver
     from events.manager import EventManager
 
     manager._init_db()
@@ -289,16 +287,12 @@ def _run_human_authorized_publish_task(task_id, *, credential_refresh_authorized
     prepared = None
     failure_stage = 'ASSET_DOWNLOAD'
     asset_failure_reason = None
-    downloads = ExitStack()
     try:
         from assets.remote_media import MediaFailure
         try:
             asset = get_asset_by_asset_id(task['asset_id'])
-            if asset_resolver is not None:
-                prepared = asset_resolver.prepare(asset)
-            else:
-                media = downloads.enter_context(RemoteMedia().download(asset['asset_url'], storage_type=asset['storage_type']))
-                prepared = SimpleNamespace(file_path=str(media.path), cleanup=lambda: None)
+            resolver = asset_resolver if asset_resolver is not None else AssetResolver()
+            prepared = resolver.prepare(asset)
         except MediaFailure as error:
             asset_failure_reason = error.reason
             raise
@@ -342,11 +336,8 @@ def _run_human_authorized_publish_task(task_id, *, credential_refresh_authorized
         finally:
             db.close()
     finally:
-        try:
-            if prepared:
-                prepared.cleanup()
-        finally:
-            downloads.close()
+        if prepared:
+            prepared.cleanup()
     return {'task': manager.get_publish_task(task_id), 'executed': True}
 
 
@@ -501,11 +492,10 @@ def execute_autonomous_publish_task(task_id, *, asset_resolver=None):
             db.close()
 
     from assets.manager import get_asset_by_asset_id
-    from assets.remote_media import RemoteMedia
+    from publish.asset_resolver import AssetResolver
     asset = get_asset_by_asset_id(task['asset_id'])
     adapter = get_adapter(task['platform'])
     prepared = None
-    downloads = ExitStack()
     try:
         # Recheck after durable claim, even before a preparatory remote download.
         fresh_signals = policy.runtime_signals(task['platform'], task['account_id'])
@@ -516,11 +506,8 @@ def execute_autonomous_publish_task(task_id, *, asset_resolver=None):
             db.close()
         options = {'before_write': before_write, 'operation_callback': correlation}
         if task['platform'] == 'youtube':
-            if asset_resolver is not None:
-                prepared = asset_resolver.prepare(asset)
-            else:
-                media = downloads.enter_context(RemoteMedia().download(asset['asset_url'], storage_type=asset['storage_type']))
-                prepared = SimpleNamespace(file_path=str(media.path), cleanup=lambda: None)
+            resolver = asset_resolver if asset_resolver is not None else AssetResolver()
+            prepared = resolver.prepare(asset)
             options.update(video_path=prepared.file_path, title=task['title'] or task['video_id'],
                            description=task['description'], tags=task['tags'], privacy_status=task['privacy_status'])
         elif task['platform'] == 'instagram':
@@ -538,11 +525,8 @@ def execute_autonomous_publish_task(task_id, *, asset_resolver=None):
     except Exception:
         _finish(task_id, owner, 'review', reason='EXTERNAL_OPERATION_AMBIGUOUS_OR_CONTROL_CHANGED')
     finally:
-        try:
-            if prepared:
-                prepared.cleanup()
-        finally:
-            downloads.close()
+        if prepared:
+            prepared.cleanup()
     return {'task': manager.get_publish_task(task_id), 'executed': True}
 
 

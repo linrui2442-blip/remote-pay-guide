@@ -45,12 +45,19 @@ class AssetResolver:
         self.timeout = (connect_timeout, read_timeout)
         self.max_bytes = max_bytes
         self.max_redirects = max_redirects
-        self.session = session or requests.Session()
+        if session is None:
+            # Honor the OS setting before requests reads proxy environment.
+            from config.network import configure_outbound_proxy
+            configure_outbound_proxy()
+            session = requests.Session()
+        self.session = session
 
     @staticmethod
-    def _validate_url(url):
+    def _validate_url(url, *, https_only=False):
         parsed = urlparse(url or "")
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        if (parsed.scheme not in {"http", "https"} or not parsed.netloc
+                or (https_only and parsed.scheme != "https")
+                or parsed.username or parsed.password):
             raise AssetResolutionError("asset_url must be an absolute http/https URL")
         return parsed
 
@@ -64,10 +71,10 @@ class AssetResolver:
             return True
         return False
 
-    def _request_with_redirect_limit(self, url):
+    def _request_with_redirect_limit(self, url, *, https_only=False):
         current_url = url
         for redirect_count in range(self.max_redirects + 1):
-            self._validate_url(current_url)
+            self._validate_url(current_url, https_only=https_only)
             response = self.session.get(
                 current_url,
                 stream=True,
@@ -95,7 +102,9 @@ class AssetResolver:
         response = None
         temp_path = None
         try:
-            response, final_url = self._request_with_redirect_limit(url)
+            response, final_url = self._request_with_redirect_limit(
+                url, https_only=asset.get("storage_type") == "github_pages"
+            )
             if response.status_code != 200:
                 raise AssetResolutionError(
                     f"asset download returned HTTP {response.status_code}"
@@ -103,9 +112,7 @@ class AssetResolver:
 
             content_type = response.headers.get("Content-Type", "")
             if not self._content_type_allowed(content_type, final_url):
-                raise AssetResolutionError(
-                    f"asset download rejected Content-Type: {content_type or 'missing'}"
-                )
+                raise AssetResolutionError("asset download rejected Content-Type")
 
             content_length = response.headers.get("Content-Length")
             if content_length:
@@ -143,7 +150,12 @@ class AssetResolver:
 
             return PreparedPublishAsset(file_path=temp_path, temporary=True)
         except requests.RequestException as exc:
-            raise AssetResolutionError(f"asset download failed: {exc}") from exc
+            if temp_path:
+                try:
+                    os.remove(temp_path)
+                except FileNotFoundError:
+                    pass
+            raise AssetResolutionError("asset download failed") from exc
         except Exception:
             if temp_path:
                 try:
