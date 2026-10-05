@@ -2,7 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 from accounts.manager import get_account
 from oauth.manager import get_token, update_token
-from oauth.providers.youtube import YOUTUBE_UPLOAD_SCOPE, YouTubeOAuthProvider
+from oauth.providers.youtube import (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_FORCE_SSL_SCOPE,
+                                     YouTubeOAuthProvider)
 
 from .youtube_api import YouTubeAPIClient
 
@@ -77,6 +78,20 @@ class YouTubeAdapter:
             "upload_scope_granted": upload_scope_granted,
             "reason": reason,
         }
+
+    def get_public_release_scope_readiness(self, account_id):
+        """Local credential metadata only; never refresh or contact Google."""
+        account = get_account(account_id) if account_id is not None else None
+        token = get_token(account_id) if account_id is not None else None
+        scopes = set(YouTubeOAuthProvider._scope_values((token or {}).get('scopes')))
+        found = bool(token)
+        force_ssl = YOUTUBE_FORCE_SSL_SCOPE in scopes
+        full_youtube = 'https://www.googleapis.com/auth/youtube' in scopes
+        return {'credential_found': found, 'force_ssl_scope_granted': force_ssl,
+                'full_youtube_scope_granted': full_youtube,
+                'public_release_scope_ready': bool(account and account.get('platform') == 'youtube'
+                    and account.get('status') in {'connected', 'active', 'ready'}
+                    and found and (force_ssl or full_youtube))}
 
     def _credentials_for_account(self, account_id, *, credential_refresh_authorized=True):
         readiness = self.get_account_readiness(account_id)

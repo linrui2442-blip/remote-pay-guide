@@ -177,5 +177,42 @@ class YouTubeAPIClient:
         item = items[0]
         return {"video_id": item.get("id") or video_id, "title": (item.get("snippet") or {}).get("title"), "privacy_status": (item.get("status") or {}).get("privacyStatus"), "processing_status": (item.get("processingDetails") or {}).get("processingStatus"), "channel_id": (item.get("snippet") or {}).get("channelId"), "status": "available"}
 
+    def get_video_release_status(self, video_id):
+        """One fresh official GET. processingDetails is needed for the release gate."""
+        if not self.session:
+            raise ValueError('YOUTUBE_RELEASE_CLIENT_NOT_CONFIGURED')
+        response = self.session.get('https://www.googleapis.com/youtube/v3/videos',
+                                    params={'part': 'status,processingDetails', 'id': video_id},
+                                    timeout=30, allow_redirects=False)
+        response.raise_for_status()
+        items = (response.json() or {}).get('items') or []
+        if len(items) != 1 or items[0].get('id') != video_id:
+            raise ValueError('YOUTUBE_RELEASE_VIDEO_NOT_FOUND_OR_MISMATCHED')
+        item = items[0]
+        return {'video_id': video_id, 'status': item.get('status') or {},
+                'processing_status': (item.get('processingDetails') or {}).get('processingStatus')}
+
+    def update_video_privacy(self, video_id, current_status, *, before_write, operation_callback):
+        """One non-retried videos.update; hooks are mandatory for durable correlation."""
+        if not self.session or not callable(before_write) or not callable(operation_callback):
+            raise ValueError('YOUTUBE_RELEASE_DURABLE_HOOKS_REQUIRED')
+        if not isinstance(current_status, dict) or current_status.get('privacyStatus') != 'private':
+            raise ValueError('YOUTUBE_RELEASE_PRIVATE_SOURCE_REQUIRED')
+        allowed = ('license', 'embeddable', 'publicStatsViewable',
+                   'selfDeclaredMadeForKids', 'containsSyntheticMedia')
+        status = {key: current_status[key] for key in allowed if key in current_status}
+        status['privacyStatus'] = 'public'
+        before_write('youtube_privacy_public')
+        response = self.session.put('https://www.googleapis.com/youtube/v3/videos',
+                                    params={'part': 'status'},
+                                    json={'id': video_id, 'status': status},
+                                    timeout=30, allow_redirects=False)
+        response.raise_for_status()
+        body = response.json() or {}
+        if body.get('id') != video_id or (body.get('status') or {}).get('privacyStatus') != 'public':
+            raise ValueError('YOUTUBE_RELEASE_RESPONSE_UNCONFIRMED')
+        operation_callback(video_id, 'PRIVACY_PUBLIC')
+        return {'video_id': video_id, 'privacy_status': 'public'}
+
     def delete_video(self, video_id):
         return {"status": "ready_for_delete" if self.session else "not_configured"}

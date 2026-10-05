@@ -11,11 +11,14 @@ from config.secure_store import SecureStoreError, get_secret
 YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
 YOUTUBE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+YOUTUBE_FORCE_SSL_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
 
 YOUTUBE_SCOPE_PROFILES = {
     "publish": [YOUTUBE_UPLOAD_SCOPE],
     "analytics": [YOUTUBE_READ_SCOPE, YOUTUBE_ANALYTICS_SCOPE],
     "full": [YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READ_SCOPE, YOUTUBE_ANALYTICS_SCOPE],
+    "full_manage": [YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READ_SCOPE,
+                    YOUTUBE_ANALYTICS_SCOPE, YOUTUBE_FORCE_SSL_SCOPE],
 }
 
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"

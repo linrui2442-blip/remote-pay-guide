@@ -368,6 +368,222 @@ def reconcile_human_authorized_publish_task(task_id):
     return manager.get_publish_task(task_id)
 
 
+_RELEASE_STAGE = 'youtube_privacy_public'
+_RELEASE_EVENT = 'PRIVACY_PUBLIC'
+
+
+def _release_evidence(task):
+    evidence = json.loads(task.get('policy_evidence') or '{}')
+    return evidence, evidence.get('youtube_public_release') or {}
+
+
+def _release_current(conn, task_id, claim, *, source, fingerprint, video_id):
+    task = manager._serialize(conn.execute('SELECT * FROM publish_tasks WHERE id=?', (task_id,)).fetchone())
+    evidence, release = _release_evidence(task) if task else ({}, {})
+    if (not task or task.get('autonomous_policy_version') is not None
+            or task['platform'] != 'youtube' or task['status'] != 'published'
+            or task['privacy_status'] not in {'private', 'public'}
+            or task['platform_video_id'] != video_id
+            or task['published_url'] != f'https://www.youtube.com/watch?v={video_id}'
+            or release.get('claim') != claim or release.get('target_privacy') != 'public'
+            or release.get('source_fingerprint') != source
+            or release.get('task_fingerprint') != fingerprint
+            or _human_identity(conn, task) != source
+            or (task['privacy_status'] == 'private' and policy.task_fingerprint(task) != fingerprint)
+            or evidence.get('human_source_fingerprint') != source
+            or task['provider_operation_id'] != video_id
+            or task['provider_operation_status'] != 'PUBLISHED'):
+        raise ValueError('YOUTUBE_RELEASE_IDENTITY_DRIFT')
+    upload = conn.execute("""SELECT 1 FROM publish_operation_events WHERE task_id=?
+        AND claim=? AND operation_status='PUBLISHED' AND operation_id=? LIMIT 1""",
+        (task_id, task['execution_claim'], video_id)).fetchone()
+    if not upload:
+        raise ValueError('YOUTUBE_RELEASE_UPLOAD_EVIDENCE_MISSING')
+    return task, evidence, release
+
+
+def _release_finish(conn, task_id, claim, *, source, fingerprint, video_id):
+    task, evidence, release = _release_current(conn, task_id, claim, source=source,
+                                                fingerprint=fingerprint, video_id=video_id)
+    intent = conn.execute('SELECT claim FROM publish_write_intents WHERE task_id=? AND stage=?',
+                          (task_id, _RELEASE_STAGE)).fetchone()
+    if not intent or intent['claim'] != claim:
+        raise ValueError('YOUTUBE_RELEASE_INTENT_MISSING')
+    events = conn.execute("""SELECT operation_id,claim FROM publish_operation_events
+        WHERE task_id=? AND operation_status=?""", (task_id, _RELEASE_EVENT)).fetchall()
+    if events and (len(events) != 1 or events[0]['operation_id'] != video_id or events[0]['claim'] != claim):
+        raise ValueError('YOUTUBE_RELEASE_EVIDENCE_AMBIGUOUS')
+    if not events:
+        conn.execute('''INSERT INTO publish_operation_events(task_id,operation_id,operation_status,claim,created_at)
+            VALUES(?,?,?,?,?)''', (task_id, video_id, _RELEASE_EVENT, claim, policy.now().isoformat()))
+    release['state'] = 'completed'
+    evidence['youtube_public_release'] = release
+    conn.execute("""UPDATE publish_tasks SET privacy_status='public',policy_evidence=?,updated_at=?
+        WHERE id=? AND status='published' AND platform_video_id=?""",
+        (json.dumps(evidence, separators=(',', ':')), policy.now().isoformat(), task_id, video_id))
+
+
+def _release_client(task):
+    """Build credentials without implicit OAuth refresh; no new authorization."""
+    from publish.adapters.youtube_api import YouTubeAPIClient
+    adapter = get_adapter('youtube')
+    if not adapter.get_public_release_scope_readiness(task['account_id'])['public_release_scope_ready']:
+        raise ValueError('YOUTUBE_PUBLIC_RELEASE_SCOPE_NOT_READY')
+    client = YouTubeAPIClient()
+    client.initialize(adapter._credentials_for_account(task['account_id'],
+                                                        credential_refresh_authorized=False))
+    return client
+
+
+def _release_failure_code(error, intent_written):
+    """Bounded provider classification; never persist raw Google messages."""
+    response = getattr(error, 'response', None)
+    if getattr(response, 'status_code', None) == 403:
+        try:
+            message = str(((response.json() or {}).get('error') or {}).get('message') or '').lower()
+        except (TypeError, ValueError):
+            message = ''
+        if ('api project' in message and ('audit' in message or 'private' in message
+                                          or 'public' in message or 'unverified' in message)):
+            return 'YOUTUBE_PUBLIC_RELEASE_PROJECT_RESTRICTED'
+    return ('YOUTUBE_PUBLIC_RELEASE_OUTCOME_REVIEW' if intent_written
+            else 'YOUTUBE_PUBLIC_RELEASE_PREFLIGHT_REVIEW')
+
+
+def execute_human_authorized_youtube_public_release(task_id):
+    """Explicit private→public operation; one durable intent, never a second PUT."""
+    manager._init_db()
+    preliminary = manager.get_publish_task(task_id)
+    if (preliminary and preliminary.get('status') == 'published'
+            and preliminary.get('privacy_status') == 'private'
+            and preliminary.get('platform') == 'youtube'):
+        adapter = get_adapter('youtube')
+        if not adapter.get_public_release_scope_readiness(preliminary['account_id'])['public_release_scope_ready']:
+            raise ValueError('YOUTUBE_PUBLIC_RELEASE_SCOPE_NOT_READY')
+    conn = manager._connect()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        task = manager._serialize(conn.execute('SELECT * FROM publish_tasks WHERE id=?', (task_id,)).fetchone())
+        if not task or task.get('autonomous_policy_version') is not None or task['platform'] != 'youtube':
+            raise ValueError('YOUTUBE_RELEASE_HUMAN_TASK_REQUIRED')
+        evidence, prior = _release_evidence(task)
+        if prior or conn.execute('SELECT 1 FROM publish_write_intents WHERE task_id=? AND stage=?',
+                                 (task_id, _RELEASE_STAGE)).fetchone():
+            return {'task': task, 'executed': False, 'recovery': 'READ_ONLY_RECONCILIATION_ONLY'}
+        if (task['status'] != 'published' or task['privacy_status'] != 'private'
+                or not task['execution_claim'] or not task['platform_video_id']
+                or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}', task['platform_video_id'])
+                or task['published_url'] != f"https://www.youtube.com/watch?v={task['platform_video_id']}"):
+            raise ValueError('YOUTUBE_RELEASE_PRIVATE_PUBLISHED_TASK_REQUIRED')
+        source = _human_identity(conn, task)
+        fingerprint = policy.task_fingerprint(task)
+        if (evidence.get('human_source_fingerprint') != source
+                or task['provider_operation_id'] != task['platform_video_id']
+                or task['provider_operation_status'] != 'PUBLISHED'
+                or not conn.execute("""SELECT 1 FROM publish_operation_events WHERE task_id=?
+                    AND claim=? AND operation_status='PUBLISHED' AND operation_id=? LIMIT 1""",
+                    (task_id, task['execution_claim'], task['platform_video_id'])).fetchone()):
+            raise ValueError('YOUTUBE_RELEASE_UPLOAD_EVIDENCE_MISSING')
+        claim = uuid.uuid4().hex
+        video_id = task['platform_video_id']
+        evidence['youtube_public_release'] = {'claim': claim, 'target_privacy': 'public',
+            'state': 'preflight', 'started_at': policy.now().isoformat(),
+            'source_fingerprint': source, 'task_fingerprint': fingerprint}
+        conn.execute('UPDATE publish_tasks SET policy_evidence=?,updated_at=? WHERE id=?',
+                     (json.dumps(evidence, separators=(',', ':')), policy.now().isoformat(), task_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    intent_written = False
+    try:
+        client = _release_client(task)
+        fresh = client.get_video_release_status(video_id)
+        if fresh['processing_status'] != 'succeeded' or fresh['status'].get('privacyStatus') != 'private':
+            raise ValueError('YOUTUBE_RELEASE_PROVIDER_NOT_PRIVATE_AND_PROCESSED')
+
+        def before_write(stage):
+            nonlocal intent_written
+            if stage != _RELEASE_STAGE:
+                raise ValueError('YOUTUBE_RELEASE_STAGE_INVALID')
+            db = manager._connect()
+            try:
+                db.execute('BEGIN IMMEDIATE')
+                _release_current(db, task_id, claim, source=source, fingerprint=fingerprint, video_id=video_id)
+                if db.execute('SELECT 1 FROM publish_write_intents WHERE task_id=? AND stage=?',
+                              (task_id, stage)).fetchone():
+                    raise ValueError('YOUTUBE_RELEASE_INTENT_ALREADY_EXISTS')
+                db.execute('INSERT INTO publish_write_intents(task_id,stage,claim,created_at) VALUES(?,?,?,?)',
+                           (task_id, stage, claim, policy.now().isoformat()))
+                db.commit()
+                intent_written = True
+            finally:
+                db.close()
+
+        def correlation(operation_id, state):
+            if operation_id != video_id or state != _RELEASE_EVENT:
+                raise ValueError('YOUTUBE_RELEASE_CORRELATION_MISMATCH')
+            db = manager._connect()
+            try:
+                db.execute('BEGIN IMMEDIATE')
+                _release_finish(db, task_id, claim, source=source, fingerprint=fingerprint, video_id=video_id)
+                db.commit()
+            finally:
+                db.close()
+
+        client.update_video_privacy(video_id, fresh['status'], before_write=before_write,
+                                    operation_callback=correlation)
+    except Exception as error:
+        code = _release_failure_code(error, intent_written)
+        db = manager._connect()
+        try:
+            db.execute('BEGIN IMMEDIATE')
+            current = manager._serialize(db.execute('SELECT * FROM publish_tasks WHERE id=?', (task_id,)).fetchone())
+            evidence, release = _release_evidence(current)
+            if release.get('claim') == claim and release.get('state') != 'completed':
+                release.update(state='review', reason=code)
+                evidence['youtube_public_release'] = release
+                db.execute('UPDATE publish_tasks SET policy_evidence=?,updated_at=? WHERE id=?',
+                           (json.dumps(evidence, separators=(',', ':')), policy.now().isoformat(), task_id))
+            db.commit()
+        finally:
+            db.close()
+    return {'task': manager.get_publish_task(task_id), 'executed': intent_written}
+
+
+def reconcile_human_authorized_youtube_public_release(task_id):
+    """GET-only provider reconciliation; never reissue the privacy PUT."""
+    manager._init_db()
+    conn = manager._connect()
+    try:
+        task = manager._serialize(conn.execute('SELECT * FROM publish_tasks WHERE id=?', (task_id,)).fetchone())
+        evidence, release = _release_evidence(task) if task else ({}, {})
+        claim = release.get('claim')
+        if not claim or release.get('state') == 'completed':
+            return task
+        source = release.get('source_fingerprint')
+        fingerprint = release.get('task_fingerprint')
+        video_id = task['platform_video_id']
+        _release_current(conn, task_id, claim, source=source, fingerprint=fingerprint, video_id=video_id)
+        intent = conn.execute('SELECT claim FROM publish_write_intents WHERE task_id=? AND stage=?',
+                              (task_id, _RELEASE_STAGE)).fetchone()
+        if not intent or intent['claim'] != claim:
+            raise ValueError('YOUTUBE_RELEASE_INTENT_MISSING')
+    finally:
+        conn.close()
+    fresh = _release_client(task).get_video_release_status(video_id)
+    if fresh['status'].get('privacyStatus') != 'public':
+        return manager.get_publish_task(task_id)
+    db = manager._connect()
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        _release_finish(db, task_id, claim, source=source, fingerprint=fingerprint, video_id=video_id)
+        db.commit()
+    finally:
+        db.close()
+    return manager.get_publish_task(task_id)
+
+
 def _recheck(task, conn, signals):
     decision = policy.evaluate(conn, task, signals, exclude_task=task['id'])
     old = json.loads(task['policy_evidence'] or '{}')

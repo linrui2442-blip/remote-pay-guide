@@ -1,7 +1,7 @@
 """Isolated contract for official YouTube videos.list read-back."""
-import os, sys
+import os, sys, tempfile
 from pathlib import Path
-os.environ["OS_TESTING"]="1"; os.environ["OS_DATABASE_PATH"]=str(Path(__file__).with_name("r48.db"))
+os.environ["OS_TESTING"]="1"; os.environ.setdefault("OS_DATABASE_PATH",str(Path(tempfile.gettempdir()) / "r48-youtube-readback.db"))
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from publish.adapters.youtube_api import YouTubeAPIClient
 class Response:
