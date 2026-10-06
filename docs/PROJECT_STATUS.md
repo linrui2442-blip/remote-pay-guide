@@ -191,10 +191,17 @@ separate authorization.
 
 `AUTONOMOUS_ORCHESTRATION=PARTIAL`.
 
-The G3 policy and authorization layer is complete. The full autonomous loop is not yet closed because G4 autonomous production, G5 autonomous publishing and the later feedback-learning stages remain unfinished. The current human-gated path remains the safe development, validation, fallback, review, recovery and override mode.
+The G3 policy and authorization layer is complete. The real G6 feedback path is
+now live-proven, but full autonomous orchestration remains partial: Plan 3
+received REVIEW rather than AUTO, autonomy is disabled, the kill switch is
+active, no automatic G4 continuation occurred, G4-C real AI video production
+and Instagram/Facebook live publishing remain pending, and repeated autonomous
+end-to-end cycles have not run. The current human-gated path remains the safe
+development, validation, fallback, review, recovery and override mode.
 
 `G6_OFFLINE_CERTIFIED=PASS`
-`G6_LIVE=PENDING_AUTHORIZATION`
+`G6_REAL_LIVE_FEEDBACK=PASS`
+`G6_LIVE=LIVE_PROVEN`
 
 G6 reuses the existing feedback snapshot table, Data Center window aggregation,
 ContentPlan providers and canonical G3 policy. A complete analytics window at
@@ -206,6 +213,28 @@ one generation only; ambiguous generation stays REVIEW without automatic retry.
 Plans remain preview; neither ProductionTask nor PublishTask is created.
 Offline certification includes 20 rounds of four callers, failure/replay,
 identity/maturity/evidence assertions, G5 through G2, r57, r44 and r16 regressions.
+
+The controlled real proof used mature YouTube FeedbackSnapshot 11 for account 1,
+window 2026-08-13 through 2026-09-09, source content
+`short04_private_e2e_source`, platform video `uEQR9PSAfUA` and sample size 1.
+Its canonical G6 identity is `feedback-f8cd9ef3af91ebb7bc27`. The first real
+TextProvider call failed before plan persistence and correctly stopped at
+`review / NULL / FEEDBACK_CYCLE_INTERRUPTED`, with no retry or downstream work.
+Three subsequently pushed changes added bounded failure forensics, explicit
+one-time generation recovery and canonical feedback-plan identity scoping
+(`b6c2357`, `43cf343`, `ad03e69`). One explicitly authorized recovery then made
+one `LLMContentPlanProvider` request using `gpt-5.6`, with zero retries, and
+completed snapshot 11 as plan 3 with
+`RECOVERED_FROM|FEEDBACK_CYCLE_INTERRUPTED`.
+
+Plan 3 is an autonomous-generation preview, revision 1, sourced from snapshot
+11. G3 policy decision 3 (`g3-v2`) is REVIEW: safety, account health, platform
+health and AI confidence PASS; novelty, duplicate risk and business WARN.
+Effective authorization is false. No override, approval, materialization,
+ProductionTask, RuntimeJob, ProductionResult, VideoAsset, PublishTask, platform
+call or publish write followed. This proves the real feedback-learning path for
+one mature YouTube cohort; Instagram and Facebook are not yet contributing live
+G6 evidence, and it does not prove a full autonomous loop.
 
 `G7_OFFLINE_CERTIFIED=PASS`
 
@@ -238,16 +267,16 @@ G9 preparation includes safe startup, configuration and authorization checklist,
 backup/restore and incident runbook in README. Isolated backend import/OpenAPI
 route checks, production-path rejection, frontend content-plan contract and
 frontend build pass. That offline preparation did not perform fresh-machine
-installation or release validation, live soak, tag or release. The current production DB SHA256 after the
-authorized YouTube public release is
-`2DBE1F51FFA5E8C8C6165F055F92F0BE35A27D2B16AA2AE64DC2EB140785741C`.
+installation or release validation, live soak, tag or release. The current
+production DB SHA256 after the authorized G6 live recovery is
+`45F2BF12639E2B176B9D1834AEBE0B8A7004AFCB22E1392060AF4D1006589664`.
 
-`NEXT_GATE=Push canonical status update, then separately authorize the next live gate`
+`NEXT_GATE=REVIEW_PLAN3_THEN_HUMAN_APPROVAL_OR_REVISION`
 
 Next major live gates are Instagram and Facebook publish proofs, G4-C real AI
-production, G6 feedback-learning, full autonomous end-to-end cycles, a >=72h
-real soak, and fresh-machine/release closure. Each external write requires its
-own authorization. No v1.0 closure is implied.
+production, multi-platform feedback participation, full autonomous end-to-end
+cycles, a >=72h real soak, and fresh-machine/release closure. Each external
+write requires its own authorization. No v1.0 closure is implied.
 
 ## Official roadmap
 
