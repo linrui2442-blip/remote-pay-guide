@@ -19,6 +19,36 @@ from intelligence.content_brain import select_content_plan_provider, save_plan, 
 from intelligence.feedback import analyze_feedback
 from intelligence.strategy import build_production_strategy
 from intelligence.policy import evaluate_policy
+from ai.providers.text import TextProviderError
+
+
+_GENERATION_FORENSIC_CODES = frozenset({
+    'DIRECTED_GENERATION_PARSE_ERROR',
+    'DIRECTED_GENERATION_SCHEMA_ERROR',
+    'DIRECTED_GENERATION_SAFETY_REJECTED',
+    'DIRECTED_GENERATION_MUST_INCLUDE_REJECTED',
+    'DIRECTED_GENERATION_MUST_AVOID_REJECTED',
+    'DIRECTED_GENERATION_CONTENT_PLAN_VALIDATION_ERROR',
+    'DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR',
+})
+_GENERATION_FORENSIC_STAGES = frozenset({
+    'PROVIDER_RETURNED', 'CONTENT_EXTRACTED', 'JSON_PARSED',
+    'SCHEMA_VALIDATED', 'SAFETY_VALIDATED', 'CONSTRAINTS_VALIDATED',
+})
+
+
+def _generation_failure_reason(exc):
+    """Persist fixed taxonomy only, never exception text or provider output."""
+    code = getattr(exc, 'forensic_code', None)
+    stage = getattr(exc, 'forensic_stage', None)
+    returned = getattr(exc, 'forensic_provider_returned', None)
+    if (type(code) is str and code in _GENERATION_FORENSIC_CODES
+            and type(stage) is str and stage in _GENERATION_FORENSIC_STAGES
+            and type(returned) is bool):
+        return f'FEEDBACK_GENERATION_FAILED|CODE={code}|STAGE={stage}|PROVIDER_RETURNED={str(returned).lower()}'
+    if isinstance(exc, TextProviderError):
+        return 'FEEDBACK_GENERATION_FAILED|CODE=PROVIDER_FAILURE|STAGE=PROVIDER_REQUEST|PROVIDER_RETURNED=false'
+    return 'FEEDBACK_CYCLE_INTERRUPTED'
 
 
 def _json(value):
@@ -155,8 +185,8 @@ def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=N
         _advance(sid, 'policy_pending', saved['id'])
         evaluate_policy(saved['id'])
         _advance(sid, 'completed', saved['id'])
-    except Exception:
-        _advance(sid, 'review', reason='FEEDBACK_CYCLE_INTERRUPTED')
+    except Exception as exc:
+        _advance(sid, 'review', reason=_generation_failure_reason(exc))
         raise
     return _state(sid)
 
