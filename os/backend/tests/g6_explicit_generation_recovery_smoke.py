@@ -59,7 +59,8 @@ def assert_rejected(sid, provider):
     try:
         learning.recover_feedback_generation(sid, provider=provider)
     except ValueError as exc:
-        assert str(exc) in ('FEEDBACK_RECOVERY_NOT_ELIGIBLE', 'FEEDBACK_RECOVERY_PLAN_EXISTS')
+        assert str(exc) in ('FEEDBACK_RECOVERY_NOT_ELIGIBLE',
+                            'RECOVERY_EXISTING_G6_PLAN_REQUIRES_RECONCILIATION')
     else:
         raise AssertionError('ineligible recovery accepted')
     assert provider.calls == before
@@ -68,13 +69,20 @@ def assert_rejected(sid, provider):
 def main():
     # The legacy generic reason is admitted only for the manually reviewed #11.
     sid = snapshot(sid=11)
+    snap = learning.bridge.get_feedback_snapshot(sid)
+    directed = DeterministicContentPlanProvider().generate_content_plan(snap, {})
+    directed.content_id = 'directed-' + 'b' * 64
+    directed.generation_mode = 'directed'
+    directed_plan = save_plan(directed, sid)
+    assert directed_plan['source_snapshot_id'] == sid
     provider = CountingProvider()
     result = learning.recover_feedback_generation(sid, provider=provider)
     assert provider.calls == 1 and result['learning_state'] == 'completed'
     assert read(sid) == ('completed', result['learning_plan_id'], 'RECOVERED_FROM|FEEDBACK_CYCLE_INTERRUPTED')
     with sqlite3.connect(TEST_DATABASE_PATH) as conn:
-        assert conn.execute('SELECT count(*) FROM intelligence_content_plans').fetchone()[0] == 1
+        assert conn.execute('SELECT count(*) FROM intelligence_content_plans').fetchone()[0] == 2
         assert conn.execute('SELECT count(*) FROM intelligence_policy_decisions').fetchone()[0] == 1
+    assert result['learning_plan_id'] != directed_plan['id']
     assert_rejected(sid, provider)
 
     previous = ('FEEDBACK_GENERATION_FAILED|CODE=DIRECTED_GENERATION_SCHEMA_ERROR|'
@@ -110,9 +118,18 @@ def main():
     assert_rejected(sid, CountingProvider())
     sid = snapshot(reason=previous)
     snap = learning.bridge.get_feedback_snapshot(sid)
-    saved = save_plan(DeterministicContentPlanProvider().generate_content_plan(snap, {}), sid)
+    preview = save_plan(DeterministicContentPlanProvider().generate_content_plan(snap, {}), sid)
+    provider = CountingProvider()
+    recovered = learning.recover_feedback_generation(sid, provider=provider)
+    assert preview['id'] != recovered['learning_plan_id'] and provider.calls == 1
+    sid = snapshot(reason=previous)
+    snap = learning.bridge.get_feedback_snapshot(sid)
+    existing = DeterministicContentPlanProvider().generate_content_plan(snap, {})
+    existing.content_id = learning._feedback_content_id(snap)
+    saved = save_plan(existing, sid)
     assert saved['id'] and read(sid)[1] is None
     assert_rejected(sid, CountingProvider())
+    assert read(sid) == ('review', None, previous)
 
     # Ordinary G6 keeps its original NULL-only claim and cannot reclaim review.
     sid = snapshot(reason=previous)
@@ -145,6 +162,12 @@ def main():
     with patch.object(learning, 'prepare_feedback_snapshot', return_value=learning.bridge.get_feedback_snapshot(sid)):
         assert learning.run_feedback_cycle(1, 'youtube', '2026-08-13', '2026-09-09', provider=provider)['learning_state'] == 'completed'
     assert provider.calls == 1
+    with sqlite3.connect(TEST_DATABASE_PATH) as conn:
+        assert conn.execute('SELECT content_id FROM intelligence_content_plans WHERE source_snapshot_id=?',
+                            (sid,)).fetchone()[0] == 'feedback-' + 'a' * 20
+    print('G6_DIRECTED_AND_PREVIEW_PLANS_DO_NOT_BLOCK=PASS')
+    print('G6_EXISTING_FEEDBACK_PLAN_BLOCKS=PASS')
+    print('G6_SHARED_CONTENT_IDENTITY=PASS')
     print('G6_EXPLICIT_LEGACY_RECOVERY=PASS')
     print('G6_RECOVERY_FAILURE_HISTORY=PASS')
     print('G6_RECOVERY_INELIGIBLE_STATES=PASS')

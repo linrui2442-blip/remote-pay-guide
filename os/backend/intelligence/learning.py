@@ -166,10 +166,14 @@ def prepare_feedback_snapshot(account_id, platform, start_date, end_date, *, now
     return snapshot
 
 
+def _feedback_content_id(snapshot):
+    return 'feedback-' + snapshot['metrics_snapshot']['learning_evidence']['fingerprint'][:20]
+
+
 def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=None, now=None):
     """Prepare strict evidence, then retain the existing generation claim boundary."""
     snapshot = prepare_feedback_snapshot(account_id, platform, start_date, end_date, now=now)
-    fingerprint = snapshot['metrics_snapshot']['learning_evidence']['fingerprint']
+    content_id = _feedback_content_id(snapshot)
     sid = snapshot['id']
     with _db() as conn:
         won = conn.execute("UPDATE intelligence_feedback_snapshots SET learning_state='generating',learning_updated_at=? WHERE id=? AND learning_state IS NULL",
@@ -177,8 +181,8 @@ def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=N
     if not won:
         return _state(sid)
     try:
-        plan = (provider or select_content_plan_provider()).generate_content_plan(snapshot, {'strategy': snapshot['strategy'], 'content_id': 'feedback-' + fingerprint[:20]})
-        plan.content_id = 'feedback-' + fingerprint[:20]
+        plan = (provider or select_content_plan_provider()).generate_content_plan(snapshot, {'strategy': snapshot['strategy'], 'content_id': content_id})
+        plan.content_id = content_id
         plan.source_snapshot_id = sid
         plan.source_content_id = snapshot['content_id']
         saved = save_plan(plan, sid)
@@ -215,14 +219,19 @@ def recover_feedback_generation(snapshot_id, *, provider=None):
     sid = int(snapshot_id)
     with _db() as conn:
         conn.execute('BEGIN IMMEDIATE')
-        row = conn.execute('''SELECT learning_state,learning_plan_id,learning_reason
+        row = conn.execute('''SELECT learning_state,learning_plan_id,learning_reason,metrics_json
             FROM intelligence_feedback_snapshots WHERE id=?''', (sid,)).fetchone()
         previous = _recoverable_generation_reason(sid, row['learning_reason']) if row else None
         if not row or row['learning_state'] != 'review' or row['learning_plan_id'] is not None or not previous:
             raise ValueError('FEEDBACK_RECOVERY_NOT_ELIGIBLE')
+        try:
+            content_id = _feedback_content_id({'metrics_snapshot': json.loads(row['metrics_json'])})
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError('FEEDBACK_RECOVERY_IDENTITY_UNAVAILABLE') from exc
         plans_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='intelligence_content_plans'").fetchone()
-        if plans_table and conn.execute('SELECT 1 FROM intelligence_content_plans WHERE source_snapshot_id=? LIMIT 1', (sid,)).fetchone():
-            raise ValueError('FEEDBACK_RECOVERY_PLAN_EXISTS')
+        if plans_table and conn.execute('''SELECT 1 FROM intelligence_content_plans
+                WHERE source_snapshot_id=? AND content_id=? LIMIT 1''', (sid, content_id)).fetchone():
+            raise ValueError('RECOVERY_EXISTING_G6_PLAN_REQUIRES_RECONCILIATION')
         claimed = conn.execute('''UPDATE intelligence_feedback_snapshots
             SET learning_state='generating',learning_reason=?,learning_updated_at=?
             WHERE id=? AND learning_state='review' AND learning_plan_id IS NULL AND learning_reason=?''',
@@ -232,10 +241,9 @@ def recover_feedback_generation(snapshot_id, *, provider=None):
             raise ValueError('FEEDBACK_RECOVERY_CLAIM_LOST')
     try:
         snapshot = bridge.get_feedback_snapshot(sid)
-        fingerprint = snapshot['metrics_snapshot']['learning_evidence']['fingerprint']
         plan = (provider or select_content_plan_provider()).generate_content_plan(
-            snapshot, {'strategy': snapshot['strategy'], 'content_id': 'feedback-' + fingerprint[:20]})
-        plan.content_id = 'feedback-' + fingerprint[:20]
+            snapshot, {'strategy': snapshot['strategy'], 'content_id': content_id})
+        plan.content_id = content_id
         plan.source_snapshot_id = sid
         plan.source_content_id = snapshot['content_id']
         saved = save_plan(plan, sid)
