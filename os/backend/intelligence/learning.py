@@ -191,6 +191,64 @@ def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=N
     return _state(sid)
 
 
+def _recoverable_generation_reason(snapshot_id, reason):
+    """Admit only a reviewed legacy case or a confirmed local validation failure."""
+    if snapshot_id == 11 and reason == 'FEEDBACK_CYCLE_INTERRUPTED':
+        return reason
+    if not isinstance(reason, str) or len(reason) > 240:
+        return None
+    parts = reason.split('|')
+    if len(parts) != 4 or parts[0] != 'FEEDBACK_GENERATION_FAILED':
+        return None
+    if not (parts[1].startswith('CODE=') and parts[2].startswith('STAGE=')
+            and parts[3] == 'PROVIDER_RETURNED=true'):
+        return None
+    code, stage = parts[1][5:], parts[2][6:]
+    confirmed_codes = _GENERATION_FORENSIC_CODES - {'DIRECTED_GENERATION_UNKNOWN_VALIDATION_ERROR'}
+    if code in confirmed_codes and stage in _GENERATION_FORENSIC_STAGES:
+        return reason
+    return None
+
+
+def recover_feedback_generation(snapshot_id, *, provider=None):
+    """Operator-only, at-most-once regeneration; never invoked by normal G6."""
+    sid = int(snapshot_id)
+    with _db() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('''SELECT learning_state,learning_plan_id,learning_reason
+            FROM intelligence_feedback_snapshots WHERE id=?''', (sid,)).fetchone()
+        previous = _recoverable_generation_reason(sid, row['learning_reason']) if row else None
+        if not row or row['learning_state'] != 'review' or row['learning_plan_id'] is not None or not previous:
+            raise ValueError('FEEDBACK_RECOVERY_NOT_ELIGIBLE')
+        plans_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='intelligence_content_plans'").fetchone()
+        if plans_table and conn.execute('SELECT 1 FROM intelligence_content_plans WHERE source_snapshot_id=? LIMIT 1', (sid,)).fetchone():
+            raise ValueError('FEEDBACK_RECOVERY_PLAN_EXISTS')
+        claimed = conn.execute('''UPDATE intelligence_feedback_snapshots
+            SET learning_state='generating',learning_reason=?,learning_updated_at=?
+            WHERE id=? AND learning_state='review' AND learning_plan_id IS NULL AND learning_reason=?''',
+            ('RECOVERY_IN_PROGRESS|PREVIOUS=' + previous,
+             datetime.now(timezone.utc).isoformat(), sid, previous)).rowcount
+        if claimed != 1:
+            raise ValueError('FEEDBACK_RECOVERY_CLAIM_LOST')
+    try:
+        snapshot = bridge.get_feedback_snapshot(sid)
+        fingerprint = snapshot['metrics_snapshot']['learning_evidence']['fingerprint']
+        plan = (provider or select_content_plan_provider()).generate_content_plan(
+            snapshot, {'strategy': snapshot['strategy'], 'content_id': 'feedback-' + fingerprint[:20]})
+        plan.content_id = 'feedback-' + fingerprint[:20]
+        plan.source_snapshot_id = sid
+        plan.source_content_id = snapshot['content_id']
+        saved = save_plan(plan, sid)
+        _advance(sid, 'policy_pending', saved['id'], reason='RECOVERY_IN_PROGRESS|PREVIOUS=' + previous)
+        evaluate_policy(saved['id'])
+        _advance(sid, 'completed', saved['id'], reason='RECOVERED_FROM|' + previous)
+    except Exception as exc:
+        _advance(sid, 'review', reason='RECOVERY_FAILED|PREVIOUS=' + previous
+                 + '|CURRENT=' + _generation_failure_reason(exc))
+        raise
+    return _state(sid)
+
+
 def recover_feedback_policy(snapshot_id):
     """Read/local policy only; never repeat provider generation after a crash."""
     state = _state(snapshot_id)
