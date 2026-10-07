@@ -294,6 +294,27 @@ def main():
     assert response.closed and count('video_assets', row['id']) == 0
     print('G4D_STREAMING_SIZE_GATE=PASS')
 
+    # A progressing transfer may exceed the old 120-second limit while
+    # remaining inside the bounded 600-second download budget.
+    row = source()
+    slow_clock = iter((0.0, 121.0))
+    with patch.object(remote_media.time, 'monotonic', side_effect=lambda: next(slow_clock)):
+        slow = evaluate(row, session=Session([Response(size=65536)]), probe=Probe())
+    assert slow['status'] == 'PASS'
+    assert count('video_assets', row['id']) == 1
+    print('G4D_SLOW_PROGRESS_OVER_120=PASS')
+
+    # A transfer that exceeds the total bounded budget is a review outcome,
+    # and must not create an asset.
+    row = source()
+    timeout_clock = iter((0.0, 601.0))
+    with patch.object(remote_media.time, 'monotonic', side_effect=lambda: next(timeout_clock)):
+        timed_out = evaluate(row, session=Session([Response(size=65536)]), probe=Probe())
+    assert timed_out['status'] == 'REVIEW'
+    assert 'DOWNLOAD_TIMEOUT' in timed_out['reason_codes']
+    assert count('video_assets', row['id']) == 0
+    print('G4D_TOTAL_TIMEOUT_OVER_600=PASS')
+
     # All transient outcomes retain the same quality row and can later PASS.
     for opts in ({'session': Session(error=socket.timeout(SENTINEL))},
                  {'session': Session([Response(status=503)])},

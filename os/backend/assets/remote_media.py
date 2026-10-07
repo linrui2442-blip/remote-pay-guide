@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlsplit
 MIN_BYTES = 32 * 1024
 MAX_BYTES = 500 * 1024 * 1024
 MAX_REDIRECTS = 3
+MAX_DOWNLOAD_SECONDS = 600
 VIDEO_SUFFIXES = {'.mp4', '.mov', '.m4v', '.webm'}
 
 
@@ -186,7 +187,7 @@ class RemoteMedia:
                 total, started = 0, time.monotonic()
                 with path.open('wb') as handle:
                     for chunk in response.iter_content(chunk_size=64 * 1024):
-                        if time.monotonic() - started > 120:
+                        if time.monotonic() - started > MAX_DOWNLOAD_SECONDS:
                             raise MediaFailure('REVIEW', 'DOWNLOAD_TIMEOUT')
                         total += len(chunk)
                         if total > MAX_BYTES:
