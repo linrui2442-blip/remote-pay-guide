@@ -255,6 +255,26 @@ one-result-per-job semantics; its rejection assertions remain unchanged.
 `G9_OFFLINE_HARDENING_READY=PASS`
 `V1_RELEASE_STATUS=NOT_CLOSED`
 
+### Latest verified human-gated production chain
+
+The current canonical evidence extends the earlier milestone notes above:
+
+`G6 FeedbackSnapshot #11 → Plan #3 → PolicyDecision #3 REVIEW`
+`→ human approval → ProductionTask #6 → RuntimeJob #5`
+`→ GitHub render 37473037028 → artifact 11418695088`
+`→ promotion 37604236899 → ProductionResult #5`
+`→ G4-D QualityCheck #2 PASS → asset-result-5 ready`
+`→ YouTube PublishTask #17 → video COjE4t5YsCw`
+`→ official processing succeeded/public readback PASS`.
+
+G4-D evidence for Result #5 is 14,157,033 bytes, 44.566667 seconds,
+1080×1920, aspect 0.5625, H.264 with audio present. The production DB
+SHA256 after this proof is
+`1C751502CF6D153A82BD0C1EA48C4E966DC0BE69264368DCCD934921CF54BC66`.
+This is `G6_TO_G5_HUMAN_GATED_REAL_E2E=PASS`, not autonomous E2E proof:
+`AUTONOMOUS_ORCHESTRATION=PARTIAL` remains unchanged because Plan #3 was
+REVIEW and autonomy remains disabled behind the active kill switch.
+
 The G8 test harness exercises 10 accelerated learning cycles with four fresh
 processes per cycle, terminal replay after process exit, and two injected
 provider failures retained as REVIEW. Eight cycles complete; there are no

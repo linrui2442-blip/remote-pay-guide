@@ -41,7 +41,13 @@ def _ensure_tables():
             "event_count": "INTEGER NOT NULL DEFAULT 1",
         }.items():
             if name not in {row[1] for row in conn.execute("PRAGMA table_info(intent_events)")}:
-                conn.execute(f"ALTER TABLE intent_events ADD COLUMN {name} {field_type}")
+                try:
+                    conn.execute(f"ALTER TABLE intent_events ADD COLUMN {name} {field_type}")
+                except sqlite3.OperationalError as exc:
+                    # Another isolated worker may have completed this additive
+                    # migration after our schema check but before ALTER.
+                    if 'duplicate column name' not in str(exc).lower():
+                        raise
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS conversion_records (
@@ -64,7 +70,11 @@ def _ensure_tables():
             "platform": "TEXT", "platform_video_id": "TEXT", "received_at": "TEXT",
         }.items():
             if name not in {row[1] for row in conn.execute("PRAGMA table_info(conversion_records)")}:
-                conn.execute(f"ALTER TABLE conversion_records ADD COLUMN {name} {field_type}")
+                try:
+                    conn.execute(f"ALTER TABLE conversion_records ADD COLUMN {name} {field_type}")
+                except sqlite3.OperationalError as exc:
+                    if 'duplicate column name' not in str(exc).lower():
+                        raise
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_intent_content ON intent_events(content_id)"
         )
