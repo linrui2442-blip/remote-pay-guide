@@ -117,6 +117,22 @@ def complete_github_execution(result_id, job, client=None, *, human_authorized_r
         try:
             current = get_result(result_id)
             if current and current.get("promotion_state") in {"intent", "submitted", "running"}:
+                if human_authorized_resume:
+                    if str(exc) == "Promotion dispatch outcome is ambiguous":
+                        bounded_error = "PROMOTION_DISPATCH_OUTCOME_AMBIGUOUS"
+                    try:
+                        promotion_metadata = json.loads(current.get("promotion_metadata") or "{}")
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        promotion_metadata = {}
+                    if promotion_metadata.get("recovery_required"):
+                        bounded_error = "PROMOTION_POST_OUTCOME_REQUIRES_RECOVERY"
+                    elif str(exc) != "Promotion dispatch outcome is ambiguous":
+                        bounded_error = "HUMAN_PROMOTION_RESUME_FAILED"
+                    # Keep the durable recovery state untouched and return a
+                    # secret-safe diagnostic to the explicit human caller.
+                    returned = dict(current)
+                    returned["error"] = bounded_error
+                    return returned
                 # A failure after intent/POST is recoverable state, not a
                 # license to issue another POST. Keep the result running so a
                 # restart can correlate the exact remote run and finalize it.

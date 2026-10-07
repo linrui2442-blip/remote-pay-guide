@@ -182,8 +182,23 @@ def poll_claimed_promotion(*, result_id, job, source_run_id, artifact, parameter
         if current['promotion_state'] == 'intent' and not intent.get('promotion_run_id') and not intent.get('recovery_required') and not intent.get('human_resume_post_claimed_at'):
             # A prior POST with no saved run ID is ambiguous.  Only a clean
             # pre-dispatch snapshot may consume this one explicit manual claim.
-            observed = monitor.snapshot_run_ids(PROMOTION_WORKFLOW, 'main')
-            if observed - set(intent['pre_dispatch_run_ids']):
+            try:
+                # Reuse the canonical candidate semantics: a run must be both
+                # absent from the pre-dispatch snapshot and created at/after
+                # the durable promotion start timestamp.  A stale API page
+                # can reveal historical runs after the intent was persisted;
+                # those must not block the one human POST opportunity.
+                monitor.discover_run(
+                    workflow=intent['workflow'],
+                    branch=intent['branch'],
+                    pre_dispatch_run_ids=intent['pre_dispatch_run_ids'],
+                    dispatch_started_at=intent['promotion_started_at'],
+                    max_attempts=1,
+                    poll_interval=0,
+                )
+            except TimeoutError:
+                pass
+            else:
                 raise ValueError('Promotion dispatch outcome is ambiguous')
             winner = claim_human_promotion_resume(result_id, expected_intent=expected)
             current = get_result(result_id)
