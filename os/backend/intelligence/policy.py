@@ -68,10 +68,31 @@ def evaluate_policy_signals(plan_record, signals):
     if novelty=='BLOCK': reasons.append('NOVELTY_BLOCK')
     elif novelty=='WARN': reasons.append('NOVELTY_WARN')
     elif novelty=='PASS': reasons.append('NOVELTY_PASS')
+    warn_reasons = {
+        'safety': 'CONTENT_SAFETY_WARN',
+        'novelty': 'NOVELTY_WARN',
+        'duplicate_risk': 'DUPLICATE_RISK_WARN',
+        'account_health': 'ACCOUNT_HEALTH_WARN',
+        'platform_health': 'PLATFORM_HEALTH_WARN',
+        'business': 'BUSINESS_POLICY_WARN',
+        'ai_confidence': 'AI_CONFIDENCE_WARN',
+    }
+    unknown_reasons = {
+        'safety': 'CONTENT_SAFETY_UNKNOWN',
+        'novelty': 'NOVELTY_UNKNOWN',
+        'duplicate_risk': 'DUPLICATE_RISK_UNKNOWN',
+        'account_health': 'ACCOUNT_HEALTH_UNKNOWN',
+        'platform_health': 'PLATFORM_HEALTH_UNKNOWN',
+        'business': 'BUSINESS_POLICY_UNKNOWN',
+        'ai_confidence': 'AI_CONFIDENCE_UNKNOWN',
+    }
     for key in CONTENT_PLAN_REQUIRED_GATES:
         if gates[key]=='BLOCK': reasons.append({'duplicate_risk':'DUPLICATE_BLOCK','account_health':'ACCOUNT_HARD_FAILURE','platform_health':'PLATFORM_HARD_FAILURE'}.get(key,key.upper()+'_BLOCK'))
-        elif gates[key] in {'UNKNOWN','WARN'}:
-            reasons.append({'duplicate_risk':'DUPLICATE_RISK_UNKNOWN','account_health':'ACCOUNT_HEALTH_UNKNOWN','platform_health':'PLATFORM_HEALTH_UNKNOWN','business':'BUSINESS_POLICY_UNKNOWN','ai_confIDENCE':'AI_CONFIDENCE_UNKNOWN','ai_confidence':'AI_CONFIDENCE_UNKNOWN'}.get(key,key.upper()+'_UNKNOWN'))
+        elif gates[key]=='WARN':
+            # Novelty already emitted its explicit WARN above. Preserve one
+            # semantically accurate reason without changing WARN => REVIEW.
+            if key != 'novelty': reasons.append(warn_reasons[key])
+        elif gates[key]=='UNKNOWN': reasons.append(unknown_reasons[key])
     if invalid_deferred: reasons.append('DEFERRED_GATE_INVALID')
     if any(gates[k]=='BLOCK' for k in CONTENT_PLAN_REQUIRED_GATES) or any(x in reasons for x in ('PLAN_NOT_ACTIONABLE','CONTENT_SAFETY_BLOCK','NOVELTY_BLOCK')): decision='BLOCK'
     elif invalid_deferred or any(gates[k] in {'UNKNOWN','WARN'} for k in CONTENT_PLAN_REQUIRED_GATES) or plan_record.get('status')=='approved': decision='REVIEW'

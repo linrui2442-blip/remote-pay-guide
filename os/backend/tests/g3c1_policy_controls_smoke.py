@@ -11,7 +11,14 @@ def main():
     db=sqlite3.connect(os.environ['OS_DATABASE_PATH']); db.execute('CREATE TABLE intelligence_policy_overrides (id INTEGER PRIMARY KEY AUTOINCREMENT, content_plan_id INTEGER NOT NULL, content_plan_revision INTEGER NOT NULL, policy_decision_id INTEGER NOT NULL, original_decision TEXT NOT NULL, override_decision TEXT NOT NULL, reason TEXT NOT NULL, actor TEXT NOT NULL, created_at TEXT NOT NULL, superseded_at TEXT, cleared_at TEXT)'); db.execute("INSERT INTO intelligence_policy_overrides(content_plan_id,content_plan_revision,policy_decision_id,original_decision,override_decision,reason,actor,created_at) VALUES(1,1,1,'REVIEW','AUTO','old','local_operator','now')"); db.commit(); db.close(); autonomy.get_autonomy_settings(); db=sqlite3.connect(os.environ['OS_DATABASE_PATH']); cols={r[1] for r in db.execute('PRAGMA table_info(intelligence_policy_overrides)')}; assert {'clear_reason','cleared_by'}<=cols and db.execute('SELECT COUNT(*) FROM intelligence_policy_overrides').fetchone()[0]==1; db.close(); print('OLD_SCHEMA_UPGRADE_PASS=PASS'); print('OLD_OVERRIDE_ROWS_PRESERVED=PASS'); autonomy._conn().close(); print('SCHEMA_BOOTSTRAP_IDEMPOTENT=PASS')
     p=save_plan(make_plan('g3c1'),1); base={'safety':'PASS','novelty':'PASS','duplicate_risk':'PASS','account_health':'PASS','platform_health':'PASS','frequency':'UNKNOWN','business':'UNKNOWN','quality':'UNKNOWN','cost':'UNKNOWN','ai_confidence':'UNKNOWN'}
     assert policy.evaluate_policy_signals(p,base)['decision']=='REVIEW'; print('REAL_CANONICAL_DECISION=REVIEW')
-    assert policy.evaluate_policy_signals(p,dict(base,novelty='WARN',duplicate_risk='WARN'))['decision']=='REVIEW'; assert policy.evaluate_policy_signals(p,dict(base,novelty='BLOCK',duplicate_risk='BLOCK'))['decision']=='BLOCK'; print('NOVELTY_TO_DUPLICATE_MAPPING=PASS')
+    warned=policy.evaluate_policy_signals(p,dict(base,novelty='WARN',duplicate_risk='WARN',business='WARN'))
+    assert warned['decision']=='REVIEW'
+    assert 'NOVELTY_WARN' in warned['reason_codes'] and 'NOVELTY_UNKNOWN' not in warned['reason_codes']
+    assert 'DUPLICATE_RISK_WARN' in warned['reason_codes'] and 'DUPLICATE_RISK_UNKNOWN' not in warned['reason_codes']
+    assert 'BUSINESS_POLICY_WARN' in warned['reason_codes'] and 'BUSINESS_POLICY_UNKNOWN' not in warned['reason_codes']
+    unknown=policy.evaluate_policy_signals(p,dict(base,novelty='UNKNOWN',duplicate_risk='UNKNOWN',business='UNKNOWN'))
+    assert unknown['decision']=='REVIEW' and {'NOVELTY_UNKNOWN','DUPLICATE_RISK_UNKNOWN','BUSINESS_POLICY_UNKNOWN'} <= set(unknown['reason_codes'])
+    assert policy.evaluate_policy_signals(p,dict(base,novelty='BLOCK',duplicate_risk='BLOCK'))['decision']=='BLOCK'; print('NOVELTY_TO_DUPLICATE_MAPPING=PASS'); print('WARN_REASON_TAXONOMY=PASS'); print('POLICY_DECISION_SEMANTICS_UNCHANGED=PASS')
     for f, expected in [({'conversions':1},'PASS'),({'referral_clicks':1},'PASS'),({'intent_events':1},'PASS'),({'performance_score':1},'WARN'),({},'WARN')]:
         snap={'feedback':f}; assert policy_signals._business(snap)[0]==expected
     assert policy_signals._business(None)[0]=='UNKNOWN'; print('BUSINESS_SIGNAL_TESTS=PASS')

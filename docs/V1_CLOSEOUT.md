@@ -37,6 +37,17 @@ official public readback PASS.
 - Full autonomous E2E: NOT_RUN; autonomy is disabled and the kill switch is
   active, while PolicyDecision #3 is REVIEW with effective authorization false.
 - A real ≥72-hour soak observation: NOT_RUN.
+- GA4 growth ingestion is bounded to `page_view` and
+  `binance_referral_click` intent rows. The website also emits
+  `payment_type_select`, `payer_type_select`, `exchange_status_select`, and
+  `new_to_exchange_identified`, but no canonical adapter currently classifies
+  and imports those qualified-intent events. No GA4-to-`conversion_records`
+  adapter exists. The missing boundary is a deterministic GA4 event taxonomy
+  and identity resolver that maps only registered events to canonical
+  `IntentEvent`/`ConversionRecord` fields (`content_id`, `platform`,
+  `account_id`, `platform_video_id`, and `campaign_id`) while preserving date,
+  account, and platform scoping. It must be implemented and proven with real
+  attributable data; synthetic production signals are prohibited.
 
 ## READY_FOR_AUTHORIZATION
 
