@@ -46,10 +46,12 @@ def main():
             raise AssertionError('fallback identity accepted')
         for turn in range(20):
             save_metric(AnalyticsMetric(video_id='platform-id', content_id='short-test', platform='youtube', account_id=account['id'], source='offline', views=100+turn, period_start='2026-09-01', period_end='2026-09-20'))
+            calls_before = len(provider.contexts)
             with ThreadPoolExecutor(max_workers=4) as pool:
                 rows = list(pool.map(lambda _: cycle(), range(4)))
             assert len({r['id'] for r in rows}) == 1
             final = cycle()
+            assert len(provider.contexts) == calls_before + 1
             assert final['learning_state'] == 'completed'
             plan = get_plan(final['learning_plan_id'])
             assert plan['status'] == 'preview' and plan['approved_revision'] is None
@@ -100,6 +102,7 @@ def main():
     print('G6_FAILURE_NO_GENERATION_RETRY=PASS')
     print('G6_EVIDENCE_WINDOW_FINGERPRINT=PASS')
     print('G6_BOUNDED_CREATIVE_HISTORY_CONTEXT=PASS')
+    print('G6_SINGLE_GENERATION_REQUEST=PASS')
 
 
 if __name__ == '__main__':

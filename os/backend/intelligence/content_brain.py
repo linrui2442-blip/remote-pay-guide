@@ -260,6 +260,15 @@ class LLMContentPlanProvider:
         model_snapshot = project_generation_snapshot(snapshot, context)
         prompt = build_content_brain_prompt(json.dumps(model_snapshot, ensure_ascii=False), "")
         prompt += "\nThese are observed measurements only. Zero measurements and absence of observed engagement are not causal evidence. Do not infer that the topic/category is inherently ineffective. The human brief remains the primary creative direction when provided."
+        if mode == "autonomous":
+            prompt += """
+
+AUTONOMOUS CREATIVE DIFFERENTIATION (REQUIRED)
+Before drafting, compare the proposed idea against every item in RECENT CREATIVE HISTORY. Internally identify each history item's primary concept, user problem, teaching objective, and action sequence; identify the same elements for the candidate; reject the candidate if it substantially repeats an existing core workflow; then choose a materially different primary user problem, teaching objective, primary concept, and action sequence before emitting the final plan.
+
+Shared unavoidable domain vocabulary such as stablecoin, payment, client, freelancer, USDT, or USDC is acceptable. However, do not produce a paraphrase of the same operational concept bundle or checklist. Changing wording, hook style, title style, or visual treatment alone is not sufficient novelty. When recent history already covers an operational concept, teach a distinct decision, mistake, workflow stage, risk, recordkeeping need, preparation step, or post-payment action.
+
+Preserve the successful business signal or audience need from the real feedback and strategy while varying the educational concept being tested. Treat the observed association as non-causal: do not claim that a previous creative caused qualified user or referral intent. Perform the differentiation privately and return only one final JSON ContentPlan; do not output the comparison or intermediate reasoning."""
         if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints. Do not positively recommend, promise, instruct, or endorse anything listed in must_avoid. A clearly negated safety warning is allowed, but avoid mentioning must_avoid concepts unnecessarily. Every item in human_constraints.must_include is a required phrase. Each required phrase must appear explicitly, using its wording, in at least one generated topic, angle, hook, script, cta, title, or description field. A paraphrase alone does not satisfy a required phrase.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
         prompt += "\n\nReturn exactly one valid JSON object with string fields topic, angle, target_audience, hook, script, cta, title, description, production_notes, visual_direction, reasoning_summary, strategy_type and hashtags as list[str]. No markdown or prose outside JSON."
         from ai.models import AIRequest

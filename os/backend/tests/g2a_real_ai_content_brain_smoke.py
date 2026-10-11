@@ -56,8 +56,22 @@ def main():
     captured = provider(GOOD).text_provider.session.calls if hasattr(provider(GOOD).text_provider.session,'calls') else []
     assert directed.human_brief
     print('DIRECTED_MODE_TEST=PASS'); print('HUMAN_BRIEF_PROMPT_TEST=PASS'); print('LOCKED_TOPIC_TEST=PASS'); print('LOCKED_AUDIENCE_TEST=PASS'); print('MUST_AVOID_TEST=PASS')
-    auto = provider(GOOD).generate_content_plan({'id':3},{})
-    assert auto.generation_mode=='autonomous'; print('AUTONOMOUS_MODE_TEST=PASS')
+    prompt_provider = provider(GOOD)
+    history = [
+        {'content_id':'short11','topic':'Choose the correct network and receiving address','angle':'network/address/test-transfer','hook':'Check the network first.','visual_direction':'Network checklist'},
+        {'content_id':'verify-payment','topic':'Verify a payment arrived','angle':'receiving-side confirmation','hook':'A screenshot is not proof.','visual_direction':'Deposit history'},
+    ]
+    auto = prompt_provider.generate_content_plan({'id':3},{'novelty_history':history})
+    assert auto.generation_mode=='autonomous'
+    assert len(prompt_provider.text_provider.session.calls) == 1
+    prompt = prompt_provider.text_provider.session.calls[0][1]['json']['messages'][0]['content']
+    assert 'RECENT CREATIVE HISTORY' in prompt and 'Choose the correct network and receiving address' in prompt
+    assert 'wording, hook style, title style, or visual treatment alone is not sufficient novelty' in prompt
+    assert 'materially different primary user problem, teaching objective, primary concept, and action sequence' in prompt
+    assert 'Shared unavoidable domain vocabulary such as stablecoin, payment, client, freelancer, USDT, or USDC is acceptable' in prompt
+    assert 'Preserve the successful business signal or audience need' in prompt and 'observed association as non-causal' in prompt
+    assert all(term not in prompt for term in ('0.25', 'concept_overlap', 'jaccard', 'policy AUTO', 'G3'))
+    print('AUTONOMOUS_MODE_TEST=PASS'); print('AUTONOMOUS_CREATIVE_DIFFERENTIATION_PROMPT=PASS'); print('TEXT_PROVIDER_REQUESTS=1')
     badlocks = {**GOOD, 'topic':'Why Bitcoin may rise', 'target_audience':'crypto traders'}
     fixed = provider(badlocks).generate_content_plan({'id':4},{'human_constraints':{'topic':GOOD['topic'],'target_audience':GOOD['target_audience'],'locked_fields':['topic','target_audience']}})
     assert fixed.topic==GOOD['topic'] and fixed.target_audience==GOOD['target_audience']; print('PRODUCTION_SPEC_INJECTION_TEST=PASS')
