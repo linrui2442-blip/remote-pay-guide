@@ -212,18 +212,24 @@ def record_conversion(record):
     result = _serialize_conversion(row); result["created"] = True; result["duplicate"] = False; return result
 
 
+def _parse_occurred_date(value):
+    raw = str(value)
+    try:
+        if len(raw) == 8 and raw.isdecimal():
+            return datetime.strptime(raw, "%Y%m%d").date()
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
 def _in_date_range(value, start_date=None, end_date=None):
     if not start_date and not end_date:
         return True
     if not value:
         return False
-    try:
-        occurred = datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
-    except ValueError:
-        try:
-            occurred = date.fromisoformat(str(value)[:10])
-        except ValueError:
-            return False
+    occurred = _parse_occurred_date(value)
+    if occurred is None:
+        return False
     return (
         (not start_date or occurred >= date.fromisoformat(start_date))
         and (not end_date or occurred <= date.fromisoformat(end_date))

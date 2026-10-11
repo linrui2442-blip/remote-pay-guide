@@ -2,6 +2,7 @@
 import os
 import sys
 import tempfile
+import hashlib
 from pathlib import Path
 
 DB = Path(tempfile.gettempdir()) / "remote-pay-guide-d9-r44.db"
@@ -12,7 +13,8 @@ os.environ["OS_GA4_PROPERTY_ID"] = "123456"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from attribution import ga4
-from data.growth import get_content_funnel, get_intent_events
+from data.growth import get_content_funnel, get_intent_events, record_intent
+from data.models import IntentEvent
 from intelligence.feedback import analyze_feedback
 from intelligence.policy_signals import _business
 
@@ -41,6 +43,15 @@ ga4.get_publish_tasks = lambda: [{"video_id": "short04", "platform": "youtube", 
 assert ga4.readiness(FakeClient())["ready"] is True
 assert ga4.readiness(FakeClient())["enabled"] is False
 os.environ["OS_GA4_DATA_INGEST_ENABLED"] = "true"
+assert ga4._canonical_reporting_date("20260912") == "2026-09-12"
+assert ga4._canonical_reporting_date("2026-09-12") == "2026-09-12"
+for invalid_date in ("20261399", "2026091", "not-a-date"):
+    try:
+        ga4._canonical_reporting_date(invalid_date)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("malformed GA4 reporting dates must be rejected")
 try:
     ga4.sync("20260901", "20261201", client=FakeClient(), dry_run=True)
 except ValueError:
@@ -48,6 +59,16 @@ except ValueError:
 else:
     raise AssertionError("date ranges over 90 days must fail")
 
+raw_date = "20260912"
+replay_event_id = "ga4:" + hashlib.sha256(
+    f"123456:{raw_date}:binance_referral_click:short04:yt_short04".encode()
+).hexdigest()
+record_intent(IntentEvent(
+    content_id="short04", event_type="binance_referral_click",
+    event_id=replay_event_id, source="ga4_data_api", account_id=1,
+    platform="youtube", platform_video_id="yt-04", event_count=1,
+    occurred_at=raw_date, metadata={"reporting_date": raw_date},
+))
 first = ga4.sync("2026-09-12", "2026-09-12", client=FakeClient())
 assert first["rows_read"] == 7 and first["upserted"] == 6
 assert first["skipped_unattributed"] == 1
@@ -57,6 +78,11 @@ second = ga4.sync("2026-09-12", "2026-09-12", client=FakeClient())
 assert second["upserted"] == 6
 rows = get_intent_events("short04", platform="youtube", account_id=1)
 assert len(rows) == 6
+replayed = next(row for row in rows if row["event_id"] == replay_event_id)
+assert replayed["occurred_at"] == "2026-09-12"
+assert replayed["event_count"] == 3
+assert replayed["metadata"]["reporting_date"] == "2026-09-12"
+assert replayed["metadata"]["ga4_reporting_date_raw"] == raw_date
 funnel = get_content_funnel("short04", platform="youtube", account_id=1)
 assert funnel["intent"]["total"] == 23
 assert funnel["intent"]["qualified_total"] == 5
@@ -69,6 +95,9 @@ engagement_only={"intent":{"total":27,"by_type":{"landing_view":7,"payment_type_
 engagement_feedback=analyze_feedback({"video_id":"engagement", "performance":{"views":100}, "funnel":engagement_only})
 assert engagement_feedback.intent_events == 0
 assert _business({"feedback":engagement_feedback.__dict__})[0] == "WARN"
+matching = get_content_funnel("short04", "2026-09-12", "2026-09-12", platform="youtube", account_id=1)
+assert matching["intent"]["total"] == 23
+assert matching["intent"]["qualified_total"] == 5
 assert get_content_funnel("short04", "2026-09-13", "2026-09-13", platform="youtube", account_id=1)["intent"]["total"] == 0
 assert get_content_funnel("short04", platform="facebook", account_id=1)["intent"]["total"] == 0
 assert get_content_funnel("short04", platform="youtube", account_id=2)["intent"]["total"] == 0
@@ -79,4 +108,13 @@ FakeClient.referral_count = 6
 ga4.sync("2026-09-12", "2026-09-12", client=FakeClient())
 assert get_content_funnel("short04", platform="youtube", account_id=1)["intent"]["by_type"]["binance_referral_click"] == 6
 assert len(get_intent_events("short04", platform="youtube", account_id=1)) == 6
+record_intent(IntentEvent(
+    content_id="legacy-short04", event_type="referral_click",
+    event_id="legacy-ga4-compact-date", source="ga4_data_api",
+    account_id=1, platform="youtube", platform_video_id="legacy-yt-04",
+    event_count=2, occurred_at="20260912", metadata={},
+))
+legacy_match = get_intent_events("legacy-short04", "2026-09-12", "2026-09-12", platform="youtube", account_id=1)
+assert len(legacy_match) == 1 and legacy_match[0]["occurred_at"] == "20260912"
+assert get_intent_events("legacy-short04", "2026-09-13", "2026-09-13", platform="youtube", account_id=1) == []
 print("GA4 Data Center ingestion contract smoke test passed")

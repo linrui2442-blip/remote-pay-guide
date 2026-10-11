@@ -5,7 +5,7 @@ The service is disabled by default and accepts an injectable client for tests.
 """
 import hashlib
 import os
-from datetime import date
+from datetime import date, datetime
 
 from data.growth import record_intent
 from data.models import IntentEvent
@@ -42,6 +42,18 @@ def _parse_date(value, name):
         return date.fromisoformat(str(value))
     except (TypeError, ValueError):
         raise ValueError(f"{name} must be ISO date YYYY-MM-DD") from None
+
+
+def _canonical_reporting_date(value):
+    raw = str(value)
+    try:
+        if len(raw) == 8 and raw.isdecimal():
+            return datetime.strptime(raw, "%Y%m%d").date().isoformat()
+        if len(raw) == 10:
+            return date.fromisoformat(raw).isoformat()
+    except ValueError:
+        pass
+    raise ValueError("GA4 reporting date must be YYYYMMDD or YYYY-MM-DD")
 
 
 def _validate_range(start_date, end_date):
@@ -141,7 +153,14 @@ def _rows(response):
         except (TypeError, ValueError): raise ValueError("GA4 eventCount is invalid") from None
         if count < 0: raise ValueError("GA4 eventCount cannot be negative")
         if len(values) < 4: raise ValueError("GA4 row is missing dimensions")
-        yield {"date": values[0], "event_name": values[1], "content_id": values[2], "src": values[3], "event_count": count}
+        yield {
+            "raw_date": values[0],
+            "date": _canonical_reporting_date(values[0]),
+            "event_name": values[1],
+            "content_id": values[2],
+            "src": values[3],
+            "event_count": count,
+        }
 
 
 def _resolve(content_id, src):
@@ -176,8 +195,8 @@ def sync(start_date, end_date, *, client=None, dry_run=False, limit=1000):
         identity = _resolve(row["content_id"], row["src"])
         if not identity: result["skipped_ambiguous"] += 1; continue
         result["resolved"] += 1
-        event_id = "ga4:" + hashlib.sha256(f"{_property_id()}:{row['date']}:{row['event_name']}:{row['content_id']}:{row['src']}".encode()).hexdigest()
-        event = IntentEvent(content_id=row["content_id"], event_type=event_type, event_id=event_id, source="ga4_data_api", account_id=identity["account_id"], platform=identity["platform"], platform_video_id=identity["platform_video_id"], event_count=row["event_count"], occurred_at=row["date"], metadata={"ga4_event_name": row["event_name"], "reporting_date": row["date"], "raw_src": row["src"]})
+        event_id = "ga4:" + hashlib.sha256(f"{_property_id()}:{row['raw_date']}:{row['event_name']}:{row['content_id']}:{row['src']}".encode()).hexdigest()
+        event = IntentEvent(content_id=row["content_id"], event_type=event_type, event_id=event_id, source="ga4_data_api", account_id=identity["account_id"], platform=identity["platform"], platform_video_id=identity["platform_video_id"], event_count=row["event_count"], occurred_at=row["date"], metadata={"ga4_event_name": row["event_name"], "reporting_date": row["date"], "ga4_reporting_date_raw": row["raw_date"], "raw_src": row["src"]})
         if dry_run: result["would_upsert"] += 1
         else: record_intent(event); result["upserted"] += 1
     return result
