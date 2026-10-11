@@ -28,11 +28,18 @@ conn.execute('INSERT INTO intelligence_content_plans VALUES(1,?,?,?)',('canonica
 conn.execute('INSERT INTO production_results VALUES(1,?,?)',('canonical-produced','completed'))
 conn.execute('INSERT INTO intelligence_content_plans VALUES(2,?,?,?)',('preview-only','preview',json.dumps(payload)))
 conn.commit(); conn.close()
-from intelligence.novelty import novelty_history
+from intelligence.novelty import novelty_history, bounded_creative_history
 rows=novelty_history('candidate-id'); ids={row['content_id'] for row in rows}
 assert 'canonical-produced' in ids and 'preview-only' not in ids
 assert len(ids)==len(rows)
 assert 'canonical-produced' not in {row['content_id'] for row in novelty_history('canonical-produced')}
+creative=bounded_creative_history('candidate-id')
+canonical=next(row for row in creative if row['content_id']=='canonical-produced')
+assert canonical == {'content_id':'canonical-produced','topic':'Canonical payment topic','angle':'Canonical angle','hook':'Hook','visual_direction':''}
+assert len(creative) <= 20 and creative == bounded_creative_history('candidate-id')
+assert 'canonical-produced' not in {row['content_id'] for row in bounded_creative_history('canonical-produced')}
+assert all(set(row)=={'content_id','topic','angle','hook','visual_direction'} for row in creative)
 print('CANONICAL_PRODUCTION_NOVELTY_HISTORY=PASS')
 print('NOVELTY_SELF_COMPARISON_EXCLUDED=PASS')
+print('BOUNDED_CREATIVE_HISTORY=PASS')
 db.unlink(missing_ok=True)

@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from intelligence.scoring import calculate_score
+from data.growth import QUALIFIED_INTENT_TYPES
 
 
 @dataclass
@@ -86,9 +87,15 @@ def _growth_signals(data: Any):
     intent = funnel.get("intent") or {}
     conversion = funnel.get("conversion") or {}
     intent_by_type = intent.get("by_type") or {}
+    qualified_total = intent.get("qualified_total")
+    if qualified_total is None:
+        qualified_total = sum(
+            _number(count) for event_type, count in intent_by_type.items()
+            if event_type in QUALIFIED_INTENT_TYPES
+        )
 
     return {
-        "intent_events": _number(intent.get("total")),
+        "intent_events": _number(qualified_total),
         "referral_clicks": _number(intent_by_type.get("binance_referral_click")),
         "conversions": _number(conversion.get("total")),
         "conversion_value": _float(conversion.get("value")),

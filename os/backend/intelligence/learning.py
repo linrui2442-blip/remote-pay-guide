@@ -19,6 +19,7 @@ from intelligence.content_brain import select_content_plan_provider, save_plan, 
 from intelligence.feedback import analyze_feedback
 from intelligence.strategy import build_production_strategy
 from intelligence.policy import evaluate_policy
+from intelligence.novelty import bounded_creative_history
 from ai.providers.text import TextProviderError
 
 
@@ -135,12 +136,16 @@ def prepare_feedback_snapshot(account_id, platform, start_date, end_date, *, now
     fingerprint = hashlib.sha256(_json(evidence).encode()).hexdigest()
     evidence['fingerprint'] = fingerprint
     totals = {k: sum(r.get(k) or 0 for r in rows) for k in ('views', 'likes', 'comments', 'shares', 'watch_time')}
-    funnel = {'intent': {'total': 0, 'by_type': {}}, 'conversion': {'total': 0, 'value': 0}}
+    funnel = {'intent': {'total': 0, 'qualified_total': 0, 'by_type': {}, 'qualified_by_type': {}},
+              'conversion': {'total': 0, 'value': 0}}
     for item in funnels.values():
         intent, conversion = item.get('intent', {}), item.get('conversion', {})
         funnel['intent']['total'] += intent.get('total', 0)
+        funnel['intent']['qualified_total'] += intent.get('qualified_total', 0)
         for key, value in intent.get('by_type', {}).items():
             funnel['intent']['by_type'][key] = funnel['intent']['by_type'].get(key, 0) + value
+        for key, value in intent.get('qualified_by_type', {}).items():
+            funnel['intent']['qualified_by_type'][key] = funnel['intent']['qualified_by_type'].get(key, 0) + value
         for key in ('total', 'value'):
             funnel['conversion'][key] += conversion.get(key, 0)
     row = dict(totals, content_id=rows[0]['content_id'], platform_video_id=rows[0]['platform_video_id'],
@@ -181,7 +186,9 @@ def run_feedback_cycle(account_id, platform, start_date, end_date, *, provider=N
     if not won:
         return _state(sid)
     try:
-        plan = (provider or select_content_plan_provider()).generate_content_plan(snapshot, {'strategy': snapshot['strategy'], 'content_id': content_id})
+        context = {'strategy': snapshot['strategy'], 'content_id': content_id,
+                   'novelty_history': bounded_creative_history(content_id)}
+        plan = (provider or select_content_plan_provider()).generate_content_plan(snapshot, context)
         plan.content_id = content_id
         plan.source_snapshot_id = sid
         plan.source_content_id = snapshot['content_id']
@@ -241,8 +248,9 @@ def recover_feedback_generation(snapshot_id, *, provider=None):
             raise ValueError('FEEDBACK_RECOVERY_CLAIM_LOST')
     try:
         snapshot = bridge.get_feedback_snapshot(sid)
-        plan = (provider or select_content_plan_provider()).generate_content_plan(
-            snapshot, {'strategy': snapshot['strategy'], 'content_id': content_id})
+        context = {'strategy': snapshot['strategy'], 'content_id': content_id,
+                   'novelty_history': bounded_creative_history(content_id)}
+        plan = (provider or select_content_plan_provider()).generate_content_plan(snapshot, context)
         plan.content_id = content_id
         plan.source_snapshot_id = sid
         plan.source_content_id = snapshot['content_id']

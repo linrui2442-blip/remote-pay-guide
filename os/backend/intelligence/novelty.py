@@ -30,7 +30,12 @@ def _canonical_production_history():
         try: payload=json.loads(row['payload_json'] or '{}')
         except (TypeError, ValueError, json.JSONDecodeError): continue
         history.append({
+            '_canonical_id': row['id'],
             'content_id': row['content_id'],
+            'topic': str(payload.get('topic') or ''),
+            'angle': str(payload.get('angle') or ''),
+            'hook': str(payload.get('hook') or ''),
+            'visual_direction': str(payload.get('visual_direction') or ''),
             'video_subject': f"{payload.get('topic','')} {payload.get('angle','')}".strip(),
             'video_script': '\n'.join(str(payload.get(key) or '') for key in ('hook','script','cta')),
         })
@@ -42,6 +47,30 @@ def novelty_history(candidate_content_id=None):
         identity=str(item.get('content_id') or '').strip()
         if identity and identity != candidate_content_id: by_identity[identity]=item
     return [by_identity[key] for key in sorted(by_identity)]
+
+def bounded_creative_history(candidate_content_id=None, limit=20):
+    """Creative-only prompt context, newest canonical production first."""
+    limit=max(1, min(int(limit or 20), 20))
+    canonical=sorted(_canonical_production_history(), key=lambda item:item['_canonical_id'], reverse=True)
+    legacy=[]
+    for item in mod.scan_tasks(ROOT/'video-factory'):
+        script=str(item.get('video_script') or '')
+        legacy.append({
+            'content_id': item.get('content_id'),
+            'topic': str(item.get('video_subject') or ''),
+            'angle': '',
+            'hook': script.splitlines()[0][:500] if script else '',
+            'visual_direction': '',
+        })
+    selected=[]; seen=set()
+    for item in [*canonical, *sorted(legacy,key=lambda row:str(row.get('content_id') or ''))]:
+        identity=str(item.get('content_id') or '').strip()
+        if not identity or identity == candidate_content_id or identity in seen: continue
+        seen.add(identity)
+        selected.append({key:str(item.get(key) or '') for key in
+                         ('content_id','topic','angle','hook','visual_direction')})
+        if len(selected) == limit: break
+    return selected
 
 def evaluate_content_plan_novelty(plan):
     histories=novelty_history(plan.content_id)

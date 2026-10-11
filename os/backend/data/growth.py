@@ -8,6 +8,13 @@ from analytics.manager import get_latest_content_metrics
 from data.models import ConversionRecord, IntentEvent
 
 
+QUALIFIED_INTENT_TYPES = frozenset({
+    "new_to_exchange_identified",
+    "binance_referral_click",
+    "referral_click",
+})
+
+
 DB_PATH = database_path()
 
 
@@ -271,6 +278,10 @@ def get_content_funnel(content_id, start_date=None, end_date=None, platform=None
     for event in intent:
         event_type = event.get("event_type") or "unknown"
         intent_by_type[event_type] = intent_by_type.get(event_type, 0) + int(event.get("event_count") or 1)
+    qualified_by_type = {
+        event_type: count for event_type, count in intent_by_type.items()
+        if event_type in QUALIFIED_INTENT_TYPES
+    }
 
     conversion_by_type = {}
     for record in conversions:
@@ -291,7 +302,9 @@ def get_content_funnel(content_id, start_date=None, end_date=None, platform=None
         },
         "intent": {
             "total": sum(int(item.get("event_count") or 1) for item in intent),
+            "qualified_total": sum(qualified_by_type.values()),
             "by_type": intent_by_type,
+            "qualified_by_type": qualified_by_type,
         },
         "conversion": {
             "total": sum(int(item.get("event_count") or 1) for item in conversions),
@@ -313,6 +326,10 @@ def get_funnel_summary():
         "views": _sum_metric(traffic, "views"),
         "clicks": _sum_metric(traffic, "clicks"),
         "intent_events": sum(int(item.get("event_count") or 1) for item in intent),
+        "qualified_intent_events": sum(
+            int(item.get("event_count") or 1) for item in intent
+            if item.get("event_type") in QUALIFIED_INTENT_TYPES
+        ),
         "referral_clicks": sum(int(item.get("event_count") or 1) for item in intent if item.get("event_type") == "binance_referral_click"),
         "conversions": sum(int(item.get("event_count") or 1) for item in conversions),
         "conversion_value": sum((item.get("value") or 0) for item in conversions),

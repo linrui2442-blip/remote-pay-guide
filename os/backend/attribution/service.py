@@ -9,7 +9,11 @@ from attribution.adapters import get_conversion_adapter, list_conversion_adapter
 
 MAX_METADATA_BYTES = 8192
 MAX_SKEW_SECONDS = 300
-ALLOWED_INTENT_TYPES = {"landing_view", "cta_click", "referral_click", "binance_referral_click"}
+ALLOWED_INTENT_TYPES = {
+    "landing_view", "payment_type_select", "payer_type_select",
+    "exchange_status_select", "new_to_exchange_identified",
+    "binance_referral_click", "referral_click", "cta_click",
+}
 
 def _secret(): return os.getenv("OS_ATTRIBUTION_INGEST_SECRET")
 def _destination(key):

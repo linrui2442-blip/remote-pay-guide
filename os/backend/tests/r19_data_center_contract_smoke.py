@@ -119,6 +119,7 @@ def main():
     assert funnel['traffic']['views'] == 120
     assert funnel['traffic']['clicks'] == 12
     assert funnel['intent']['total'] == 2
+    assert funnel['intent']['qualified_total'] == 1
     assert funnel['intent']['by_type']['binance_referral_click'] == 1
     assert funnel['conversion']['total'] == 1
     assert funnel['conversion']['value'] == 1
@@ -136,7 +137,7 @@ def main():
             'funnel': funnel,
         }
     )
-    assert feedback.intent_events == 2
+    assert feedback.intent_events == 1
     assert feedback.referral_clicks == 1
     assert feedback.conversions == 1
     assert 'attributed conversion observed' in feedback.successful_patterns

@@ -13,7 +13,14 @@ from publish.manager import get_publish_tasks
 from data.tracking import get_tracking_records
 
 MAX_DAYS = 90
-EVENTS = {"page_view": "landing_view", "binance_referral_click": "binance_referral_click"}
+EVENTS = {
+    "page_view": "landing_view",
+    "payment_type_select": "payment_type_select",
+    "payer_type_select": "payer_type_select",
+    "exchange_status_select": "exchange_status_select",
+    "new_to_exchange_identified": "new_to_exchange_identified",
+    "binance_referral_click": "binance_referral_click",
+}
 DIMENSIONS = ("date", "eventName", "customEvent:content_id", "customEvent:src")
 METRIC = "eventCount"
 
@@ -157,12 +164,14 @@ def sync(start_date, end_date, *, client=None, dry_run=False, limit=1000):
     if not ready["ready"]: raise RuntimeError(ready["reason"] or "GA4 metadata contract is unavailable")
     api = GA4DataAPIClient(client)
     response = api.run_report(start_date, end_date, limit=min(limit, 1000), offset=0)
-    result = {"rows_read": 0, "landing_rows": 0, "referral_rows": 0, "resolved": 0, "skipped_unattributed": 0, "skipped_ambiguous": 0, "would_upsert": 0, "upserted": 0}
+    result = {"rows_read": 0, "landing_rows": 0, "referral_rows": 0, "resolved": 0, "skipped_unattributed": 0, "skipped_ambiguous": 0, "would_upsert": 0, "upserted": 0, "event_rows_by_type": {}}
     for row in _rows(response):
         result["rows_read"] += 1
         event_type = EVENTS.get(row["event_name"])
         if not event_type: continue
-        result["landing_rows" if event_type == "landing_view" else "referral_rows"] += 1
+        result["event_rows_by_type"][event_type] = result["event_rows_by_type"].get(event_type, 0) + 1
+        if event_type == "landing_view": result["landing_rows"] += 1
+        if event_type in {"binance_referral_click", "referral_click"}: result["referral_rows"] += 1
         if not row["content_id"] or row["content_id"] == "unknown": result["skipped_unattributed"] += 1; continue
         identity = _resolve(row["content_id"], row["src"])
         if not identity: result["skipped_ambiguous"] += 1; continue

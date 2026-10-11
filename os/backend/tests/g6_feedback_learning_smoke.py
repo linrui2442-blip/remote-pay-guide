@@ -22,7 +22,12 @@ from intelligence.policy import get_current_policy_decision
 def main():
     account = create_account(Account(platform='youtube', account_name='offline', status='connected'))
     now = datetime(2026, 9, 30, tzinfo=timezone.utc)
-    provider = DeterministicContentPlanProvider()
+    class CapturingProvider(DeterministicContentPlanProvider):
+        def __init__(self): self.contexts=[]
+        def generate_content_plan(self, snapshot, context):
+            self.contexts.append(context)
+            return super().generate_content_plan(snapshot, context)
+    provider = CapturingProvider()
     def cycle():
         return run_feedback_cycle(account['id'], 'youtube', '2026-09-01', '2026-09-20', provider=provider, now=now)
     with patch.object(socket.socket, 'connect', side_effect=AssertionError('NETWORK_FORBIDDEN')):
@@ -50,6 +55,9 @@ def main():
             assert plan['status'] == 'preview' and plan['approved_revision'] is None
             assert plan['source_snapshot_id'] == final['id']
             assert get_current_policy_decision(plan['id'])['decision'] in {'AUTO', 'REVIEW', 'BLOCK'}
+            assert provider.contexts and 0 < len(provider.contexts[-1]['novelty_history']) <= 20
+            assert all(set(row)=={'content_id','topic','angle','hook','visual_direction'}
+                       for row in provider.contexts[-1]['novelty_history'])
             assert recover_feedback_policy(final['id']) == final
         with sqlite3.connect(TEST_DATABASE_PATH) as conn:
             assert conn.execute('SELECT COUNT(*) FROM intelligence_feedback_snapshots').fetchone()[0] == 20
@@ -91,6 +99,7 @@ def main():
     print('G6_NO_PRODUCTION_OR_PUBLISH=PASS')
     print('G6_FAILURE_NO_GENERATION_RETRY=PASS')
     print('G6_EVIDENCE_WINDOW_FINGERPRINT=PASS')
+    print('G6_BOUNDED_CREATIVE_HISTORY_CONTEXT=PASS')
 
 
 if __name__ == '__main__':
