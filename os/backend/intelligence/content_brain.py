@@ -198,7 +198,10 @@ def validate_human_directive_safety(human_brief="", human_constraints=None):
 
 
 def validate_generated_content_safety(data):
-    text = " ".join(str(data.get(k, "")) for k in ("topic", "angle", "hook", "script", "cta", "title", "description")).lower()
+    text = " ".join(str(data.get(k, "")) for k in (
+        "topic", "angle", "hook", "script", "cta", "title", "description",
+        "visual_direction", "production_notes",
+    )).lower()
     if not validate_safe_educational_crypto_text(text):
         raise ContentPlanGenerationError("unsafe content constraint")
     return True
@@ -269,6 +272,9 @@ Before drafting, compare the proposed idea against every item in RECENT CREATIVE
 Shared unavoidable domain vocabulary such as stablecoin, payment, client, freelancer, USDT, or USDC is acceptable. However, do not produce a paraphrase of the same operational concept bundle or checklist. Changing wording, hook style, title style, or visual treatment alone is not sufficient novelty. When recent history already covers an operational concept, teach a distinct decision, mistake, workflow stage, risk, recordkeeping need, preparation step, or post-payment action.
 
 Preserve the successful business signal or audience need from the real feedback and strategy while varying the educational concept being tested. Treat the observed association as non-causal: do not claim that a previous creative caused qualified user or referral intent. Perform the differentiation privately and return only one final JSON ContentPlan; do not output the comparison or intermediate reasoning."""
+            prompt += """
+
+Keep production_notes and visual_direction strictly about production execution and visual presentation. Do not place seed phrases, private keys, investment advice, trading recommendations, price predictions, guaranteed returns, or other prohibited crypto concepts in those metadata fields, including as examples of what the video should not show."""
         if mode == "directed": prompt += "\n\nHUMAN CREATIVE DIRECTIVE (HIGH PRIORITY)\nPreserve the user's intended topic, angle, audience and CTA direction. Expand rather than replace the idea. Obey must-avoid constraints. Do not positively recommend, promise, instruct, or endorse anything listed in must_avoid. A clearly negated safety warning is allowed, but avoid mentioning must_avoid concepts unnecessarily. Every item in human_constraints.must_include is a required phrase. Each required phrase must appear explicitly, using its wording, in at least one generated topic, angle, hook, script, cta, title, or description field. A paraphrase alone does not satisfy a required phrase.\nHUMAN BRIEF:\n" + brief + "\nHUMAN CONSTRAINTS:\n" + json.dumps(constraints, ensure_ascii=False)
         prompt += "\n\nReturn exactly one valid JSON object with string fields topic, angle, target_audience, hook, script, cta, title, description, production_notes, visual_direction, reasoning_summary, strategy_type and hashtags as list[str]. No markdown or prose outside JSON."
         from ai.models import AIRequest
