@@ -6,6 +6,31 @@ This document defines the canonical runtime and target architecture. The target 
 
 Source code is authoritative for actual behavior. `docs/PROJECT_STATUS.md` is authoritative for current state. This document is authoritative for intended canonical and target architecture. Supporting and historical documents cannot override those sources.
 
+## V1 architecture freeze
+
+V1 feature development is closed and the executable architecture is frozen at
+`af265df7403983107c1b141839a66c5def1359d9`. The product is a release candidate
+pending one controlled live autonomous public acceptance proof. Architecture
+or source may change before release only for a reproducible deterministic
+defect in canonical V1 behavior that violates the existing contract; that work
+must be labeled `V1_RELEASE_BLOCKER_FIX`. External provider failures, valid G3
+`REVIEW`/`BLOCK`, missing optional platform configuration, prompt optimization
+and additional platform/provider work do not reopen V1.
+
+The remaining acceptance proof uses the existing lifecycle only:
+
+```text
+fresh mature persisted analytics → one authorized G6 → real GPT ContentPlan
+→ raw g3-v2 AUTO → canonical GitHub production/promotion → G4-D PASS
+→ ready VideoAsset → g5-v1 AUTO → one YouTube upload session
+→ official public readback → autonomy disabled + kill switch active
+```
+
+If a fresh cohort legitimately produces `REVIEW` or `BLOCK`, or an external
+provider fails while the system fails closed, the opportunity is recorded and
+the next natural mature cohort is awaited. Thresholds, prompts and source are
+not changed merely to manufacture an `AUTO` result.
+
 ## Runtime boundary
 
 ```text
@@ -35,11 +60,11 @@ ContentPlan Policy Stage → Effective Authorization
 
 G4-A and G4-B are implemented and verified, including the G4-B real live
 GitHub render/artifact/Pages promotion proof. G4-C owns AI provider execution/
-polling and is offline-certified, with real provider proof pending configuration.
+polling and is offline-certified; its optional real provider proof is V1.1 work.
 G4-D is offline-certified and live-proven as the unified asset quality gate
 and promotion into VideoAsset: ProductionResult 4 passed `g4d-v1` and bound
 ready VideoAsset `asset-result-4`. G4-C real AI production is still pending
-configuration; the overall G4 milestone is not CLOSED.
+configuration and is V1.1 backlog; no G4-C live proof is claimed for V1.
 
 G6 uses `intelligence.learning.run_feedback_cycle()` to read persisted Data
 Center evidence for a mature account/platform window. It extends the existing
@@ -64,7 +89,7 @@ G8 accelerated soak is a test-only harness invoking those same learning and
 health functions in fresh processes against one isolated DB; it is not another
 scheduler. It samples policy/quality/review/intent counters without manufacturing
 production or publishing successes. A >=72h real end-to-end soak remains a
-separate authorization and release gate. G9 offline documentation/startup
+post-release operations activity, not a V1 release gate. G9 offline documentation/startup
 preparation does not close any pending live gate or constitute a v1.0 release.
 
 G4-B consumes an existing claimed RuntimeJob. Durable execution and promotion
@@ -144,7 +169,7 @@ G3 is an authorization layer only. Raw or effective `AUTO` does not approve, mat
 - `os/database/os.db`: runtime state, never disposable test output.
 - GitHub artifact → GitHub Pages → VideoAsset → official provider adapters: formal media/publishing path.
 
-The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. G4-C execution is offline-certified and awaits real AI production proof; G4-D asset quality is live-proven. G5 has a controlled human-authorized YouTube public proof, but Instagram/Facebook and autonomous publishing proofs remain pending.
+The deterministic ContentPlan provider is a development/fallback implementation behind the provider abstraction. A real OpenAI-compatible text provider and runtime provider selection are implemented, and the Sub2API + GPT-5.6 directed ContentPlan preview path has been verified through the canonical lifecycle. Human-directed and autonomous-compatible generation share this lifecycle; G3 policy-driven authorization, G4-A orchestration and G4-B GitHub execution are verified. G4-C execution is offline-certified and its real AI-video proof is V1.1 backlog; G4-D asset quality is live-proven. G5 has a controlled human-authorized YouTube public proof. Instagram/Facebook live proofs are V1.1 backlog; only the controlled full autonomous YouTube acceptance chain remains for V1 release closure.
 
 ## G5 publishing stage
 
@@ -193,8 +218,9 @@ same session under its existing protocol.
 
 Offline tests use external TEMP databases, socket tripwires and fake provider
 transports. G4-D real media proof and one controlled human-authorized YouTube
-public release have passed. Instagram/Facebook and full autonomous publishing
-remain live authorization gates; offline certification alone does not close G5.
+public release have passed. Instagram/Facebook live proof is V1.1 backlog.
+Full autonomous YouTube publishing is the remaining release-acceptance proof,
+not unfinished feature development.
 
 ## Compatibility and legacy
 

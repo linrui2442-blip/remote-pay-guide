@@ -60,3 +60,25 @@ For future publishing:
 - obtain the current successful render workflow Run ID
 - pass the complete Run ID as source_run_id
 - verify artifact name before publishing
+
+## 2026-10-12 — V1 release-candidate freeze
+
+Executable code was frozen at
+`af265df7403983107c1b141839a66c5def1359d9` after the generated-plan safety
+coverage fix. Feature development is closed; V1 is now a release candidate
+pending one controlled real autonomous public acceptance proof.
+
+The latest attempted fresh real cohort covered `2026-09-13..2026-10-10` and
+contained seven total intent events, two qualified intent events, one newly
+identified exchange user, one Binance referral click and zero conversions.
+Its first G6 provider call returned, but deterministic validation rejected the
+generated plan because safety coverage did not include `production_notes` and
+`visual_direction`. The frozen code commit fixed that defect.
+
+One authorized recovery of FeedbackSnapshot 34 was attempted after the fix.
+It received HTTP 502 before the provider returned a plan. Subsequent read-only
+forensics found the local gateway healthy, `gpt-5.6` discoverable, an upstream
+502 for account 3 and no alternate account for failover. Snapshot 34 remains
+`review`, has no linked plan and is permanently ineligible for another
+recovery. This is classified as an operational provider failure after the
+local defect was fixed, not an unresolved source defect.
