@@ -20,22 +20,23 @@ This mode is a development, validation, fallback, review, recovery and override 
 ```text
 Current canonical branch: main
 P3=CLOSED
-FEATURE_DEVELOPMENT=CLOSED
-V1_CODE_STATUS=FROZEN
-V1_RELEASE_PHASE=RELEASE_CANDIDATE
-V1_LIVE_ACCEPTANCE=PENDING
-V1_RELEASE_STATUS=RC_PENDING_LIVE_ACCEPTANCE
-RELEASE_CANDIDATE_CODE_SHA=af265df7403983107c1b141839a66c5def1359d9
+FEATURE_DEVELOPMENT=REOPENED_FOR_PRE_FREEZE_V1_COMPLETION
+V1_CODE_STATUS=ACTIVE_RELEASE_COMPLETION
+V1_RELEASE_PHASE=PRE_RELEASE_INTEGRATION
+V1_LIVE_ACCEPTANCE=INCOMPLETE
+V1_RELEASE_STATUS=NOT_CLOSED
+EXECUTABLE_BASELINE_SHA=af265df7403983107c1b141839a66c5def1359d9
 ```
 
-The executable V1 release candidate is frozen at
-`af265df7403983107c1b141839a66c5def1359d9`. Later documentation-only
-commits are release metadata and do not change that executable baseline.
-Feature development is closed. Only a reproducible deterministic defect in
-canonical V1 behavior that violates the already-defined contract may reopen
-source work, and such work must be classified as `V1_RELEASE_BLOCKER_FIX`.
-Normal provider failures and valid policy outcomes are operational evidence,
-not reasons to reopen feature development.
+The executable baseline remains
+`af265df7403983107c1b141839a66c5def1359d9`; documentation reconciliation does
+not change executable code. Commit `285c51cdf5d94847a9b3d884792523fe57a50cc5`
+introduced an explicit V1 scope contraction which has now been superseded by a
+later explicit scope decision. Release completion is reopened only for the
+immediately pre-freeze V1 contract: configuration/integration work, bounded
+release-blocker fixes found by real proofs, and release validation/hardening.
+General feature work, new platforms, new architecture, threshold/prompt tuning
+to manufacture AUTO, and unrelated product expansion remain closed.
 
 ## Completed or substantially implemented
 
@@ -78,6 +79,7 @@ Standard Reporting proved `content_id=short12`, `src=yt_short12`, and `binance_r
 
 `G4A_UNIFIED_PRODUCTION_ORCHESTRATION=CLOSED`.
 `G4_V1_IMPLEMENTATION=PASS`.
+`G4_STATUS=IN_PROGRESS`.
 
 G4-A consumes current `g3-v2` effective authorization: the plan revision
 must match, effective policy must be `AUTO`, autonomy must be enabled and the
@@ -119,7 +121,9 @@ The real live E2E passed: render run `36663762855`, artifact `11075661148`
 all succeeded. GitHub Pages serves `media/g4b-live-invoice-currency.mp4`
 (11,786,732 bytes). This proof created no VideoAsset or PublishTask.
 G4-C owns AI execution/polling; G4-D remains responsible for unified asset
-quality and VideoAsset creation. G4-C live proof remains V1.1 backlog.
+quality and VideoAsset creation. G4-C implementation is present and offline
+proven, but its real AI-production E2E remains a required V1 live proof blocked
+on external endpoint/API configuration.
 
 ### Live-proven milestone — G4-D Unified Asset Quality Gate
 
@@ -154,6 +158,7 @@ remains pending configuration; the overall G4 milestone is not CLOSED.
 `G5_INSTAGRAM_REAL_PUBLISH_PROOF=PENDING`
 `G5_FACEBOOK_REAL_PUBLISH_PROOF=PENDING`
 `G5_AUTONOMOUS_IMPLEMENTATION=PASS`
+`G5_V1_LIVE_STATUS=LIVE_PARTIAL`
 
 The real YouTube proof used Task 16 and ready VideoAsset `asset-result-4`:
 one human-authorized private upload → durable `SESSION_CREATED` and `PUBLISHED`
@@ -163,9 +168,10 @@ reauthorization granting `youtube.force-ssl` → one durable
 evidence → official final readback of video `PH_3lYMAoYs` as public with
 processing succeeded. There was no duplicate upload or second release PUT;
 the original upload execution claim and platform video identity were preserved.
-This proves a controlled human-authorized YouTube public publish. The single
-remaining V1 live-acceptance objective is the full controlled autonomous
-YouTube chain; Instagram/Facebook live paths are V1.1 backlog.
+This proves a controlled human-authorized YouTube public publish. V1 live
+acceptance remains partial: Instagram and Facebook each require one bounded
+official-adapter live proof, the three platform paths require multi-platform
+closeout, and the full autonomous publishing chain remains unproven.
 
 `publish.policy.prepare_autonomous_publish_task()` applies server-owned
 `g5-v1` policy to the existing VideoAsset/PublishTask lifecycle. Only AUTO can
@@ -199,9 +205,9 @@ terminal replay, 20 four-caller concurrency rounds, database unique indexes,
 legacy duplicate preservation, scheduler windows and secret-safe evidence.
 Existing G4-D/C/B/A, G3, G2 and publish regressions passed in the isolated
 offline certification; that test run made no real external calls. The later
-controlled YouTube live proof above is separate evidence. V1 feature work for
-G5 is complete; Instagram/Facebook live proof is V1.1 backlog, while the full
-autonomous YouTube chain belongs to release acceptance rather than development.
+controlled YouTube live proof above is separate evidence. G5 implementation is
+complete, but V1 live acceptance remains `LIVE_PARTIAL` until Instagram,
+Facebook, multi-platform closeout and the autonomous publishing chain pass.
 
 ### BREAKPOINT C — autonomous orchestration
 
@@ -269,7 +275,7 @@ one-result-per-job semantics; its rejection assertions remain unchanged.
 `G8_DRY_RUN_HARNESS_READY=PASS`
 `G8_REAL_72H_SOAK=NOT_RUN`
 `G9_OFFLINE_HARDENING_READY=PASS`
-`V1_RELEASE_STATUS=RC_PENDING_LIVE_ACCEPTANCE`
+`V1_RELEASE_STATUS=NOT_CLOSED`
 
 ### Latest verified human-gated production chain
 
@@ -307,19 +313,22 @@ installation or release validation, live soak, tag or release. The current
 production DB SHA256 after the authorized G6 live recovery is
 `45F2BF12639E2B176B9D1834AEBE0B8A7004AFCB22E1392060AF4D1006589664`.
 
-`NEXT_ACCEPTANCE_TRIGGER=WHEN_A_NEW_UNCONSUMED_REAL_COHORT_IS_MATURE`
+`NEXT_EXECUTION_PHASE=G4C_REAL_AI_PRODUCTION_PROOF`
 
-The only remaining V1 acceptance objective is
-`CONTROLLED_REAL_AUTONOMOUS_PUBLIC_E2E`: fresh mature persisted real analytics
-through one authorized normal G6 and one real GPT ContentPlan, then—only when
-raw `g3-v2` is `AUTO`—the canonical GitHub production, promotion, G4-D,
-`g5-v1`, single-session YouTube upload, official public readback and mandatory
-control restoration chain. It requires new explicit user authorization.
+The restored V1 contract requires: one bounded G4-C real AI-production proof
+followed by G4-D; bounded official-adapter Instagram and Facebook proofs;
+YouTube + Instagram + Facebook live closeout; one real autonomous AUTO cycle
+from fresh mature persisted analytics through G6, real GPT ContentPlan, raw G3
+AUTO, G4, G4-D, G5, official platform evidence, attribution, feedback state and
+safe control restoration; a real elapsed-time soak of at least 72 hours; and
+fresh-machine/release validation. The accelerated G8 harness remains valuable
+offline evidence but does not substitute for elapsed time.
 
-G4-C real AI-video production, Instagram/Facebook live publishing,
-multi-platform live proof, provider-pool improvements, prompt/novelty tuning
-and operator UX are V1.1 backlog. The real 72-hour soak is post-release
-operations, not a V1 closure requirement.
+The execution order is G4-C live proof, Instagram live proof, Facebook live
+proof, multi-platform closeout, autonomous E2E, real 72-hour soak,
+fresh-machine/release validation, then V1 close and only then recommendation of
+`remote-pay-guide-v1.0.0`. Provider-pool improvements, unrelated prompt/novelty
+tuning and operator UX remain outside this release-completion scope.
 
 ### Snapshot 34 operational incident
 
@@ -336,6 +345,7 @@ local gateway was healthy, the `gpt-5.6` route was visible, the upstream
 returned 502 and failover had no alternate account. Snapshot 34 remains
 `review` with no linked plan and is terminal: it must never be retried.
 
+`CAN_RECOVER_AGAIN=false`
 `SNAPSHOT34_FINAL_CLASSIFICATION=OPERATIONAL_PROVIDER_FAILURE_AFTER_LOCAL_DEFECT_WAS_FIXED`
 
 ## Official roadmap

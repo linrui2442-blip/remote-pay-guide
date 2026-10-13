@@ -1,76 +1,56 @@
 # V1 Closeout
 
-Operational current-state checklist. Source code and `docs/PROJECT_STATUS.md`
-remain authoritative.
-
-## CURRENT PROVEN REAL CHAIN
-
-G6 FeedbackSnapshot #11 → Plan #3 → human approval → ProductionTask #6 →
-RuntimeJob #5 → GitHub render/promotion → ProductionResult #5 → G4-D
-QualityCheck #2 PASS → `asset-result-5` ready → human YouTube PublishTask #17
-→ `COjE4t5YsCw` private upload, official processing, one public release and
-official public readback PASS.
-
-## CLOSED
-
-- G1, G2, G3, G4-A, G4-B, G4-D: PASS/live-proven as recorded in status docs.
-- G5 YouTube human-gated public proof: PASS.
-- G6 YouTube feedback proof and G7 offline certification: PASS.
-
-## LIVE_PROVEN
-
-- Human-gated Plan 3 → YouTube public E2E: PASS.
-- G4-D `g4d-v1` technical quality: PASS.
-
-## EXTERNAL_BLOCKERS
-
-- G4-C real AI video: BLOCKED_EXTERNAL_CONFIGURATION (no configured video
-  endpoint and no `AI_GATEWAY_API_KEY`).
-- Instagram real publish: BLOCKED_EXTERNAL (local token is present but the
-  historical provider validation returned Meta code 190; token validity is
-  INVALID and binding validity is UNKNOWN_IF_PROVIDER_REQUEST_DID_NOT_REACH_RESOURCE_VALIDATION).
-- Facebook real publish: BLOCKED_EXTERNAL_META_DEVELOPER_SETUP (account #4 is
-  inactive with no token or binding).
-
-## INTERNAL_BLOCKERS
-
-- Full autonomous E2E: NOT_RUN; autonomy is disabled and the kill switch is
-  active, while PolicyDecision #3 is REVIEW with effective authorization false.
-- A real ≥72-hour soak observation: NOT_RUN.
-- GA4 qualified-intent ingestion supports the six canonical website events and
-  uses a server-owned taxonomy: landing and quiz-selection engagement remains
-  non-qualified, while `new_to_exchange_identified` and referral handoffs are
-  qualified intent. Identity resolution remains scoped to canonical publish
-  records. Exchange-registration conversion attribution is still
-  provider-dependent and deferred until a trustworthy conversion source
-  exists; synthetic production signals are prohibited.
-
-## READY_FOR_AUTHORIZATION
-
-- Resolve G4-C provider endpoint/key, then authorize one bounded real AI proof.
-- Resolve Meta developer/account credentials, then authorize Instagram and
-  Facebook proofs independently.
-
-## NOT_YET_RUN
-
-- Real autonomous cycle with AUTO policy and controls enabled.
-- ≥72-hour real soak and fresh-machine/release validation.
-
-## V1_DEFINITION_OF_DONE
-
-V1 requires the canonical Data Center → Intelligence/real AI → ContentPlan →
-policy → ProductionTask → runtime → quality → publishing → attribution →
-feedback loop to run autonomously with duplicate prevention, recovery,
-concurrency controls, cadence/account policy, kill switch and observability.
-The current human-gated proof does not close this definition.
-
-## NEXT_EXECUTION_ORDER
-
-1. Resolve and explicitly authorize G4-C real AI configuration/proof.
-2. Resolve and explicitly authorize Instagram and Facebook provider proofs.
-3. Enable autonomy only under an explicit controlled authorization and run a
-   bounded autonomous cycle.
-4. Run the existing runtime-based real soak observation for ≥72 hours.
-5. Complete release hardening and reassess V1 closure.
+Supporting current closeout checklist. `docs/PROJECT_STATUS.md` remains the
+single source of truth.
 
 `V1_STATUS=NOT_CLOSED`
+
+## Preserved real evidence
+
+- G4-B GitHub production and G4-D `g4d-v1` quality are live proven.
+- Human-gated Plan 3 → YouTube public E2E is proven.
+- G6 real feedback is proven; G7 offline certification, the G8 accelerated
+  harness and G9 offline hardening pass.
+- The executable baseline remains `af265df7403983107c1b141839a66c5def1359d9`.
+
+## Open V1 gates
+
+- **G4-C real AI production:** implementation present and offline proven;
+  `EXTERNAL_CONFIGURATION_BLOCKED`; one bounded live proof plus G4-D required.
+- **Instagram:** official adapter implementation/offline proof complete;
+  credential/binding resolution and one bounded live proof required.
+- **Facebook:** official adapter implementation/offline proof complete; Meta
+  developer/account/token/binding resolution and one bounded proof required.
+- **Multi-platform:** `LIVE_PARTIAL`; YouTube is proven, but all three canonical
+  platform paths must be independently live proven.
+- **Autonomous E2E:** `NOT_RUN`; requires fresh real analytics → G6 → real GPT
+  ContentPlan → natural raw G3 AUTO → G4 → G4-D → G5 → publish →
+  evidence/attribution/feedback → safe control restoration.
+- **Real >=72-hour soak:** `NOT_RUN`; accelerated/offline PASS is not a
+  substitute.
+- **Fresh-machine/release validation:** `NOT_RUN`; required before close.
+
+Qualified intent/referral attribution is live proven. Trusted registration or
+revenue conversion remains provider-dependent and deferred, not a newly
+invented V1 blocker. Snapshot 34 is terminal with `CAN_RECOVER_AGAIN=false` and
+classification `OPERATIONAL_PROVIDER_FAILURE_AFTER_LOCAL_DEFECT_WAS_FIXED`.
+
+## Exact execution order
+
+1. G4-C live proof, then G4-D on the AI-produced result.
+2. Instagram official-adapter live proof.
+3. Facebook official-adapter live proof.
+4. YouTube + Instagram + Facebook multi-platform closeout.
+5. One fresh, natural raw-AUTO autonomous E2E.
+6. Real elapsed-time soak for at least 72 hours.
+7. Fresh-machine/release validation and final hardening.
+8. Only then close V1 and recommend `remote-pay-guide-v1.0.0`.
+
+## Scope history and boundary
+
+Commit `285c51cdf5d94847a9b3d884792523fe57a50cc5` was a docs-only V1
+scope contraction. It is preserved in history, but its release scope is
+superseded by the explicit decision to restore the immediately pre-freeze V1
+contract. This reopens release completion, not general feature development.
+Only existing-contract configuration/integration, bounded proof-discovered
+release blockers and release hardening are allowed.
