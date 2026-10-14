@@ -1,5 +1,5 @@
 """G4-A2 preparation contract smoke; isolated TEMP DB and no provider execution."""
-import gc, json, os, sqlite3, sys, tempfile, uuid
+import gc, hashlib, json, os, sqlite3, sys, tempfile, uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -40,10 +40,15 @@ def _snapshot(account_id, tag):
 
 
 def _plan(tag, sid):
-    return ContentPlan(content_id="g4a-" + tag, topic="Verify a stablecoin payment", angle="receiving-side confirmation",
-        target_audience="freelancers", hook="A screenshot is not proof of a credited payment.",
-        script="Check your receiving account and transaction status before closing the job.",
-        cta="Follow Remote Pay Guide.", title="G4A " + tag, description="Payment education",
+    # Each fixture exercises an independent authorization/concurrency path. Keep
+    # its creative text distinct so the real novelty gate does not correctly
+    # classify later test fixtures as duplicate production content.
+    unique = hashlib.sha256(tag.encode()).hexdigest()
+    inverse = hashlib.sha256((tag + ":script").encode()).hexdigest()
+    return ContentPlan(content_id="g4a-" + tag, topic=unique, angle=inverse,
+        target_audience="operators", hook=unique,
+        script=inverse,
+        cta=hashlib.sha256((tag + ":cta").encode()).hexdigest(), title="G4A " + tag, description="Payment education",
         visual_direction="Account confirmation view", source_snapshot_id=sid, production_spec={
             "provider": "ai_gateway", "workflow": "evil.yml", "endpoint": "https://evil.invalid"},
         generation_provider="deterministic", generation_evidence={"source": "content_plan_provider",
@@ -59,7 +64,8 @@ def _create(tag):
     mark_sync_success(account["id"], "youtube", "analytics")
     get_platform_capability("youtube")
     p = save_plan(_plan(tag, sid), sid)
-    assert policy.evaluate_policy(p["id"])["decision"] == "AUTO"
+    decision = policy.evaluate_policy(p["id"])
+    assert decision["decision"] == "AUTO", (tag, decision)
     return p["id"]
 
 

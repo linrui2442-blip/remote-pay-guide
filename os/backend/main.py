@@ -31,6 +31,7 @@ from routers import (
     accounts,
     settings,
     attribution,
+    sub2_relay,
 )
 
 
@@ -79,6 +80,7 @@ app.include_router(oauth.router)
 app.include_router(accounts.router)
 app.include_router(settings.router)
 app.include_router(attribution.router)
+app.include_router(sub2_relay.router)
 
 
 class WorkflowRequest(BaseModel):

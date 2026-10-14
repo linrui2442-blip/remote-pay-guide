@@ -1,0 +1,124 @@
+name: Promote Local G4-C Video to GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Canonical G4-C relay request identifier
+        required: true
+        type: string
+      asset_filename:
+        description: Simple destination MP4 filename
+        required: true
+        type: string
+      expected_sha256:
+        description: Expected staged MP4 SHA256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g4c-local-video-${{ inputs.request_id }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: [self-hosted, windows, x64]
+    timeout-minutes: 10
+    steps:
+      - name: Validate and upload staged video
+        shell: powershell
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          ASSET_FILENAME: ${{ inputs.asset_filename }}
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+          STAGING_ROOT: ${{ vars.G4C_STAGING_ROOT }}
+          MAX_VIDEO_BYTES: ${{ vars.G4C_MAX_VIDEO_BYTES }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:REQUEST_ID -notmatch '^g4c-runtime-job-[1-9][0-9]{0,18}$') { throw 'invalid request_id' }
+          if ($env:ASSET_FILENAME -notmatch '^[A-Za-z0-9._-]+\.mp4$') { throw 'invalid asset_filename' }
+          if ($env:EXPECTED_SHA256 -notmatch '^[A-Fa-f0-9]{64}$') { throw 'invalid expected_sha256' }
+          if ([string]::IsNullOrWhiteSpace($env:STAGING_ROOT)) { throw 'G4C_STAGING_ROOT is required' }
+          $root = [IO.Path]::GetFullPath($env:STAGING_ROOT).TrimEnd('\')
+          $directory = [IO.Path]::GetFullPath((Join-Path $root $env:REQUEST_ID))
+          $source = [IO.Path]::GetFullPath((Join-Path $directory $env:ASSET_FILENAME))
+          if (-not $directory.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'request path escapes staging root' }
+          if (-not $source.StartsWith($directory + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'asset path escapes request directory' }
+          $item = Get-Item -LiteralPath $source
+          if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'reparse points are forbidden' }
+          $limit = 104857600
+          if ($env:MAX_VIDEO_BYTES -match '^[1-9][0-9]*$') { $limit = [int64]$env:MAX_VIDEO_BYTES }
+          if ($item.Length -le 0 -or $item.Length -gt $limit) { throw 'invalid staged video size' }
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash
+          if ($actual -ne $env:EXPECTED_SHA256) { throw 'staged video hash mismatch' }
+          New-Item -ItemType Directory -Path artifact -Force | Out-Null
+          Copy-Item -LiteralPath $source -Destination (Join-Path artifact $env:ASSET_FILENAME)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g4c-relay-${{ inputs.request_id }}
+          path: artifact/${{ inputs.asset_filename }}
+          if-no-files-found: error
+          retention-days: 1
+
+  promote:
+    needs: ingest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          name: g4c-relay-${{ inputs.request_id }}
+          path: source-artifact
+      - name: Verify and stage media
+        shell: bash
+        env:
+          ASSET_FILENAME: ${{ inputs.asset_filename }}
+          EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$ASSET_FILENAME" =~ ^[A-Za-z0-9._-]+\.mp4$ ]]
+          [[ "$EXPECTED_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]]
+          source="source-artifact/$ASSET_FILENAME"
+          test -s "$source"
+          test "$(sha256sum "$source" | cut -d' ' -f1)" = "${EXPECTED_SHA256,,}"
+          mkdir -p media
+          target="media/$ASSET_FILENAME"
+          if test -e "$target"; then
+            test "$(sha256sum "$target" | cut -d' ' -f1)" = "${EXPECTED_SHA256,,}" || { echo 'media collision'; exit 1; }
+          else
+            cp "$source" "$target"
+          fi
+      - name: Commit only when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main
+          git add -- "media/${{ inputs.asset_filename }}"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Promote G4-C video ${{ inputs.asset_filename }}"
+          git push origin HEAD:main
+      - name: Verify GitHub Pages asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://linrui2442-blip.github.io/remote-pay-guide/media/${{ inputs.asset_filename }}"
+          for attempt in $(seq 1 72); do
+            headers=$(mktemp)
+            if curl -fsSI --max-time 15 "$url" >"$headers"; then
+              length=$(awk 'BEGIN{IGNORECASE=1}/^content-length:/{gsub("\r","");print $2}' "$headers" | tail -1)
+              type=$(awk 'BEGIN{IGNORECASE=1}/^content-type:/{gsub("\r","");print $2}' "$headers" | tail -1)
+              if { [[ "$type" == video/* ]] || [[ "$url" == *.mp4 ]]; } && { [[ -z "$length" ]] || [[ "$length" -gt 0 ]]; }; then exit 0; fi
+            fi
+            sleep 5
+          done
+          exit 1

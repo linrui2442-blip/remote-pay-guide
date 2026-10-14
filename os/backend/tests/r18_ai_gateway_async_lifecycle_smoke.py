@@ -1,6 +1,8 @@
 from test_database_helper import TEST_DATABASE_PATH, assert_safe_test_database_path
+import gc
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -23,7 +25,18 @@ from production.tasks.models import ProductionTask
 def reset_test_db():
     db = TEST_DATABASE_PATH
     if db.exists():
-        db.unlink()
+        # Some Windows SQLite objects release their file handle from finalizers
+        # after the surrounding manager call returns. This remains an isolated
+        # TEMP DB; bounded collection/retry makes the two-phase smoke reliable.
+        gc.collect()
+        for attempt in range(20):
+            try:
+                db.unlink()
+                break
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.05)
 
 
 class ReadyVideoTransport:
